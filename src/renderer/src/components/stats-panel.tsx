@@ -7,15 +7,17 @@ import type {
   ActivityModelUsage,
 } from '../../../shared/ipc-contracts'
 import { buildWeeks, intensityLevel, type IntensityLevel } from '../utils/heatmap-grid'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useAppStore } from '../store'
 
 type Tab = 'overview' | 'models'
 
-const RANGE_LABELS: { key: ActivityRangeKey; label: string }[] = [
-  { key: '365', label: '1y' },
-  { key: '180', label: '6mo' },
-  { key: '90', label: '3mo' },
-  { key: '30', label: '30d' },
-  { key: '7', label: '7d' },
+const RANGE_KEYS: { key: ActivityRangeKey; label: 'statsRange1y' | 'statsRange6mo' | 'statsRange3mo' | 'statsRange30d' | 'statsRange7d' }[] = [
+  { key: '365', label: 'statsRange1y' },
+  { key: '180', label: 'statsRange6mo' },
+  { key: '90', label: 'statsRange3mo' },
+  { key: '30', label: 'statsRange30d' },
+  { key: '7', label: 'statsRange7d' },
 ]
 
 const RANGE_DAYS: Record<ActivityRangeKey, number> = {
@@ -61,8 +63,8 @@ function formatCompact(n: number): string {
   return String(n)
 }
 
-/** 23 → "11 PM", 0 → "12 AM". */
-function formatHour(h: number): string {
+function formatHour(h: number, language: 'zh' | 'en'): string {
+  if (language === 'zh') return t(language, 'statsHour', { h: String(h) })
   const period = h < 12 ? 'AM' : 'PM'
   const hr = h % 12 === 0 ? 12 : h % 12
   return `${hr} ${period}`
@@ -260,6 +262,7 @@ function ModelLegend({
  * stays uncluttered.
  */
 export function StatsPanel(): React.JSX.Element | null {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [data, setData] = useState<ActivityStatsResult | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [range, setRange] = useState<ActivityRangeKey>('365')
@@ -293,24 +296,26 @@ export function StatsPanel(): React.JSX.Element | null {
 
   return (
     <div className="mb-8 rounded-lg border border-border bg-surface/50 p-4">
-      {/* Tabs + range toggle */}
       <div className="mb-4 flex items-center justify-between">
         <div className="flex gap-1">
-          {(['overview', 'models'] as Tab[]).map((t) => (
+          {([
+            ['overview', 'statsOverview'],
+            ['models', 'statsModels'],
+          ] as const).map(([id, label]) => (
             <button
-              key={t}
-              onClick={() => setTab(t)}
+              key={id}
+              onClick={() => setTab(id)}
               className={clsx(
-                'rounded-md px-2.5 py-1 text-xs font-medium capitalize transition-colors',
-                tab === t ? 'bg-elevated text-primary' : 'text-dim hover:text-secondary'
+                'rounded-md px-2.5 py-1 text-xs font-medium transition-colors',
+                tab === id ? 'bg-elevated text-primary' : 'text-dim hover:text-secondary'
               )}
             >
-              {t}
+              {t(language, label)}
             </button>
           ))}
         </div>
         <div className="flex gap-0.5 rounded-md bg-card/60 p-0.5">
-          {RANGE_LABELS.map(({ key, label }) => (
+          {RANGE_KEYS.map(({ key, label }) => (
             <button
               key={key}
               onClick={() => setRange(key)}
@@ -319,7 +324,7 @@ export function StatsPanel(): React.JSX.Element | null {
                 range === key ? 'bg-elevated text-primary' : 'text-dim hover:text-secondary'
               )}
             >
-              {label}
+              {t(language, label)}
             </button>
           ))}
         </div>
@@ -328,14 +333,14 @@ export function StatsPanel(): React.JSX.Element | null {
       {tab === 'overview' ? (
         <>
           <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
-            <StatCard label="Sessions" value={stats.sessions.toLocaleString()} />
-            <StatCard label="Messages" value={stats.messages.toLocaleString()} />
-            <StatCard label="Total tokens" value={formatCompact(stats.totalTokens)} />
-            <StatCard label="Active days" value={stats.activeDays.toLocaleString()} />
-            <StatCard label="Current streak" value={`${stats.currentStreak}d`} />
-            <StatCard label="Longest streak" value={`${stats.longestStreak}d`} />
-            <StatCard label="Peak hour" value={stats.peakHour === null ? '—' : formatHour(stats.peakHour)} />
-            <StatCard label="Favorite model" value={favoriteModel} />
+            <StatCard label={t(language, 'statsSessions')} value={stats.sessions.toLocaleString()} />
+            <StatCard label={t(language, 'statsMessages')} value={stats.messages.toLocaleString()} />
+            <StatCard label={t(language, 'statsTotalTokens')} value={formatCompact(stats.totalTokens)} />
+            <StatCard label={t(language, 'statsActiveDays')} value={stats.activeDays.toLocaleString()} />
+            <StatCard label={t(language, 'statsCurrentStreak')} value={t(language, 'statsStreakDays', { n: String(stats.currentStreak) })} />
+            <StatCard label={t(language, 'statsLongestStreak')} value={t(language, 'statsStreakDays', { n: String(stats.longestStreak) })} />
+            <StatCard label={t(language, 'statsPeakHour')} value={stats.peakHour === null ? '—' : formatHour(stats.peakHour, language)} />
+            <StatCard label={t(language, 'statsFavoriteModel')} value={favoriteModel} />
           </div>
           <Heatmap days={rangedDays} />
         </>

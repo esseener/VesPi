@@ -19,6 +19,7 @@ import {
   Copy,
 } from 'lucide-react'
 import type { LineageNode } from '../../../shared/session-lineage'
+import { DEFAULT_LANGUAGE, t, isMessageKey } from '../../../shared/i18n'
 
 export function Timeline(): React.JSX.Element {
   const timelineEvents = useAppStore((state) => state.timelineEvents)
@@ -31,6 +32,7 @@ export function Timeline(): React.JSX.Element {
   const lineage = useAppStore((state) => state.lineage)
   const currentSessionFile = useAppStore((state) => state.sessionState?.sessionFile ?? null)
   const switchSession = useAppStore((state) => state.switchSession)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   useEffect(() => {
     loadForkMessages()
@@ -44,19 +46,19 @@ export function Timeline(): React.JSX.Element {
         <div className="mb-2 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <GitFork size={15} className="text-muted" />
-            <h3 className="text-sm font-medium text-primary">Branches</h3>
+            <h3 className="text-sm font-medium text-primary">{t(language, 'branches')}</h3>
           </div>
           <button
             onClick={() => cloneBranch()}
             className="flex items-center gap-1 rounded px-2 py-1 text-xs text-muted hover:bg-surface-hover hover:text-primary transition-colors"
-            title="Clone the current branch into a new session"
+            title={t(language, 'cloneBranchHint')}
           >
             <Copy size={12} />
-            Clone branch
+            {t(language, 'cloneBranch')}
           </button>
         </div>
         {forkMessages.length === 0 ? (
-          <p className="text-xs text-faint">No earlier messages to fork from.</p>
+          <p className="text-xs text-faint">{t(language, 'noEarlierMessages')}</p>
         ) : (
           <div className="space-y-1">
             {forkMessages.map((fp) => (
@@ -109,8 +111,8 @@ export function Timeline(): React.JSX.Element {
         {timelineEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <Activity size={32} className="mb-3 text-faint" />
-            <p className="text-sm">No activity yet</p>
-            <p className="mt-1 text-xs text-faint">Agent events will appear here in real-time</p>
+            <p className="text-sm">{t(language, 'timelineNoActivity')}</p>
+            <p className="mt-1 text-xs text-faint">{t(language, 'timelineNoActivityHint')}</p>
           </div>
         ) : (
           <div className="relative">
@@ -131,8 +133,15 @@ export function Timeline(): React.JSX.Element {
 }
 
 function TimelineEntry({ event }: { event: StoreTimelineEvent }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const icon = getEventIcon(event.type, event.status)
   const color = getEventColor(event.type, event.status)
+  const title = isMessageKey(event.title)
+    ? t(language, event.title, {
+        name: String(event.metadata?.name ?? ''),
+        attempt: String(event.metadata?.attempt ?? ''),
+      })
+    : event.title
 
   return (
     <div className="group relative flex items-start gap-3 py-2 pl-2 animate-fade-in">
@@ -149,7 +158,7 @@ function TimelineEntry({ event }: { event: StoreTimelineEvent }): React.JSX.Elem
       {/* Content */}
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="text-sm font-medium text-primary">{event.title}</span>
+          <span className="text-sm font-medium text-primary">{title}</span>
           {event.status === 'running' && (
             <Loader2 size={12} className="animate-spin text-accent-fg" />
           )}

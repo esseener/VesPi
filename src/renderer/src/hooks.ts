@@ -1,8 +1,11 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useAppStore } from './store'
 import { DEFAULT_SETTINGS } from '../../shared/default-settings'
+import { hasConfiguredChatModel } from '../../shared/models-config'
 import { BUILTIN_SOURCE, type PiCommand } from '../../shared/pi-command'
 import type { WorkspaceActivationIntent } from '../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../shared/i18n'
+import { playCompletionChime } from './completion-chime'
 
 /**
  * Subscribes to Pi events from the main process and routes them to the store.
@@ -14,7 +17,16 @@ export function usePiEvents(): void {
   const handleWorkspaceActivity = useAppStore((state) => state.handleWorkspaceActivity)
   const handleSessionRuntime = useAppStore((state) => state.handleSessionRuntime)
   const recoverPendingPrompts = useAppStore((state) => state.recoverPendingPrompts)
+  const lastChimeAt = useRef(useAppStore.getState().completionChimeAt)
 
+  useEffect(() => {
+    return useAppStore.subscribe((state) => {
+      if (state.completionChimeAt !== lastChimeAt.current && state.completionChimeAt > 0) {
+        lastChimeAt.current = state.completionChimeAt
+        playCompletionChime()
+      }
+    })
+  }, [])
   useEffect(() => {
     // Subscribe to Pi events (status changes arrive here too, as 'status_change').
     const unsubscribeEvent = window.piDesktop.onEvent(handlePiEvent)
@@ -425,6 +437,7 @@ export interface BuiltinCommand {
  */
 export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: PiCommand[] } {
   const commands = useAppStore((s) => s.commands)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   const compactContext = useAppStore((s) => s.compactContext)
   const cloneBranch = useAppStore((s) => s.cloneBranch)
   const createNewSession = useAppStore((s) => s.createNewSession)
@@ -433,15 +446,15 @@ export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: 
 
   const builtins = useMemo<BuiltinCommand[]>(
     () => [
-      { name: 'compact', description: 'Compact the conversation to free up context', run: () => { void compactContext() } },
-      { name: 'clone', description: 'Clone the current branch into a new session', run: () => { void cloneBranch() } },
-      { name: 'new', description: 'Start a new session', run: () => { void createNewSession() } },
-      { name: 'task', description: 'Launch a task in a new Pi session', run: () => setTaskLauncherOpen(true) },
-      { name: 'resume', description: 'Open the Sessions list', run: () => setCurrentView('sessions') },
-      { name: 'fork', description: 'Open Branches to fork from a message', run: () => setCurrentView('timeline') },
-      { name: 'settings', description: 'Open Settings', run: () => setCurrentView('settings') },
+      { name: 'compact', description: t(language, 'cmdCompact'), run: () => { void compactContext() } },
+      { name: 'clone', description: t(language, 'cmdClone'), run: () => { void cloneBranch() } },
+      { name: 'new', description: t(language, 'cmdNew'), run: () => { void createNewSession() } },
+      { name: 'task', description: t(language, 'cmdTask'), run: () => setTaskLauncherOpen(true) },
+      { name: 'resume', description: t(language, 'cmdResume'), run: () => setCurrentView('sessions') },
+      { name: 'fork', description: t(language, 'cmdFork'), run: () => setCurrentView('timeline') },
+      { name: 'settings', description: t(language, 'cmdSettings'), run: () => setCurrentView('settings') },
     ],
-    [compactContext, cloneBranch, createNewSession, setTaskLauncherOpen, setCurrentView]
+    [language, compactContext, cloneBranch, createNewSession, setTaskLauncherOpen, setCurrentView]
   )
 
   const allCommands = useMemo<PiCommand[]>(
@@ -502,24 +515,21 @@ export function useInitialize(): void {
 
       // Background: session list, tags, notes, models, updates.
       void refreshSessionList()
-      // Load the workflow journal once at boot so the status-bar badge and the
-      // sidebar workflow entries show live runs before the navigator is first
-      // opened (its poll loop keeps it fresh afterwards).
       void useAppStore.getState().refreshWorkflowRuns()
       void useAppStore.getState().loadTags()
       void useAppStore.getState().loadArchivedSessions()
       void useAppStore.getState().loadNotes()
-      void useAppStore.getState().loadCustomModels()
-      void useAppStore.getState().checkForUpdates()
-
-      if (openToHome) {
-        // Pi starts lazily on first action from Home.
-        return
+      await useAppStore.getState().loadCustomModels()
+      if (!hasConfiguredChatModel(useAppStore.getState().customModels)) {
+        useAppStore.getState().setCurrentView('model-setup')
       }
+      void useAppStore.getState().checkForUpdates()
+      const hasWorkspace = useAppStore.getState().activeWorkspace != null
+        || useAppStore.getState().workspaces.length > 0
 
-      // Boot Pi in the background. The shell is already interactive; the
-      // session-runtime running event hydrates Chat when the process is ready.
-      void startPi().then(() => refreshSessionStats()).catch(() => undefined)
+      if (hasWorkspace) {
+        void startPi().then(() => refreshSessionStats()).catch(() => undefined)
+      }
       void window.piDesktop.workspace.getActivity()
         .then((activity) => useAppStore.getState().handleWorkspaceActivity(activity))
         .catch(() => undefined)

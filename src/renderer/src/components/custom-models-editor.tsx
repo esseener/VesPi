@@ -1,9 +1,11 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
-import { Plus, Trash2, Save, RefreshCw, AlertTriangle } from 'lucide-react'
+import { ChevronDown, Plus, Trash2, Save, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useAppStore } from '../store'
 import { withImageInput } from '../../../shared/models-config'
 import type { ModelsConfig, ProviderConfig, CustomModel } from '../../../shared/models-config'
+import { BUILTIN_PROVIDERS, isBuiltinProviderKey } from '../../../shared/builtin-providers'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 const API_OPTIONS = [
   'openai-completions',
@@ -21,22 +23,50 @@ interface ProviderRow {
   models: CustomModel[]
 }
 
+function emptyRow(partial?: Partial<ProviderRow>): ProviderRow {
+  return {
+    key: '',
+    baseUrl: '',
+    api: API_OPTIONS[0],
+    apiKey: '',
+    compat: undefined,
+    models: [],
+    ...partial,
+  }
+}
+
 function configToRows(config: ModelsConfig | null): ProviderRow[] {
-  if (!config) return []
-  return Object.entries(config.providers ?? {}).map(([key, p]) => ({
+  const saved = Object.entries(config?.providers ?? {}).map(([key, p]) => emptyRow({
     key,
     baseUrl: typeof p.baseUrl === 'string' ? p.baseUrl : '',
-    api: typeof p.api === 'string' ? p.api : '',
+    api: typeof p.api === 'string' ? p.api : API_OPTIONS[0],
     apiKey: typeof p.apiKey === 'string' ? p.apiKey : '',
     compat: p.compat,
     models: Array.isArray(p.models) ? p.models : [],
   }))
+  const byKey = new Map(saved.map((row) => [row.key, row]))
+  const builtins = BUILTIN_PROVIDERS.map((item) => {
+    const existing = byKey.get(item.key)
+    if (existing) {
+      byKey.delete(item.key)
+      return {
+        ...existing,
+        baseUrl: existing.baseUrl || item.baseUrl,
+        api: existing.api || item.api,
+      }
+    }
+    return emptyRow({ key: item.key, baseUrl: item.baseUrl, api: item.api })
+  })
+  return [...builtins, ...byKey.values()]
 }
 
 function rowsToConfig(rows: ProviderRow[]): ModelsConfig {
   const providers: ModelsConfig['providers'] = {}
   for (const r of rows) {
-    providers[r.key.trim()] = {
+    const key = r.key.trim()
+    if (!key) continue
+    if (!r.apiKey.trim() && r.models.length === 0) continue
+    providers[key] = {
       ...(r.baseUrl ? { baseUrl: r.baseUrl } : {}),
       ...(r.api ? { api: r.api } : {}),
       ...(r.apiKey ? { apiKey: r.apiKey } : {}),
@@ -47,23 +77,39 @@ function rowsToConfig(rows: ProviderRow[]): ModelsConfig {
   return { providers }
 }
 
+function providerReady(row: ProviderRow): boolean {
+  return Boolean(row.apiKey.trim() && row.models.some((model) => model.id.trim()))
+}
+
 export function CustomModelsEditor(): React.JSX.Element {
   const customModels = useAppStore((s) => s.customModels)
   const customModelsError = useAppStore((s) => s.customModelsError)
+  const customModelsPath = useAppStore((s) => s.customModelsPath)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   const loadCustomModels = useAppStore((s) => s.loadCustomModels)
   const saveCustomModels = useAppStore((s) => s.saveCustomModels)
   const restartPi = useAppStore((s) => s.restartPi)
 
   const [rows, setRows] = useState<ProviderRow[]>([])
+  const [openIds, setOpenIds] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<string[]>([])
   const [saved, setSaved] = useState(false)
+  const [probing, setProbing] = useState<number | null>(null)
+  const [probeMessage, setProbeMessage] = useState<{ index: number; text: string; ok: boolean } | null>(null)
 
   useEffect(() => {
     loadCustomModels()
   }, [loadCustomModels])
 
   useEffect(() => {
-    setRows(configToRows(customModels))
+    const next = configToRows(customModels)
+    setRows(next)
+    setOpenIds(new Set(
+      next
+        .map((row, index) => ({ row, id: row.key.trim() || `custom-${index}` }))
+        .filter(({ row }) => !isBuiltinProviderKey(row.key) && !providerReady(row))
+        .map(({ id }) => id),
+    ))
   }, [customModels])
 
   const update = (next: ProviderRow[]): void => {
@@ -71,10 +117,27 @@ export function CustomModelsEditor(): React.JSX.Element {
     setSaved(false)
   }
 
-  const addProvider = (): void =>
-    update([...rows, { key: '', baseUrl: '', api: API_OPTIONS[0], apiKey: '', compat: undefined, models: [] }])
+  const addProvider = (): void => {
+    const id = `custom-${Date.now()}`
+    setOpenIds((current) => new Set([...current, id]))
+    update([...rows, emptyRow()])
+  }
 
-  const removeProvider = (i: number): void => update(rows.filter((_, idx) => idx !== i))
+  const toggleOpen = (id: string): void => {
+    setOpenIds((current) => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const rowId = (row: ProviderRow, index: number): string => row.key.trim() || `custom-${index}`
+
+  const removeProvider = (i: number): void => {
+    if (isBuiltinProviderKey(rows[i]?.key)) return
+    update(rows.filter((_, idx) => idx !== i))
+  }
 
   const patchProvider = (i: number, patch: Partial<ProviderRow>): void =>
     update(rows.map((r, idx) => (idx === i ? { ...r, ...patch } : r)))
@@ -91,12 +154,66 @@ export function CustomModelsEditor(): React.JSX.Element {
   const removeModel = (pi: number, mi: number): void =>
     patchProvider(pi, { models: rows[pi].models.filter((_, idx) => idx !== mi) })
 
+  const probeProvider = async (i: number): Promise<void> => {
+    const row = rows[i]
+    if (!row.baseUrl.trim()) {
+      setProbeMessage({ index: i, text: t(language, 'probeNeedUrl'), ok: false })
+      return
+    }
+    if (!row.apiKey.trim()) {
+      setProbeMessage({ index: i, text: t(language, 'probeNeedKey'), ok: false })
+      return
+    }
+    if (row.apiKey.trim().startsWith('!')) {
+      setProbeMessage({ index: i, text: t(language, 'probeShellKey'), ok: false })
+      return
+    }
+    setProbing(i)
+    setProbeMessage(null)
+    try {
+      const result = await window.piDesktop.models.probe({
+        baseUrl: row.baseUrl,
+        api: row.api,
+        apiKey: row.apiKey,
+      })
+      if (!result.ok) {
+        const mapped =
+          result.error === 'missing-url' ? t(language, 'probeNeedUrl')
+          : result.error === 'missing-key' ? t(language, 'probeNeedKey')
+          : result.error === 'shell-key' ? t(language, 'probeShellKey')
+          : result.error.startsWith('env-missing:') ? t(language, 'probeFailed', { error: result.error })
+          : t(language, 'probeFailed', { error: result.error })
+        setProbeMessage({ index: i, text: mapped, ok: false })
+        return
+      }
+      const existing = new Set(row.models.map((m) => m.id.trim()).filter(Boolean))
+      const merged = [...row.models.filter((m) => m.id.trim())]
+      for (const model of result.models) {
+        if (existing.has(model.id)) continue
+        existing.add(model.id)
+        merged.push(model.name ? { id: model.id, name: model.name } : { id: model.id })
+      }
+      patchProvider(i, { models: merged })
+      setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
+      setOpenIds((current) => {
+        const next = new Set(current)
+        next.delete(rowId(row, i))
+        return next
+      })
+    } catch (err) {
+      setProbeMessage({ index: i, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
+    } finally {
+      setProbing(null)
+    }
+  }
+
   const handleSave = async (): Promise<void> => {
-    // Duplicate/empty provider keys collapse in object form, so check here.
-    const keys = rows.map((r) => r.key.trim())
+    const keys = rows
+      .filter((row) => row.apiKey.trim() || row.models.length > 0)
+      .map((row) => row.key.trim())
     const localErrors: string[] = []
-    if (keys.some((k) => k.length === 0)) localErrors.push('Every provider needs a non-empty key')
-    if (new Set(keys).size !== keys.length) localErrors.push('Provider keys must be unique')
+    if (keys.some((k) => k.length === 0)) localErrors.push(t(language, 'providerKeyRequired'))
+    if (new Set(keys).size !== keys.length) localErrors.push(t(language, 'providerKeyUnique'))
     if (localErrors.length > 0) {
       setErrors(localErrors)
       return
@@ -105,9 +222,209 @@ export function CustomModelsEditor(): React.JSX.Element {
     if (result.ok) {
       setErrors([])
       setSaved(true)
+      setOpenIds(new Set())
     } else {
-      setErrors(result.errors ?? ['Save failed'])
+      setErrors(result.errors ?? [t(language, 'saveFailed')])
     }
+  }
+
+  const builtinRows = useMemo(
+    () => rows.map((row, index) => ({ row, index })).filter(({ row }) => isBuiltinProviderKey(row.key)),
+    [rows],
+  )
+  const customRows = useMemo(
+    () => rows.map((row, index) => ({ row, index })).filter(({ row }) => !isBuiltinProviderKey(row.key)),
+    [rows],
+  )
+
+  const renderEditor = (row: ProviderRow, pi: number, builtin: boolean): React.JSX.Element => (
+    <div className="mt-3 space-y-2 border-t border-border pt-3">
+      {!builtin && (
+        <div className="grid grid-cols-2 gap-2">
+          <input
+            value={row.key}
+            onChange={(e) => patchProvider(pi, { key: e.target.value })}
+            placeholder={t(language, 'providerKeyPlaceholder')}
+            className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
+          />
+          <input
+            value={row.baseUrl}
+            onChange={(e) => patchProvider(pi, { baseUrl: e.target.value })}
+            placeholder={t(language, 'providerBaseUrl')}
+            className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
+          />
+          <select
+            value={row.api}
+            onChange={(e) => patchProvider(pi, { api: e.target.value })}
+            className="col-span-2 rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
+          >
+            {API_OPTIONS.map((opt) => (
+              <option key={opt} value={opt}>{opt}</option>
+            ))}
+          </select>
+        </div>
+      )}
+      <input
+        value={row.apiKey}
+        onChange={(e) => patchProvider(pi, { apiKey: e.target.value })}
+        placeholder={t(language, 'providerApiKey')}
+        className="w-full rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void probeProvider(pi)}
+          disabled={probing === pi}
+          className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-50"
+        >
+          <RefreshCw size={12} className={probing === pi ? 'animate-spin' : undefined} />
+          {probing === pi ? t(language, 'testingProvider') : t(language, 'testFetchModels')}
+        </button>
+        {probeMessage?.index === pi && (
+          <span className={clsx('text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
+            {probeMessage.text}
+          </span>
+        )}
+      </div>
+      {row.models.map((model, mi) => (
+        <div key={mi} className="rounded border border-border bg-surface/50 p-2">
+          <div className="flex items-center gap-2">
+            <input
+              value={model.id ?? ''}
+              onChange={(e) => patchModel(pi, mi, { id: e.target.value })}
+              placeholder={t(language, 'modelIdPlaceholder')}
+              className="flex-1 rounded border border-border-strong bg-surface px-2 py-1 text-xs text-primary focus:border-focus focus:outline-none"
+            />
+            <input
+              value={model.name ?? ''}
+              onChange={(e) => patchModel(pi, mi, { name: e.target.value })}
+              placeholder={t(language, 'modelNamePlaceholder')}
+              className="flex-1 rounded border border-border-strong bg-surface px-2 py-1 text-xs text-primary focus:border-focus focus:outline-none"
+            />
+            <button
+              onClick={() => removeModel(pi, mi)}
+              className="rounded p-1 text-dim hover:bg-surface-hover hover:text-error"
+              title={t(language, 'removeModel')}
+            >
+              <Trash2 size={12} />
+            </button>
+          </div>
+          <div className="mt-2 grid grid-cols-4 gap-2">
+            <label className="flex items-center gap-1 text-[11px] text-dim">
+              ctx
+              <input
+                type="number"
+                value={model.contextWindow ?? ''}
+                onChange={(e) =>
+                  patchModel(pi, mi, {
+                    contextWindow: e.target.value === '' ? undefined : Number(e.target.value),
+                  })
+                }
+                className="w-full rounded border border-border-strong bg-surface px-1 py-0.5 text-xs text-primary focus:border-focus focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-dim">
+              max
+              <input
+                type="number"
+                value={model.maxTokens ?? ''}
+                onChange={(e) =>
+                  patchModel(pi, mi, {
+                    maxTokens: e.target.value === '' ? undefined : Number(e.target.value),
+                  })
+                }
+                className="w-full rounded border border-border-strong bg-surface px-1 py-0.5 text-xs text-primary focus:border-focus focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-dim">
+              <input
+                type="checkbox"
+                checked={model.reasoning ?? false}
+                onChange={(e) => patchModel(pi, mi, { reasoning: e.target.checked })}
+                className="accent-accent"
+              />
+              {t(language, 'reasoning')}
+            </label>
+            <label className="flex items-center gap-1 text-[11px] text-dim">
+              <input
+                type="checkbox"
+                checked={model.input?.includes('image') ?? false}
+                onChange={(e) =>
+                  patchModel(pi, mi, { input: withImageInput(model.input, e.target.checked) })
+                }
+                className="accent-accent"
+              />
+              {t(language, 'vision')}
+            </label>
+          </div>
+        </div>
+      ))}
+      <button
+        onClick={() => addModel(pi)}
+        className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+      >
+        <Plus size={12} /> {t(language, 'addModel')}
+      </button>
+      {!builtin && (
+        <label className="flex items-center gap-2 text-[11px] text-dim">
+          <input
+            type="checkbox"
+            checked={row.compat?.supportsReasoningEffort ?? false}
+            onChange={(e) => patchProviderCompat(pi, { supportsReasoningEffort: e.target.checked })}
+            className="accent-accent"
+          />
+          {t(language, 'supportsReasoningEffort')}
+        </label>
+      )}
+    </div>
+  )
+
+  const renderRow = (row: ProviderRow, pi: number, builtin: boolean): React.JSX.Element => {
+    const id = rowId(row, pi)
+    const open = openIds.has(id)
+    const ready = providerReady(row)
+    const title = builtin
+      ? (BUILTIN_PROVIDERS.find((item) => item.key === row.key)?.label ?? row.key)
+      : (row.key.trim() || t(language, 'addCustomProvider'))
+    return (
+      <div key={id} className="rounded-md border border-border">
+        <button
+          type="button"
+          onClick={() => toggleOpen(id)}
+          className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-surface-hover"
+        >
+          <ChevronDown size={14} className={clsx('shrink-0 text-dim transition-transform', !open && '-rotate-90')} />
+          <span className="min-w-0 flex-1 truncate text-sm text-primary">{title}</span>
+          <span className="text-[11px] text-faint">
+            {ready
+              ? t(language, 'providerConfigured', { count: String(row.models.filter((model) => model.id.trim()).length) })
+              : t(language, 'providerNeedsKey')}
+          </span>
+          {!builtin && (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation()
+                removeProvider(pi)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  removeProvider(pi)
+                }
+              }}
+              className="rounded p-1 text-dim hover:bg-surface-hover hover:text-error"
+              title={t(language, 'removeProvider')}
+            >
+              <Trash2 size={14} />
+            </span>
+          )}
+        </button>
+        {open ? <div className="px-3 pb-3">{renderEditor(row, pi, builtin)}</div> : null}
+      </div>
+    )
   }
 
   if (customModelsError) {
@@ -115,13 +432,13 @@ export function CustomModelsEditor(): React.JSX.Element {
       <div className="flex items-start gap-2 text-sm text-warning">
         <AlertTriangle size={16} className="mt-0.5 shrink-0" />
         <div>
-          <p>Could not load models.json safely, so editing is disabled to avoid overwriting it.</p>
+          <p>{t(language, 'couldNotLoadModels')}</p>
           <p className="mt-1 text-xs text-dim">{customModelsError}</p>
           <button
             onClick={() => loadCustomModels()}
             className="mt-2 rounded border border-border-strong px-2 py-1 text-xs text-secondary hover:bg-surface-hover"
           >
-            Retry
+            {t(language, 'retry')}
           </button>
         </div>
       </div>
@@ -131,156 +448,27 @@ export function CustomModelsEditor(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <p className="text-xs text-dim">
-        Custom providers and models in <code>~/.pi/agent/models.json</code>. Applied when Pi restarts.
+        {t(language, 'modelsPathHint', { path: customModelsPath ?? '~/.omp/profiles/vespi/agent/models.json' })}
       </p>
-      <p className="text-xs text-faint">
-        Heads-up: imported models may load without capability flags set. If a model supports
-        thinking, tick <span className="text-muted">reasoning</span>; if it accepts images,
-        tick <span className="text-muted">vision</span>. Restart Pi to apply.
-      </p>
-
-      {rows.map((row, pi) => (
-        <div key={pi} className="rounded-md border border-border p-3">
-          <div className="flex items-center gap-2">
-            <input
-              value={row.key}
-              onChange={(e) => patchProvider(pi, { key: e.target.value })}
-              placeholder="provider-key (e.g. ollama)"
-              className="flex-1 rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
-            />
-            <button
-              onClick={() => removeProvider(pi)}
-              className="rounded p-1 text-dim hover:bg-surface-hover hover:text-error"
-              title="Remove provider"
-            >
-              <Trash2 size={14} />
-            </button>
-          </div>
-
-          <div className="mt-2 grid grid-cols-2 gap-2">
-            <input
-              value={row.baseUrl}
-              onChange={(e) => patchProvider(pi, { baseUrl: e.target.value })}
-              placeholder="baseUrl"
-              className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
-            />
-            <select
-              value={row.api}
-              onChange={(e) => patchProvider(pi, { api: e.target.value })}
-              className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
-            >
-              {API_OPTIONS.map((opt) => (
-                <option key={opt} value={opt}>{opt}</option>
-              ))}
-            </select>
-          </div>
-          <label className="mt-2 flex items-center gap-2 text-[11px] text-dim">
-            <input
-              type="checkbox"
-              checked={row.compat?.supportsReasoningEffort ?? false}
-              onChange={(e) => patchProviderCompat(pi, { supportsReasoningEffort: e.target.checked })}
-              className="accent-accent"
-            />
-            supports reasoning effort
-          </label>
-          <input
-            value={row.apiKey}
-            onChange={(e) => patchProvider(pi, { apiKey: e.target.value })}
-            placeholder="apiKey — literal, $ENV_VAR, or !shell-command"
-            className="mt-2 w-full rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
-          />
-
-          <div className="mt-3 space-y-2">
-            {row.models.map((model, mi) => (
-              <div key={mi} className="rounded border border-border bg-surface/50 p-2">
-                <div className="flex items-center gap-2">
-                  <input
-                    value={model.id ?? ''}
-                    onChange={(e) => patchModel(pi, mi, { id: e.target.value })}
-                    placeholder="model id (required)"
-                    className="flex-1 rounded border border-border-strong bg-surface px-2 py-1 text-xs text-primary focus:border-focus focus:outline-none"
-                  />
-                  <input
-                    value={model.name ?? ''}
-                    onChange={(e) => patchModel(pi, mi, { name: e.target.value })}
-                    placeholder="name"
-                    className="flex-1 rounded border border-border-strong bg-surface px-2 py-1 text-xs text-primary focus:border-focus focus:outline-none"
-                  />
-                  <button
-                    onClick={() => removeModel(pi, mi)}
-                    className="rounded p-1 text-dim hover:bg-surface-hover hover:text-error"
-                    title="Remove model"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                </div>
-                <div className="mt-2 grid grid-cols-4 gap-2">
-                  <label className="flex items-center gap-1 text-[11px] text-dim">
-                    ctx
-                    <input
-                      type="number"
-                      value={model.contextWindow ?? ''}
-                      onChange={(e) =>
-                        patchModel(pi, mi, {
-                          contextWindow: e.target.value === '' ? undefined : Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded border border-border-strong bg-surface px-1 py-0.5 text-xs text-primary focus:border-focus focus:outline-none"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px] text-dim">
-                    max
-                    <input
-                      type="number"
-                      value={model.maxTokens ?? ''}
-                      onChange={(e) =>
-                        patchModel(pi, mi, {
-                          maxTokens: e.target.value === '' ? undefined : Number(e.target.value),
-                        })
-                      }
-                      className="w-full rounded border border-border-strong bg-surface px-1 py-0.5 text-xs text-primary focus:border-focus focus:outline-none"
-                    />
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px] text-dim">
-                    <input
-                      type="checkbox"
-                      checked={model.reasoning ?? false}
-                      onChange={(e) => patchModel(pi, mi, { reasoning: e.target.checked })}
-                      className="accent-accent"
-                    />
-                    reasoning
-                  </label>
-                  <label className="flex items-center gap-1 text-[11px] text-dim">
-                    <input
-                      type="checkbox"
-                      checked={model.input?.includes('image') ?? false}
-                      onChange={(e) =>
-                        patchModel(pi, mi, { input: withImageInput(model.input, e.target.checked) })
-                      }
-                      className="accent-accent"
-                    />
-                    vision
-                  </label>
-                </div>
-              </div>
-            ))}
-            <button
-              onClick={() => addModel(pi)}
-              className="flex items-center gap-1 text-xs text-muted hover:text-primary"
-            >
-              <Plus size={12} /> Add model
-            </button>
-          </div>
+      <div>
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-dim">{t(language, 'builtinProviders')}</div>
+        <p className="mb-2 text-xs text-faint">{t(language, 'builtinProvidersHint')}</p>
+        <div className="space-y-2">
+          {builtinRows.map(({ row, index }) => renderRow(row, index, true))}
         </div>
-      ))}
-
-      <button
-        onClick={addProvider}
-        className="flex items-center gap-1 text-sm text-muted hover:text-primary"
-      >
-        <Plus size={14} /> Add provider
-      </button>
-
+      </div>
+      <div>
+        <div className="mb-2 text-xs font-medium uppercase tracking-wide text-dim">{t(language, 'customProviders')}</div>
+        <div className="space-y-2">
+          {customRows.map(({ row, index }) => renderRow(row, index, false))}
+        </div>
+        <button
+          onClick={addProvider}
+          className="mt-2 flex items-center gap-1 text-sm text-muted hover:text-primary"
+        >
+          <Plus size={14} /> {t(language, 'addCustomProvider')}
+        </button>
+      </div>
       {errors.length > 0 && (
         <ul className="space-y-1 text-xs text-error">
           {errors.map((e, i) => (
@@ -288,25 +476,21 @@ export function CustomModelsEditor(): React.JSX.Element {
           ))}
         </ul>
       )}
-
       <div className="flex items-center gap-3">
         <button
-          onClick={handleSave}
+          onClick={() => void handleSave()}
           className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
         >
           <Save size={14} />
-          Save models.json
+          {t(language, 'saveModels')}
         </button>
         {saved && (
           <button
             onClick={() => restartPi()}
-            className={clsx(
-              'flex items-center gap-2 rounded-md border border-border-strong px-3 py-2 text-sm',
-              'text-secondary hover:bg-surface-hover transition-colors'
-            )}
+            className="flex items-center gap-2 rounded-md border border-border-strong px-3 py-2 text-sm text-secondary hover:bg-surface-hover transition-colors"
           >
             <RefreshCw size={14} />
-            Saved — Restart Pi to apply
+            {t(language, 'savedRestart')}
           </button>
         )}
       </div>

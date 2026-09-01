@@ -32,7 +32,7 @@ test('summarizeBackgroundActivity prefers failed over completed over working', (
   }
   const summary = summarizeBackgroundActivity(map, 'ws-active')
   assert.equal(summary?.colorClass, 'bg-error')
-  assert.match(summary?.label ?? '', /another workspace/)
+  assert.match(summary?.label ?? '', /其他工作区/)
 
   delete map['ws-3']
   assert.equal(summarizeBackgroundActivity(map, 'ws-active')?.colorClass, 'bg-success')

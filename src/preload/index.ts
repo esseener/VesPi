@@ -14,6 +14,7 @@ import type {
   WorkspaceRemoveResult,
   InstalledPackage,
   InstalledSkill,
+  SkillMutationResult,
   CatalogPackage,
   FileTreeNode,
   FileSearchResult,
@@ -29,9 +30,12 @@ import type {
   SessionLineageRecord,
   ModelsConfig,
   ModelsReadResult,
+  ModelsProbeRequest,
+  ModelsProbeResult,
   CouncilDetectResult,
   CouncilRunRequest,
   CouncilRunResult,
+
   CouncilArbiterRequest,
   CouncilArbiterResult,
   CouncilProgressEvent,
@@ -192,11 +196,13 @@ interface PiDesktopAPI {
     fetchCatalog(query?: string): Promise<CatalogPackage[]>
   }
 
-  // Models config (read/write ~/.pi/agent/models.json)
+  // Models config (read/write ~/.omp/profiles/vespi/agent/models.json)
   models: {
     read(): Promise<ModelsReadResult>
     write(config: ModelsConfig): Promise<{ success: boolean; error?: string }>
+    probe(request: ModelsProbeRequest): Promise<ModelsProbeResult>
   }
+
 
   council: {
     detect(): Promise<CouncilDetectResult>
@@ -208,6 +214,9 @@ interface PiDesktopAPI {
   // Skills, Commands, MCP, Tags
   skills: {
     list(): Promise<InstalledSkill[]>
+    create(name: string, description: string): Promise<SkillMutationResult>
+    delete(path: string): Promise<SkillMutationResult>
+    evolve(path: string, direction: string): Promise<SkillMutationResult>
   }
   piCommands: {
     list(): Promise<unknown[]>
@@ -266,7 +275,13 @@ interface PiDesktopAPI {
     /** Whether a path exists and is a directory (folder open). */
     pathKind(path: string): Promise<PathKindResult>
     openExternal(url: string): Promise<void>
+    revealPath(path: string): Promise<void>
     getVersion(): Promise<string>
+    minimizeWindow(): Promise<void>
+    toggleMaximizeWindow(): Promise<boolean>
+    closeWindow(): Promise<void>
+    isWindowMaximized(): Promise<boolean>
+    onWindowMaximized(callback: (maximized: boolean) => void): () => void
     /**
      * Host OS platform from the preload process polyfill. Sync — sandboxed
      * renderer pages have no Node `process`, so path helpers read this for
@@ -448,7 +463,9 @@ const api: PiDesktopAPI = {
   models: {
     read: () => ipcRenderer.invoke(IPC_CHANNELS.MODELS_READ),
     write: (config) => ipcRenderer.invoke(IPC_CHANNELS.MODELS_WRITE, config),
+    probe: (request) => ipcRenderer.invoke(IPC_CHANNELS.MODELS_PROBE, request),
   },
+
 
   council: {
     detect: () => ipcRenderer.invoke(IPC_CHANNELS.COUNCIL_DETECT),
@@ -463,6 +480,9 @@ const api: PiDesktopAPI = {
 
   skills: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_LIST),
+    create: (name, description) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_CREATE, name, description),
+    delete: (path) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE, path),
+    evolve: (path, direction) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_EVOLVE, path, direction),
   },
   piCommands: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.COMMANDS_LIST),
@@ -517,7 +537,17 @@ const api: PiDesktopAPI = {
     // Sandboxed preload still has a process polyfill with platform.
     platform: process.platform,
     openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, url),
+    revealPath: (path) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_REVEAL_PATH, path),
     getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_GET_VERSION),
+    minimizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_MINIMIZE),
+    toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_TOGGLE_MAXIMIZE),
+    closeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_CLOSE),
+    isWindowMaximized: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_IS_MAXIMIZED),
+    onWindowMaximized: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, maximized: boolean) => callback(maximized)
+      ipcRenderer.on(IPC_CHANNELS.EVENT_WINDOW_MAXIMIZED, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_WINDOW_MAXIMIZED, handler)
+    },
   },
 
   activity: {

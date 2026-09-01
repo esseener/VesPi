@@ -1,6 +1,7 @@
 import { Tray, Menu, Notification, nativeImage, type BrowserWindow } from 'electron'
 import { execFile } from 'child_process'
 import { trayIsSupported, parseDbusBoolean } from './tray-decision'
+import { DEFAULT_LANGUAGE, t } from '../shared/i18n'
 
 // System-tray lifecycle for "minimize to tray on close" (Windows/Linux; macOS
 // is excluded — see tray-decision.ts). Owns the single Tray instance, the
@@ -57,12 +58,13 @@ function createTray(): boolean {
   try {
     const image = nativeImage.createFromPath(deps.iconPath)
     tray = new Tray(image)
-    tray.setToolTip('Pi Desktop')
+    tray.setToolTip(t(DEFAULT_LANGUAGE, 'appName'))
 
     const menu = Menu.buildFromTemplate([
-      { label: 'Show Pi Desktop', click: () => showWindow() },
+      { label: t(DEFAULT_LANGUAGE, 'trayShow'), click: () => showWindow() },
       { type: 'separator' },
-      { label: 'Quit Pi Desktop', click: () => deps?.quit() },
+      { label: t(DEFAULT_LANGUAGE, 'trayQuit'), click: () => deps?.quit() },
+
     ])
     // setContextMenu is the primary interface on Linux, where left-click
     // activation is unreliable across desktop environments.

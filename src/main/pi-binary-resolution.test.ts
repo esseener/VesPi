@@ -522,6 +522,46 @@ test('resolvePiBinary falls back to the .cmd name on Windows', () => {
   assert.equal(resolution.found, false)
 })
 
+test('resolvePiBinary uses packaged resourcesPath OMP before PATH', () => {
+  const packaged = join('C:\\Program Files\\VesPi\\resources', 'runtime', 'omp', 'omp.exe')
+  const pathOmp = join(WINDOWS_HOME, 'bin', 'omp.exe')
+  const deps = fakeDeps({
+    isWindows: true,
+    env: {
+      USERPROFILE: WINDOWS_HOME,
+      PATH: join(WINDOWS_HOME, 'bin'),
+      VESPI_APP_PATH: 'C:\\Program Files\\VesPi\\VesPi.exe',
+      VESPI_RESOURCES_PATH: 'C:\\Program Files\\VesPi\\resources',
+    },
+    files: [packaged, pathOmp],
+    captures: {
+      [versionProbe(packaged)]: OMP_VERSION_OUTPUT,
+      [versionProbe(pathOmp)]: OMP_VERSION_OUTPUT,
+    },
+  })
+  const resolution = resolvePiBinary(deps, null, 'omp')
+  assert.equal(resolution.script, packaged)
+  assert.equal(resolution.found, true)
+  assert.equal(resolution.source, 'omp')
+})
+
+test('resolvePiBinary finds next-to-exe OMP when resourcesPath is empty', () => {
+  const nextToExe = join('C:\\Program Files\\VesPi', 'runtime', 'omp', 'omp.exe')
+  const deps = fakeDeps({
+    isWindows: true,
+    env: {
+      USERPROFILE: WINDOWS_HOME,
+      PATH: '',
+      VESPI_APP_PATH: 'C:\\Program Files\\VesPi\\VesPi.exe',
+    },
+    files: [nextToExe],
+    captures: { [versionProbe(nextToExe)]: OMP_VERSION_OUTPUT },
+  })
+  const resolution = resolvePiBinary(deps, null, 'omp')
+  assert.equal(resolution.script, nextToExe)
+  assert.equal(resolution.found, true)
+})
+
 // ─── resolvePiBinary: PATH augmentation ──────────────────────────────────────
 
 test('resolvePiBinary merges the login-shell PATH into the environment it reports', () => {

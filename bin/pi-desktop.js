@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 
 /**
- * pi-desktop — CLI launcher for Pi Desktop GUI
+ * vespi — CLI launcher for the VesPi desktop client
  *
  * Usage:
- *   pi-desktop              # Launch the app
- *   pi-desktop --help       # Show help
- *   pi-desktop --version    # Show version
- *   pi-desktop /path/to/dir # Launch with workspace
+ *   vespi              # Launch the app
+ *   vespi --help       # Show help
+ *   vespi --version    # Show version
+ *   vespi /path/to/dir # Launch with workspace
  */
 
 const { spawn } = require('child_process')
@@ -22,27 +22,22 @@ const args = process.argv.slice(2)
 
 if (args.includes('--help') || args.includes('-h')) {
   console.log(`
-  pi-desktop v${VERSION} — Desktop GUI for the Pi coding agent
+  vespi v${VERSION} — Desktop GUI for private OMP
 
   Usage:
-    pi-desktop                  Launch the app
-    pi-desktop <path>           Launch with workspace directory
-    pi-desktop --help           Show this help
-    pi-desktop --version        Show version
+    vespi                  Launch the app
+    vespi <path>           Launch with workspace directory
+    vespi --help           Show this help
+    vespi --version        Show version
 
   Examples:
-    pi-desktop                  # Launch with default workspace
-    pi-desktop ~/my-project     # Launch with specific project
-    pi-desktop .                # Launch with current directory
+    vespi                  # Launch with default workspace
+    vespi ~/my-project     # Launch with specific project
+    vespi .                # Launch with current directory
 
-  Install:
-    See https://github.com/FaqFirebase/pi-desktop for releases
-    and build-from-source instructions.
-
-  The app requires Pi to be installed:
-    curl -fsSL https://pi.dev/install.sh | sh
-    # or
-    npm install -g @earendil-works/pi-coding-agent
+  Runtime:
+    Uses the private OMP binary at runtime/omp/omp.exe
+    with --profile vespi --mode rpc-ui.
 `)
   process.exit(0)
 }
@@ -140,7 +135,7 @@ function launch() {
   // Pass workspace path via environment variable
   const env = { ...process.env }
   if (workspacePath) {
-    env.PI_DESKTOP_WORKSPACE = workspacePath
+    env.VESPI_WORKSPACE = workspacePath
   }
 
   // Launch Electron
@@ -151,7 +146,7 @@ function launch() {
   })
 
   child.on('error', (err) => {
-    console.error('Failed to start Pi Desktop:', err.message)
+    console.error('Failed to start VesPi:', err.message)
     process.exit(1)
   })
 

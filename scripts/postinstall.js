@@ -62,19 +62,20 @@ function rebuildNativeModules() {
     shell: IS_WINDOWS,
     env: buildEnv(),
   })
-  if (result.status !== 0) {
-    if (IS_WINDOWS) {
-      console.error('')
-      console.error('[postinstall] native rebuild failed on Windows.')
-      console.error('Most common cause: missing Spectre-mitigated libs for node-pty.')
-      console.error('Fix: open Visual Studio Installer -> Modify -> Individual components,')
-      console.error('search "Spectre", and install the libs for your toolset (v143 is the')
-      console.error('VS 2022 stable toolset). Then re-run `npm install`.')
-      console.error('')
-    }
-    process.exit(result.status ?? 1)
+  if (result.status === 0) return
+
+  if (IS_WINDOWS) {
+    console.warn('')
+    console.warn('[postinstall] native rebuild failed on Windows (usually missing Spectre libs).')
+    console.warn('Continuing with node-pty prebuilds so VesPi.exe can still be packaged.')
+    console.warn('In-app terminal may be limited until Spectre-mitigated MSVC libs are installed.')
+    console.warn('')
+    return
   }
+
+  process.exit(result.status ?? 1)
 }
+
 
 function verifyElectronBinary() {
   const pathTxt = path.join(ROOT, 'node_modules', 'electron', 'path.txt')

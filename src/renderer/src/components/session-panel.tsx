@@ -11,6 +11,8 @@ import { getSessionMenuPosition, type MenuPosition } from './session-menu-positi
 import { resolveRunSessionId } from '../utils/workflow-runs'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import { getSessionEngineLabel, hasMixedSessionEngines } from './sidebar-session-labels'
+import { formatRelativeTime } from '../utils/format-relative-time'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 export function SessionPanel(): React.JSX.Element {
   const sessionList = useAppStore((state) => state.sessionList)
@@ -27,7 +29,9 @@ export function SessionPanel(): React.JSX.Element {
   const setSessionsScope = useAppStore((state) => state.setSessionsScope)
   const ensureAutoTags = useAppStore((state) => state.ensureAutoTags)
   const settings = useAppStore((state) => state.settings)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const toggleSessionGroupCollapsed = useAppStore((state) => state.toggleSessionGroupCollapsed)
+
 
   // Auto-assign a context tag to any session the user hasn't tagged. The main
   // process skips already-processed sessions, so this is idempotent and only
@@ -117,13 +121,12 @@ export function SessionPanel(): React.JSX.Element {
   return (
     <div className="flex-1 overflow-y-auto">
       <div className="mx-auto max-w-3xl px-6 py-8">
-        {/* Header */}
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <FolderOpen size={20} className="text-muted" />
-            <h1 className="text-lg font-semibold text-primary">Sessions</h1>
+            <h1 className="text-lg font-semibold text-primary">{t(language, 'sessions')}</h1>
             <span className="rounded-full bg-card px-2 py-0.5 text-xs text-dim">
-              {totalSessions} sessions · {totalProjects} projects
+              {t(language, 'sessionCountProjects', { sessions: String(totalSessions), projects: String(totalProjects) })}
             </span>
           </div>
           <div className="flex gap-2">
@@ -131,25 +134,24 @@ export function SessionPanel(): React.JSX.Element {
               onClick={refreshSessionList}
               className="rounded-md px-3 py-1.5 text-sm text-muted hover:text-primary transition-colors"
             >
-              Refresh
+              {t(language, 'refresh')}
             </button>
             <button
               onClick={createNewSession}
               className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover transition-colors"
             >
               <Plus size={14} />
-              New Session
+              {t(language, 'newSession')}
             </button>
           </div>
         </div>
 
-        {/* Filter controls */}
         <div className="mb-4 flex items-center gap-3">
           <div className="relative flex-1">
             <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-dim" />
             <input
               type="text"
-              placeholder="Search sessions or projects..."
+              placeholder={t(language, 'searchSessions')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full rounded-lg border border-border-strong bg-surface py-2 pl-9 pr-4 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
@@ -160,8 +162,8 @@ export function SessionPanel(): React.JSX.Element {
             aria-pressed={sessionsScope === 'current'}
             title={
               sessionsScope === 'current'
-                ? 'Show sessions from every project'
-                : 'Only show sessions from the current project'
+                ? t(language, 'showAllSessions')
+                : t(language, 'showCurrentOnly')
             }
             className={clsx(
               'rounded-md px-3 py-2 text-xs transition-colors',
@@ -170,11 +172,11 @@ export function SessionPanel(): React.JSX.Element {
                 : 'bg-card text-muted hover:text-secondary'
             )}
           >
-            {sessionsScope === 'all' ? 'All Sessions' : 'Current Only'}
+            {sessionsScope === 'all' ? t(language, 'allSessions') : t(language, 'currentOnly')}
           </button>
           <button
             onClick={toggleShowArchived}
-            title={showArchived ? 'Hide archived sessions' : 'Show archived sessions'}
+            title={showArchived ? t(language, 'hideArchived') : t(language, 'showArchived')}
             className={clsx(
               'flex items-center gap-1.5 rounded-md px-3 py-2 text-xs transition-colors',
               showArchived
@@ -183,40 +185,37 @@ export function SessionPanel(): React.JSX.Element {
             )}
           >
             <Archive size={12} />
-            {showArchived ? 'Hiding none' : `Archived (${archivedCount})`}
+            {showArchived ? t(language, 'hidingNone') : t(language, 'archivedCount', { count: String(archivedCount) })}
           </button>
         </div>
 
-        {/* Current workspace indicator */}
         {activeWorkspace && (
           <div className="mb-4 flex items-center gap-2 rounded-lg bg-surface border border-border px-4 py-2">
             <FolderTree size={14} className="text-dim" />
-            <span className="text-xs text-muted">Current workspace:</span>
+            <span className="text-xs text-muted">{t(language, 'currentWorkspace')}</span>
             <span className="text-sm text-primary font-medium">{activeWorkspace.name}</span>
             <span className="text-xs text-dim truncate">{activeWorkspace.path}</span>
           </div>
         )}
 
-        {/* Sessions grouped by project. Current Only is intentionally a flat,
-            non-collapsible project view; grouping remains useful in All Sessions. */}
         {filteredGroups.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <FolderOpen size={32} className="mb-3 text-faint" />
             <p className="text-sm">
               {searchQuery
-                ? 'No sessions match your search'
+                ? t(language, 'noSessionsMatch')
                 : sessionsScope === 'current' && activeWorkspace
-                  ? 'No sessions in this project yet'
+                  ? t(language, 'noSessionsInProject')
                   : sessionsScope === 'current'
-                    ? 'Open a project to see its sessions'
-                    : 'No sessions yet'}
+                    ? t(language, 'openProjectToSeeSessions')
+                    : t(language, 'noSessionsYet')}
             </p>
             {!searchQuery && sessionsScope !== 'current' && (
               <button
                 onClick={createNewSession}
                 className="mt-3 text-sm text-accent-fg/80 hover:text-accent-fg"
               >
-                Create your first session
+                {t(language, 'createFirstSession')}
               </button>
             )}
           </div>
@@ -270,7 +269,7 @@ export function SessionPanel(): React.JSX.Element {
                         </div>
                       </div>
                       <div className="shrink-0 text-[10px] text-faint">
-                        {formatRelativeTime(latestSession.lastModified)}
+                        {formatRelativeTime(latestSession.lastModified, Date.now(), language)}
                       </div>
                     </div>
                   ) : (
@@ -310,7 +309,7 @@ export function SessionPanel(): React.JSX.Element {
                         </div>
                       </div>
                       <div className="shrink-0 text-[10px] text-faint">
-                        {formatRelativeTime(latestSession.lastModified)}
+                        {formatRelativeTime(latestSession.lastModified, Date.now(), language)}
                       </div>
                     </button>
                   )}
@@ -338,22 +337,6 @@ export function SessionPanel(): React.JSX.Element {
   )
 }
 
-function formatRelativeTime(timestamp: number): string {
-  const now = Date.now()
-  const diff = now - timestamp
-
-  const seconds = Math.floor(diff / 1000)
-  const minutes = Math.floor(seconds / 60)
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
-
-  if (seconds < 60) return 'just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) return `${hours}h ago`
-  if (days < 7) return `${days}d ago`
-
-  return new Date(timestamp).toLocaleDateString()
-}
 
 // ─── Session Entry with Tags ─────────────────────────────────────────────────
 
@@ -368,6 +351,7 @@ function SessionEntry({
   showEngineTag: boolean
   onSelect: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const sessionTags = useAppStore((state) => state.sessionTags)
   const autoTags = useAppStore((state) => state.autoTags)
   const addSessionTag = useAppStore((state) => state.addSessionTag)
@@ -569,7 +553,7 @@ function SessionEntry({
           </span>
         )}
         <div className="text-[10px] text-faint shrink-0">
-          {formatRelativeTime(session.lastModified)}
+          {formatRelativeTime(session.lastModified, Date.now(), language)}
         </div>
         {isArchived && (
           <span className="rounded bg-warning-bg px-1.5 py-0.5 text-[10px] text-warning">
@@ -615,7 +599,7 @@ function SessionEntry({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-secondary hover:bg-surface-hover"
           >
-            <WorkflowIcon size={13} /> Workflow runs
+            <WorkflowIcon size={13} /> {t(language, 'workflowRuns')}
           </button>
           <button
             onClick={handleArchive}

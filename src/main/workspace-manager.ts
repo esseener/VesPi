@@ -81,9 +81,32 @@ interface WorkspaceState {
 }
 
 const WORKSPACE_COLORS = [
-  '#3b82f6', '#ef4444', '#22c55e', '#eab308', '#a855f7',
-  '#ec4899', '#06b6d4', '#f97316', '#6366f1', '#14b8a6',
+  '#ececec', '#c8c8c8', '#9a9a9a', '#d8d8d8', '#b0b0b0',
+  '#e8e8e8', '#a8a8a8', '#d0d0d0', '#bcbcbc', '#f2f2f2',
 ]
+
+const LEGACY_WORKSPACE_COLORS: Record<string, string> = {
+  '#3b82f6': '#ececec',
+  '#ef4444': '#c8c8c8',
+  '#22c55e': '#9a9a9a',
+  '#eab308': '#d8d8d8',
+  '#a855f7': '#b0b0b0',
+  '#ec4899': '#e8e8e8',
+  '#06b6d4': '#a8a8a8',
+  '#f97316': '#d0d0d0',
+  '#6366f1': '#bcbcbc',
+  '#14b8a6': '#f2f2f2',
+}
+
+function chassisWorkspaceColor(color: string | undefined, index: number): string {
+  if (color && WORKSPACE_COLORS.includes(color)) return color
+  if (color) {
+    const mapped = LEGACY_WORKSPACE_COLORS[color.toLowerCase()]
+    if (mapped) return mapped
+  }
+  return WORKSPACE_COLORS[index % WORKSPACE_COLORS.length]
+}
+
 
 export type PiManagerListener = (manager: PiRpcManager) => void
 export type ActiveWorkspaceListener = (workspaceId: string | null) => void
@@ -1127,9 +1150,10 @@ export class WorkspaceManager {
       return
     }
 
-    this.workspaces = (state.workspaces ?? []).map((workspace) => ({
+    this.workspaces = (state.workspaces ?? []).map((workspace, index) => ({
       ...workspace,
       kind: workspace.kind ?? 'folder',
+      color: chassisWorkspaceColor(workspace.color, index),
     }))
     this.activeWorkspaceId = state.activeWorkspaceId ?? null
 

@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 44 12" fill="none" shape-rendering="crispEdges">
+  <g fill="#ffffff">
+    <!-- V -->
+    <rect x="0" y="2" width="2" height="6"/>
+    <rect x="1" y="7" width="2" height="3"/>
+    <rect x="2" y="9" width="2" height="3"/>
+    <rect x="4" y="7" width="2" height="3"/>
+    <rect x="5" y="2" width="2" height="6"/>
+    <!-- e -->
+    <rect x="9" y="4" width="7" height="2"/>
+    <rect x="9" y="6" width="2" height="4"/>
+    <rect x="11" y="7" width="5" height="2"/>
+    <rect x="14" y="6" width="2" height="1"/>
+    <rect x="9" y="10" width="7" height="2"/>
+    <!-- s -->
+    <rect x="18" y="4" width="7" height="2"/>
+    <rect x="18" y="6" width="2" height="2"/>
+    <rect x="18" y="7" width="7" height="2"/>
+    <rect x="23" y="9" width="2" height="1"/>
+    <rect x="18" y="10" width="7" height="2"/>
+    <!-- P -->
+    <rect x="27" y="0" width="8" height="2"/>
+    <rect x="27" y="2" width="2" height="10"/>
+    <rect x="33" y="2" width="2" height="4"/>
+    <rect x="29" y="4" width="4" height="2"/>
+    <!-- i : tall block with a lower-right step -->
+    <rect x="37" y="4" width="5" height="4"/>
+    <rect x="37" y="8" width="7" height="4"/>
+  </g>
+</svg>

@@ -37,7 +37,7 @@ function withEnv(vars: Record<string, string | undefined>, run: () => void): voi
 test('the two engines resolve to different session stores', () => {
   withEnv({ HOME: '/home/tester', PI_CODING_AGENT_DIR: undefined, OMP_CODING_AGENT_DIR: undefined }, () => {
     assert.equal(getSessionsRoot(), join('/home/tester', '.pi', 'agent', 'sessions'))
-    assert.equal(getOmpSessionsRoot(), join('/home/tester', '.omp', 'agent', 'sessions'))
+    assert.equal(getOmpSessionsRoot(), join('/home/tester', '.omp', 'profiles', 'vespi', 'agent', 'sessions'))
     assert.notEqual(getSessionsRoot(), getOmpSessionsRoot())
   })
 })

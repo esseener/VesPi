@@ -1,26 +1,25 @@
 import { useState, useEffect, useRef, useMemo } from 'react'
 import { useAppStore } from '../store'
-import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/agent-engine-label'
 import type { ModelInfo } from '../../../shared/ipc-contracts'
 import { filterModels } from '../utils/model-search'
 import { clsx } from 'clsx'
 import { Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { hasConfiguredChatModel } from '../../../shared/models-config'
 
 interface ModelSelectorProps {
   className?: string
   compact?: boolean
 }
 
-/**
- * Searchable model picker for the status bar.
- * Opens upward; loads models when Pi is running.
- */
 export function ModelSelector({ className, compact = false }: ModelSelectorProps): React.JSX.Element {
   const sessionState = useAppStore((state) => state.sessionState)
   const setModel = useAppStore((state) => state.setModel)
   const piStatus = useAppStore((state) => state.piStatus)
-  const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
   const settings = useAppStore((state) => state.settings)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  const customModels = useAppStore((state) => state.customModels)
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
 
   const [isOpen, setIsOpen] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
@@ -37,7 +36,8 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       ? settings.defaultProvider
         ? `${settings.defaultProvider}/${settings.defaultModel}`
         : settings.defaultModel
-      : 'Select model')
+      : t(language, 'selectModel'))
+
 
   const close = (): void => {
     setIsOpen(false)
@@ -125,8 +125,8 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
           isOpen ? 'bg-surface-hover text-primary' : 'text-dim hover:bg-surface-hover hover:text-secondary',
           compact && 'max-w-36',
         )}
-        title={`Select model (Ctrl+P to cycle when ${engineLabel} is running)`}
-        aria-label="Select model"
+        title={t(language, 'selectModelHint')}
+        aria-label={t(language, 'selectModel')}
         aria-expanded={isOpen}
       >
         <Cpu size={10} className="shrink-0" />
@@ -141,7 +141,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
         <div className="absolute bottom-full right-0 z-50 mb-1 w-72 rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40 animate-fade-in">
           {currentModel && (
             <div className="border-b border-border px-3 py-2">
-              <div className="text-xs text-muted">Current</div>
+              <div className="text-xs text-muted">{t(language, 'currentModel')}</div>
               <div className="text-sm font-medium text-primary">{currentModel.name}</div>
               <div className="mt-0.5 text-xs text-dim">
                 {currentModel.provider} · {currentModel.id}
@@ -151,8 +151,20 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
 
           {piStatus !== 'running' && (
             <div className="border-b border-border px-3 py-2 text-xs text-dim">
-              Start Pi to list and change models.
+              {t(language, 'startToListModels')}
             </div>
+          )}
+          {!hasConfiguredChatModel(customModels) && (
+            <button
+              type="button"
+              onClick={() => {
+                close()
+                setCurrentView('model-setup')
+              }}
+              className="w-full border-b border-border px-3 py-2 text-left text-xs text-accent-fg hover:bg-surface-hover"
+            >
+              {t(language, 'configureModel')}
+            </button>
           )}
 
           {piStatus === 'running' && (
@@ -164,7 +176,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
                   type="text"
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search models…"
+                  placeholder={t(language, 'searchModels')}
                   className="min-w-0 flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-faint"
                 />
               </div>
@@ -172,12 +184,12 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
                 {loading && (
                   <div className="flex items-center gap-2 px-3 py-2 text-xs text-dim">
                     <Loader2 size={12} className="animate-spin" />
-                    Loading…
+                    {t(language, 'loading')}
                   </div>
                 )}
                 {error && <div className="px-3 py-2 text-xs text-error">{error}</div>}
                 {!loading && !error && filteredModels.length === 0 && (
-                  <div className="px-3 py-2 text-xs text-dim">No models match</div>
+                  <div className="px-3 py-2 text-xs text-dim">{t(language, 'noModelsMatch')}</div>
                 )}
                 {filteredModels.map((model) => {
                   const selected =

@@ -1,6 +1,8 @@
 import { Plus, Trash2, Upload, Download, Copy, ShieldCheck, ShieldAlert } from 'lucide-react'
 import type { PermissionRule, PermissionRuleAction, PermissionRulesScope } from '../../../shared/ipc-contracts'
 import { emptyRule } from './permission-rules-editor-helpers'
+import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 const TOOL_SUGGESTIONS = ['*', 'bash', 'edit', 'write', 'read', 'grep'] as const
 const TOOL_DATALIST_ID = 'permission-rule-tool-suggestions'
@@ -40,6 +42,7 @@ export function PermissionRulesEditor({
   loadError,
   actionError,
 }: PermissionRulesEditorProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const updateRule = (index: number, patch: Partial<PermissionRule>): void => {
     onChange(rules.map((rule, i) => (i === index ? { ...rule, ...patch } : rule)))
   }
@@ -52,7 +55,7 @@ export function PermissionRulesEditor({
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <span className="text-xs text-dim">
-          Deny always wins, then allow, then the mode above decides. Use * as a wildcard.
+          {t(language, 'permRulePrecedence')}
         </span>
         <div className="flex gap-1">
           {scope === 'workspace' && (
@@ -60,26 +63,26 @@ export function PermissionRulesEditor({
               type="button"
               onClick={onCopyFromGlobal}
               className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs text-primary transition-colors hover:border-border-strong-hover"
-              title="Copy the global rules list into this workspace (replaces the list below until you save)"
+              title={t(language, 'permCopyFromGlobalHint')}
             >
-              <Copy size={12} /> Copy from global
+              <Copy size={12} /> {t(language, 'permCopyFromGlobal')}
             </button>
           )}
           <button
             type="button"
             onClick={onImport}
             className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs text-primary transition-colors hover:border-border-strong-hover"
-            title="Import rules from a JSON file (replaces the list below until you save)"
+            title={t(language, 'permImportHint')}
           >
-            <Upload size={12} /> Import
+            <Upload size={12} /> {t(language, 'permImport')}
           </button>
           <button
             type="button"
             onClick={onExport}
             className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs text-primary transition-colors hover:border-border-strong-hover"
-            title="Export the list below to a JSON file"
+            title={t(language, 'permExportHint')}
           >
-            <Download size={12} /> Export
+            <Download size={12} /> {t(language, 'permExport')}
           </button>
         </div>
       </div>
@@ -90,14 +93,14 @@ export function PermissionRulesEditor({
             <div className="flex items-center justify-between gap-2 rounded-md border border-border-strong bg-surface px-2 py-1.5 text-xs text-dim">
               <span className="flex items-center gap-1.5 text-primary">
                 <ShieldCheck size={13} className="shrink-0" />
-                Trusted — this workspace&apos;s allow rules apply and HTML previews run scripts.
+                {t(language, 'permTrustedBanner')}
               </span>
               <button
                 type="button"
                 onClick={() => onSetWorkspaceTrust(false)}
                 className="shrink-0 rounded-md border border-border-strong px-2 py-1 text-primary transition-colors hover:border-border-strong-hover"
               >
-                Revoke trust
+                {t(language, 'permRevokeTrust')}
               </button>
             </div>
           ) : (
@@ -111,15 +114,15 @@ export function PermissionRulesEditor({
               <span className="flex items-start gap-1.5">
                 <ShieldAlert size={13} className="mt-0.5 shrink-0" />
                 {workspaceHasAllowRules
-                  ? "This workspace's allow rules are inactive and HTML previews are static until you trust it. Its deny rules still apply. Trust only workspaces from a source you trust."
-                  : 'HTML previews for this workspace are static (scripts disabled). Trust it to enable interactive previews and any allow rules.'}
+                  ? t(language, 'permUntrustedAllow')
+                  : t(language, 'permUntrustedHtml')}
               </span>
               <button
                 type="button"
                 onClick={() => onSetWorkspaceTrust(true)}
                 className="shrink-0 rounded-md border border-border-strong bg-surface px-2 py-1 text-primary transition-colors hover:border-border-strong-hover"
               >
-                Trust workspace
+                {t(language, 'permTrustWorkspace')}
               </button>
             </div>
           )}
@@ -128,9 +131,9 @@ export function PermissionRulesEditor({
               type="button"
               onClick={onRemoveWorkspace}
               className="flex items-center gap-1 self-start rounded-md border border-error-bg px-2 py-1 text-xs text-error transition-colors hover:bg-error-bg"
-              title="Delete this workspace's .pi-desktop/permission-rules.json; global rules apply again"
+              title={t(language, 'permRemoveWorkspaceRulesHint')}
             >
-              <Trash2 size={12} /> Remove workspace rules
+              <Trash2 size={12} /> {t(language, 'permRemoveWorkspaceRules')}
             </button>
           )}
         </div>
@@ -138,9 +141,7 @@ export function PermissionRulesEditor({
 
       {workspaceOverride && scope === 'global' && (
         <p className="rounded-md border border-border-strong bg-surface px-2 py-1.5 text-xs text-dim">
-          This workspace has its own rules file (.pi-desktop/permission-rules.json). Its deny rules
-          apply on top of these global rules; its allow rules apply only if you trust the workspace
-          — see the This workspace tab.
+          {t(language, 'permWorkspaceOverrideHint')}
         </p>
       )}
 
@@ -149,7 +150,7 @@ export function PermissionRulesEditor({
           role="alert"
           className="rounded-md border border-error-bg bg-error-bg px-2 py-1.5 text-xs text-error"
         >
-          Saved rules file is invalid and is being ignored: {loadError}
+          {t(language, 'permInvalidRulesFile', { detail: loadError })}
         </p>
       )}
 
@@ -160,7 +161,7 @@ export function PermissionRulesEditor({
       </datalist>
 
       {rules.length === 0 && (
-        <p className="px-1 text-xs text-dim">No rules yet — the mode above decides everything.</p>
+        <p className="px-1 text-xs text-dim">{t(language, 'permNoRulesYet')}</p>
       )}
 
       {rules.map((rule, index) => (
@@ -169,34 +170,34 @@ export function PermissionRulesEditor({
             value={rule.action}
             onChange={(e) => updateRule(index, { action: e.target.value as PermissionRuleAction })}
             className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-xs text-primary"
-            aria-label={`Rule ${index + 1} action`}
+            aria-label={t(language, 'permRuleAction', { n: String(index + 1) })}
           >
-            <option value="allow">Allow</option>
-            <option value="deny">Deny</option>
+            <option value="allow">{t(language, 'permAllow')}</option>
+            <option value="deny">{t(language, 'permDeny')}</option>
           </select>
           <input
             type="text"
             value={rule.tool}
             onChange={(e) => updateRule(index, { tool: e.target.value })}
             list={TOOL_DATALIST_ID}
-            placeholder="tool (* = any)"
+            placeholder={t(language, 'permToolPlaceholder')}
             className="w-28 rounded-md border border-border-strong bg-surface px-1.5 py-1 text-xs text-primary placeholder:text-dim"
-            aria-label={`Rule ${index + 1} tool`}
+            aria-label={t(language, 'permRuleTool', { n: String(index + 1) })}
           />
           <input
             type="text"
             value={rule.match ?? ''}
             onChange={(e) => updateRule(index, { match: e.target.value })}
-            placeholder="pattern, e.g. npm test* (empty = any input)"
+            placeholder={t(language, 'permPatternPlaceholder')}
             className="min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-1.5 py-1 font-mono text-xs text-primary placeholder:text-dim"
-            aria-label={`Rule ${index + 1} pattern`}
+            aria-label={t(language, 'permRulePattern', { n: String(index + 1) })}
           />
           <button
             type="button"
             onClick={() => removeRule(index)}
             className="shrink-0 rounded-md p-1 text-dim transition-colors hover:text-error"
-            title="Remove rule"
-            aria-label={`Remove rule ${index + 1}`}
+            title={t(language, 'permRemoveRule')}
+            aria-label={t(language, 'permRemoveRuleN', { n: String(index + 1) })}
           >
             <Trash2 size={13} />
           </button>
@@ -208,7 +209,7 @@ export function PermissionRulesEditor({
         onClick={() => onChange([...rules, emptyRule()])}
         className="flex items-center gap-1 rounded-md border border-dashed border-border-strong px-2 py-1 text-xs text-dim transition-colors hover:border-border-strong-hover hover:text-primary"
       >
-        <Plus size={12} /> Add rule
+        <Plus size={12} /> {t(language, 'permAddRule')}
       </button>
 
       {actionError && (

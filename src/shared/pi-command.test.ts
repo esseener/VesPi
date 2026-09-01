@@ -87,16 +87,16 @@ test('groupCommands orders groups skills, prompts, builtins, extensions', () => 
   ]
   const { grouped } = groupCommands(mixed)
   assert.deepEqual(
-    grouped.map((g) => g.label),
-    ['Skills', 'Prompts', 'Commands', 'Extensions']
+    grouped.map((g) => g.source),
+    ['skill', 'prompt', 'builtin', 'extension']
   )
 })
 
 test('groupCommands drops empty groups', () => {
   const { grouped } = groupCommands([{ name: 'review', description: '', source: 'prompt' }])
   assert.deepEqual(
-    grouped.map((g) => g.label),
-    ['Prompts']
+    grouped.map((g) => g.source),
+    ['prompt']
   )
 })
 
@@ -106,9 +106,10 @@ test('groupCommands puts unknown sources in a trailing Other group', () => {
     { name: 'mystery', description: '', source: 'plugin' },
   ])
   assert.deepEqual(
-    grouped.map((g) => g.label),
-    ['Prompts', 'Other']
+    grouped.map((g) => g.source),
+    ['prompt', 'other']
   )
+
   assert.equal(grouped[1].items[0].name, 'mystery')
 })
 

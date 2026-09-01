@@ -40,6 +40,36 @@ export interface ModelsConfig {
   [key: string]: unknown
 }
 
+export interface ConfiguredChatModel {
+  provider: string
+  modelId: string
+  baseUrl: string
+}
+
+function resolveConfiguredApiKey(apiKey: string | undefined): boolean {
+  const trimmed = (apiKey ?? '').trim()
+  if (!trimmed) return false
+  if (trimmed.startsWith('!')) return false
+  return true
+}
+
+/** True when the user has saved at least one usable chat/evolution model. */
+export function hasConfiguredChatModel(config: ModelsConfig | null | undefined): boolean {
+  return firstConfiguredChatModel(config) !== null
+}
+
+export function firstConfiguredChatModel(config: ModelsConfig | null | undefined): ConfiguredChatModel | null {
+  if (!config) return null
+  for (const [provider, row] of Object.entries(config.providers ?? {})) {
+    const name = provider.trim()
+    const baseUrl = typeof row?.baseUrl === 'string' ? row.baseUrl.trim() : ''
+    const modelId = (row?.models ?? []).find((model) => typeof model?.id === 'string' && model.id.trim())?.id.trim() ?? ''
+    if (!name || !baseUrl || !modelId || !resolveConfiguredApiKey(row?.apiKey)) continue
+    return { provider: name, modelId, baseUrl }
+  }
+  return null
+}
+
 const NUMERIC_MODEL_FIELDS: Array<keyof CustomModel> = ['contextWindow', 'maxTokens']
 
 /**

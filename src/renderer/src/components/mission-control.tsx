@@ -8,8 +8,11 @@ import { pathsEqual } from '../../../shared/path-compare'
 import { canResumeRun } from '../utils/workflow-runs'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import type { SessionRuntimeInfo, WorkflowRunSummary } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 export function MissionControl(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+
   const workspaces = useAppStore((state) => state.workspaces)
   const sessionList = useAppStore((state) => state.sessionList)
   const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
@@ -84,24 +87,25 @@ export function MissionControl(): React.JSX.Element {
           <div>
             <div className="flex items-center gap-2">
               <Inbox size={19} className="text-accent-fg" />
-              <h1 className="text-lg font-semibold text-primary">Mission Control</h1>
+              <h1 className="text-lg font-semibold text-primary">{t(language, 'missionControl')}</h1>
+
               {attentionCount > 0 && (
                 <span className="rounded-full bg-warning-bg px-2 py-0.5 text-[10px] font-medium text-warning">
-                  {attentionCount} needs attention
+                  {t(language, 'needsAttention', { count: String(attentionCount) })}
                 </span>
               )}
             </div>
-            <p className="mt-1 text-xs text-dim">Background sessions and workflow runs, from every project.</p>
+            <p className="mt-1 text-xs text-dim">{t(language, 'missionControlHintLong')}</p>
           </div>
           <div className="flex items-center gap-2">
             <button
               type="button"
               onClick={() => void refreshWorkflowRuns()}
               className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1.5 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-primary"
-              title="Refresh workflow runs"
+              title={t(language, 'refreshWorkflowRuns')}
             >
               <RefreshCw size={12} />
-              Refresh
+              {t(language, 'refresh')}
             </button>
             <button
               type="button"
@@ -109,15 +113,15 @@ export function MissionControl(): React.JSX.Element {
               className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
             >
               <Play size={12} />
-              New task
+              {t(language, 'newTask')}
             </button>
           </div>
         </div>
 
         <section className="mb-6">
-          <SectionHeading title="Live sessions" count={runtimes.length} />
+          <SectionHeading title={t(language, 'liveSessions')} count={runtimes.length} />
           {runtimes.length === 0 ? (
-            <EmptyState>No live session runtimes yet. Start a task to put Pi to work in the background.</EmptyState>
+            <EmptyState>{t(language, 'noLiveSessions')}</EmptyState>
           ) : (
             <div className="grid gap-2 md:grid-cols-2">
               {runtimes.map((runtime) => {
@@ -166,17 +170,18 @@ export function MissionControl(): React.JSX.Element {
 
         <section>
           <div className="mb-2 flex items-center justify-between">
-            <SectionHeading title="Workflow activity" count={workflowRuns.length} />
+            <SectionHeading title={t(language, 'workflowActivity')} count={workflowRuns.length} />
             <button
               type="button"
               onClick={() => openWorkflowRunsForWorkspace(null)}
               className="text-[11px] text-muted transition-colors hover:text-accent-fg"
             >
-              Open all workflows
+              {t(language, 'allWorkflows')}
             </button>
           </div>
           {recentRuns.length === 0 ? (
-            <EmptyState>No workflow runs yet.</EmptyState>
+            <EmptyState>{t(language, 'noWorkflowRuns')}</EmptyState>
+
           ) : (
             <>
               {controlError && <div className="mb-2 rounded border border-error/40 bg-error-bg/20 px-3 py-2 text-[11px] text-error" role="status">{controlError}</div>}

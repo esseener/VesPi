@@ -284,7 +284,7 @@ function SwitcherRow({
     >
       {item.kind === 'workspace' && (
         <>
-          <Layers size={14} className="shrink-0" style={{ color: item.workspace.color }} />
+          <Layers size={14} className="shrink-0 text-secondary" />
           <span className="truncate text-sm text-primary">{item.workspace.name}</span>
           {item.workspace.id === activeWorkspaceId && (
             <Check size={12} className="shrink-0 text-success" />

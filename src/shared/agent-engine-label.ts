@@ -19,7 +19,8 @@ const AGENT_ENGINE_LABELS: Record<AgentEngineKind, string> = {
  * not yet known but a name is unavoidable, such as a permission prompt raised
  * before the GUI told the extension which engine it belongs to.
  */
-export const DEFAULT_AGENT_ENGINE_LABEL = AGENT_ENGINE_LABELS.pi
+export const DEFAULT_AGENT_ENGINE_LABEL = AGENT_ENGINE_LABELS.omp
+
 
 /**
  * The display name for an engine, or null when the engine is unknown. Callers

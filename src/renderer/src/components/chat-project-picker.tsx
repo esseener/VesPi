@@ -79,16 +79,19 @@ export function ChatProjectPicker(): React.JSX.Element {
       if (id) {
         if (!(await activateWorkspace(id))) {
           setSelectedId(previousId)
+          return
         }
       } else {
         const homeWs = await ensureHomeWorkspace()
         if (homeWs) {
           if (!(await activateWorkspace(homeWs.id))) {
             setSelectedId(previousId)
+            return
           }
-        } else {
-          await startPi()
         }
+      }
+      if (useAppStore.getState().piStatus !== 'running') {
+        await startPi()
       }
     } catch {
       setSelectedId(previousId)
@@ -126,7 +129,7 @@ export function ChatProjectPicker(): React.JSX.Element {
         title={selected?.path ?? homePath ?? 'No project — home directory'}
       >
         {selected ? (
-          <Layers size={14} className="shrink-0" style={{ color: selected.color }} />
+          <Layers size={14} className="shrink-0 text-secondary" />
         ) : (
           <Layers size={14} className="shrink-0 text-faint" />
         )}
@@ -167,7 +170,7 @@ export function ChatProjectPicker(): React.JSX.Element {
                 ws.id === selected?.id && 'bg-card'
               )}
             >
-              <Layers size={13} className="shrink-0" style={{ color: ws.color }} />
+              <Layers size={13} className="shrink-0 text-secondary" />
               <div className="min-w-0 flex-1">
                 <div className="truncate text-sm text-primary">{ws.name}</div>
                 <div className="truncate text-[11px] text-faint">{ws.path}</div>

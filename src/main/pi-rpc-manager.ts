@@ -23,12 +23,13 @@ import {
 import { escapeCmdSpawn } from './cmd-escape'
 import { appLog } from './app-log'
 import { getGuiDataPath } from './app-data-paths'
+import { vespiProfileArgs, VESPI_RPC_MODE, ensureVespiOpenspaceMcp } from './vespi-runtime'
 
 /**
  * Manages a Pi RPC child process.
  *
  * Responsibilities:
- * - Spawn/kill Pi in --mode rpc
+ * - Spawn/kill OMP in --mode rpc-ui --profile vespi
  * - Parse JSONL from stdout (LF-delimited, no Unicode line separators)
  * - Route events to subscribers
  * - Correlate request/response via id field
@@ -36,7 +37,7 @@ import { getGuiDataPath } from './app-data-paths'
  */
 
 const JSONL_NEWLINE = '\n'
-const RPC_MODE = 'rpc'
+const RPC_MODE = VESPI_RPC_MODE
 const NO_SESSION_FLAG = '--no-session'
 const MODE_FLAG = '--mode'
 const PROVIDER_FLAG = '--provider'
@@ -194,13 +195,16 @@ export class RpcFrameDecoder {
 // Kept in one object so the search order stays testable against a fake.
 const RESOLUTION_DEPS: ResolutionDeps = {
   isWindows: IS_WINDOWS,
-  env: process.env,
+  env: {
+    ...process.env,
+    VESPI_APP_PATH: process.execPath,
+    VESPI_RESOURCES_PATH: typeof process.resourcesPath === 'string' ? process.resourcesPath : '',
+  },
   exists: (path) => existsSync(path),
   isDirectory: (path) => {
     try {
       return statSync(path).isDirectory()
     } catch (err) {
-      // ENOENT/EACCES/ELOOP all mean "not a directory we can use".
       if (isFsAccessError(err)) return false
       throw err
     }
@@ -215,6 +219,7 @@ const RESOLUTION_DEPS: ResolutionDeps = {
   },
   capture: (command, args, options) => runCapture(command, args, options),
 }
+
 
 const FS_ACCESS_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP'])
 
@@ -514,7 +519,7 @@ export function resolveStartCli(options: PiStartOptions): PiCli {
  * caller args are appended verbatim.
  */
 export function buildPiArgs(options: PiStartOptions): string[] {
-  const args: string[] = [MODE_FLAG, RPC_MODE]
+  const args: string[] = [...vespiProfileArgs(), MODE_FLAG, RPC_MODE]
 
   if (options.noSession) {
     args.push(NO_SESSION_FLAG)
@@ -708,6 +713,8 @@ export class PiRpcManager extends EventEmitter {
       appLog.error('pi', 'Pre-flight failed', this.stderrBuffer)
       return this.getStatus()
     }
+
+    ensureVespiOpenspaceMcp(options.cwd)
 
     // Spawn, with one retry reserved for a crash before readiness. See
     // STARTUP_MAX_ATTEMPTS: a crash is often transient; a timeout is not.

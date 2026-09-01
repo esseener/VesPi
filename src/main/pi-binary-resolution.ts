@@ -1,5 +1,8 @@
-import { basename, join, posix as posixPath } from 'path'
+import { basename, dirname, join, posix as posixPath } from 'path'
+
 import { buildNpmPrefixCommand, escapeCmdSpawn } from './cmd-escape'
+import { VESPI_PRIVATE_OMP_REL } from '../shared/vespi'
+
 
 /**
  * Locating the Pi CLI is the single most failure-prone step at startup, and the
@@ -282,12 +285,18 @@ export function findCliJsNear(deps: ResolutionDeps, dir: string): string | null 
   return null
 }
 
-/** Executable shim names an npm prefix may expose, per platform. */
 function shimCandidates(deps: ResolutionDeps, prefix: string): string[] {
   return deps.isWindows
     ? [join(prefix, 'pi.cmd'), join(prefix, 'pi.ps1'), join(prefix, 'pi.exe')]
     : [join(prefix, 'bin', 'pi'), join(prefix, 'pi')]
 }
+
+function ompShimCandidates(deps: ResolutionDeps, prefix: string): string[] {
+  return deps.isWindows
+    ? [join(prefix, 'omp.cmd'), join(prefix, 'omp.ps1'), join(prefix, 'omp.exe')]
+    : [join(prefix, 'bin', 'omp'), join(prefix, 'omp')]
+}
+
 
 function usableFile(deps: ResolutionDeps, path: string): boolean {
   return deps.exists(path) && !deps.isDirectory(path)
@@ -353,12 +362,18 @@ function npmGlobalPrefix(deps: ResolutionDeps, pathEnv: string): string | null {
   return prefix
 }
 
-/** Hardcoded install locations, used only after every dynamic probe fails. */
-function ompShimCandidates(deps: ResolutionDeps, prefix: string): string[] {
-  return deps.isWindows
-    ? [join(prefix, 'omp.cmd'), join(prefix, 'omp.exe'), join(prefix, 'omp.ps1')]
-    : [join(prefix, 'bin', 'omp'), join(prefix, 'omp')]
+function privateOmpCandidates(deps: ResolutionDeps): string[] {
+  const appPath = deps.env.VESPI_APP_PATH
+  const resourcesPath = deps.env.VESPI_RESOURCES_PATH
+  const out: string[] = []
+  if (resourcesPath) out.push(join(resourcesPath, VESPI_PRIVATE_OMP_REL))
+  if (appPath) {
+    out.push(join(dirname(appPath), VESPI_PRIVATE_OMP_REL))
+    out.push(join(dirname(appPath), 'resources', VESPI_PRIVATE_OMP_REL))
+  }
+  return [...new Set(out.filter(Boolean))]
 }
+
 
 function ompLocations(deps: ResolutionDeps): string[] {
   const { env } = deps
@@ -368,6 +383,7 @@ function ompLocations(deps: ResolutionDeps): string[] {
     const localAppData = env.LOCALAPPDATA ?? ''
     const userProfile = env.USERPROFILE ?? home
     return [
+      ...privateOmpCandidates(deps),
       appData ? join(appData, 'npm', OMP_FALLBACK_BINARY_WINDOWS) : '',
       localAppData ? join(localAppData, 'npm', OMP_FALLBACK_BINARY_WINDOWS) : '',
       localAppData ? join(localAppData, 'omp', OMP_FALLBACK_BINARY_WINDOWS) : '',
@@ -375,6 +391,7 @@ function ompLocations(deps: ResolutionDeps): string[] {
     ].filter(Boolean)
   }
   return [
+    ...privateOmpCandidates(deps),
     join(home, '.local', 'bin', OMP_FALLBACK_BINARY_POSIX),
     join(home, '.bun', 'bin', OMP_FALLBACK_BINARY_POSIX),
     join(home, '.npm-global', 'bin', OMP_FALLBACK_BINARY_POSIX),
@@ -385,17 +402,19 @@ function ompLocations(deps: ResolutionDeps): string[] {
   ]
 }
 
+
 /**
  * Every OMP candidate, most authoritative first. A generator rather than an
  * array so the `npm prefix -g` subprocess is only spawned when the cheaper
  * PATH and common-location lookups came up empty.
  */
 function* ompCandidates(deps: ResolutionDeps, pathEnv: string): Generator<string> {
-  const onPath = whichInPath(deps, OMP_FALLBACK_BINARY_POSIX, pathEnv)
-  if (onPath) yield onPath
+  // Private runtime first. PATH/global omp must not shadow the shipped kernel.
   for (const candidate of ompLocations(deps)) {
     if (usableFile(deps, candidate)) yield candidate
   }
+  const onPath = whichInPath(deps, OMP_FALLBACK_BINARY_POSIX, pathEnv)
+  if (onPath) yield onPath
   const prefix = npmGlobalPrefix(deps, pathEnv)
   if (prefix) {
     for (const candidate of ompShimCandidates(deps, prefix)) {

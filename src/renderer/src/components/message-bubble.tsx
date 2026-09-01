@@ -18,6 +18,8 @@ import { LineNumberedCode } from './line-numbered-code'
 import { MarkdownRenderer } from './markdown-renderer'
 import { CopyButton } from './copy-button'
 import { useContextMenu, buildMessageContextMenu } from './context-menu'
+import { localizeToolCallLabel, localizeToolGroupTitle } from '../tool-status-i18n'
+import { DEFAULT_LANGUAGE, t, isMessageKey } from '../../../shared/i18n'
 import { RelativeTime } from '../utils/relative-time'
 import { clsx } from 'clsx'
 import {
@@ -74,12 +76,14 @@ function MessageBubbleImpl({
   }
 
   const handleBranch = () => {
-    // Branch from this message's position
+    const preview = `${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`
     useAppStore.getState().addMessage({
       id: `branch-${Date.now()}`,
       role: 'system',
-      content: `Branched from: "${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}"`,
+      content: preview,
       timestamp: Date.now(),
+      i18nKey: 'sysBranchedFrom',
+      i18nVars: { preview },
     })
   }
 
@@ -201,6 +205,7 @@ function UserMessage({
   onRetry?: (id: string) => void
   onExport: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const editRef = useRef<HTMLTextAreaElement>(null)
 
   if (isEditing) {
@@ -225,14 +230,14 @@ function UserMessage({
               onClick={onCancelEdit}
               className="rounded px-2 py-1 text-xs text-muted hover:text-primary transition-colors"
             >
-              Cancel
+              {t(language, 'cancel')}
             </button>
             <button
               onClick={onSaveEdit}
               className="flex items-center gap-1 rounded bg-accent px-2 py-1 text-xs text-white hover:bg-accent-hover transition-colors"
             >
               <Send size={10} />
-              Send
+              {t(language, 'actionSend')}
             </button>
           </div>
         </div>
@@ -265,13 +270,13 @@ function UserMessage({
         </div>
         {/* Actions */}
         <div className="mt-1 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <ActionButton icon={<Copy size={11} />} onClick={onCopy} title="Copy" />
-          <ActionButton icon={<Edit3 size={11} />} onClick={onEdit} title="Edit & resend" />
-          <ActionButton icon={<GitBranch size={11} />} onClick={onBranch} title="Branch from here" />
+          <ActionButton icon={<Copy size={11} />} onClick={onCopy} title={t(language, 'actionCopy')} />
+          <ActionButton icon={<Edit3 size={11} />} onClick={onEdit} title={t(language, 'actionEditResend')} />
+          <ActionButton icon={<GitBranch size={11} />} onClick={onBranch} title={t(language, 'actionBranchHere')} />
           {onRetry && (
-            <ActionButton icon={<RotateCcw size={11} />} onClick={() => onRetry(message.id)} title="Retry" />
+            <ActionButton icon={<RotateCcw size={11} />} onClick={() => onRetry(message.id)} title={t(language, 'actionRetry')} />
           )}
-          <ActionButton icon={<Download size={11} />} onClick={onExport} title="Export" />
+          <ActionButton icon={<Download size={11} />} onClick={onExport} title={t(language, 'actionExport')} />
         </div>
       </div>
     </div>
@@ -297,6 +302,7 @@ function AssistantMessage({
   onExport: () => void
   hideModelHeader?: boolean
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const customModels = useAppStore((state) => state.customModels)
   const thinkingEnabled = useAppStore(
     (state) => state.settingsDraft.showThinking ?? state.settings?.showThinking ?? DEFAULT_SETTINGS.showThinking
@@ -357,7 +363,7 @@ function AssistantMessage({
           >
             <Brain size={12} />
             {showThinking ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-            Thinking
+            {t(language, 'thinkingStatus')}
           </button>
           <CopyButton text={message.thinking!} className="thinking-copy-btn" />
         </div>
@@ -482,7 +488,7 @@ function AssistantMessage({
                 >
                   <Brain size={12} />
                   {showThinking ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                  Thinking
+                  {t(language, 'thinkingStatus')}
                 </button>
                 <CopyButton text={message.thinking} className="thinking-copy-btn" />
               </div>
@@ -520,10 +526,10 @@ function AssistantMessage({
               <ActionButton
                 icon={copied ? <Check size={11} /> : <Copy size={11} />}
                 onClick={onCopy}
-                title={copied ? 'Copied' : 'Copy'}
-                label={copied ? 'Copied' : 'Copy'}
+                title={copied ? t(language, 'actionCopied') : t(language, 'actionCopy')}
+                label={copied ? t(language, 'actionCopied') : t(language, 'actionCopy')}
               />
-              <ActionButton icon={<Download size={11} />} onClick={onExport} title="Export" />
+              <ActionButton icon={<Download size={11} />} onClick={onExport} title={t(language, 'actionExport')} />
             </div>
           )}
 
@@ -562,6 +568,7 @@ function ToolCallBadge({
 }: {
   toolCall: NonNullable<DisplayMessage['toolCalls']>[number]
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   // Edit diffs open expanded so the change is visible without a second result pill.
   const edits = toolLabel(toolCall.name) === 'Edit file' ? parseEdits(toolCall.arguments) : null
   const stats = edits ? editStats(edits) : null
@@ -576,6 +583,13 @@ function ToolCallBadge({
       : toolCall.isError === false || toolCall.result !== undefined
         ? 'done'
         : null
+  const statusLabel = status === 'running'
+    ? t(language, 'toolRunning')
+    : status === 'error'
+      ? t(language, 'toolError')
+      : status === 'done'
+        ? t(language, 'toolDone')
+        : null
 
   return (
     <div className="relative min-w-0 overflow-hidden rounded-lg border border-border bg-surface/50">
@@ -586,7 +600,7 @@ function ToolCallBadge({
         className="flex w-full min-w-0 items-center gap-2 py-2 pl-3 pr-9 text-xs text-muted hover:text-secondary transition-colors"
       >
         <span className="font-jetbrains min-w-0 truncate">
-          {toolCallLabel(toolCall.name, toolCall.arguments)}
+          {localizeToolCallLabel(language, toolCall.name, toolCallLabel(toolCall.name, toolCall.arguments))}
         </span>
         {stats && (
           <span className="shrink-0 font-jetbrains">
@@ -597,16 +611,16 @@ function ToolCallBadge({
         {toolCall.durationMs !== undefined && !toolCall.isExecuting && (
           <span className="shrink-0 text-faint">{formatDuration(toolCall.durationMs)}</span>
         )}
-        {status && (
+        {statusLabel && (
           <span
             className={clsx(
-              'shrink-0 capitalize',
+              'shrink-0',
               status === 'running' && 'text-warning animate-pulse',
               status === 'error' && 'text-error',
               status === 'done' && 'text-success'
             )}
           >
-            {status}
+            {statusLabel}
           </span>
         )}
         {expanded ? (
@@ -824,6 +838,7 @@ function ToolGroupBubbleImpl({
   messages: DisplayMessage[]
   onRetry?: (messageId: string) => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [expanded, setExpanded] = useState(false)
   const customModels = useAppStore((state) => state.customModels)
 
@@ -879,7 +894,7 @@ function ToolGroupBubbleImpl({
               onClick={() => setExpanded(!expanded)}
               className="flex w-full items-center gap-2 py-2 pl-3 pr-9 text-xs text-muted hover:text-secondary transition-colors"
             >
-              <span className="font-jetbrains">{title}</span>
+              <span className="font-jetbrains">{localizeToolGroupTitle(language, title)}</span>
               {expanded ? (
                 <ChevronDown size={12} className="ml-auto shrink-0" />
               ) : (
@@ -916,10 +931,14 @@ export const ToolGroupBubble = memo(ToolGroupBubbleImpl)
 // ─── System Message ──────────────────────────────────────────────────────────
 
 function SystemMessage({ message }: { message: DisplayMessage }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  const text = message.i18nKey && isMessageKey(message.i18nKey)
+    ? t(language, message.i18nKey, message.i18nVars)
+    : message.content
   return (
     <div className="mb-4 flex justify-center animate-fade-in">
       <div className="rounded-full bg-surface px-3 py-1 text-xs text-dim">
-        {message.content}
+        {text}
       </div>
     </div>
   )

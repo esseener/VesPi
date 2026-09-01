@@ -1,9 +1,11 @@
 import { useRef, useCallback, useState, useEffect, useMemo } from 'react'
 import { useAppStore } from '../store'
 import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/agent-engine-label'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { useChatKeyboard, useCommandCatalog } from '../hooks'
 import { ComposerPermissionMenu } from './composer-permission-menu'
 import { CommandResults } from './command-results'
+
 import { SubagentProgress } from './subagent-progress'
 import { ModelSelector } from './model-selector'
 import { ThinkingLevelSelector } from './thinking-level-selector'
@@ -79,6 +81,7 @@ export function ChatInput(): React.JSX.Element {
   const isStreaming = useAppStore((state) => state.isStreaming)
   const piStatus = useAppStore((state) => state.piStatus)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const pendingInsert = useAppStore((state) => state.pendingInsert)
   const clearPendingInsert = useAppStore((state) => state.clearPendingInsert)
   const setNotePickerOpen = useAppStore((state) => state.setNotePickerOpen)
@@ -88,6 +91,7 @@ export function ChatInput(): React.JSX.Element {
   const permissionMode = useAppStore((s) => s.settings?.permissionMode)
   const setPermissionMode = useAppStore((s) => s.setPermissionMode)
   const toggleFileSearch = useAppStore((s) => s.toggleFileSearch)
+
 
   // Prompt-history recall (shell-style ↑/↓). `historyIndex` is -1 when editing a
   // fresh draft; while navigating it points into store.promptHistory and `draft`
@@ -500,11 +504,12 @@ export function ChatInput(): React.JSX.Element {
           ref={textareaRef}
           placeholder={
             isDisabled
-              ? `${engineLabel} agent is not running...`
+              ? t(language, 'composerDisabled', { engine: engineLabel })
               : isStreaming
-                ? 'Type to steer the agent...'
-                : `Ask ${engineLabel} anything — / for commands`
+                ? t(language, 'composerSteering')
+                : t(language, 'composerPlaceholder', { engine: engineLabel })
           }
+
           disabled={isDisabled}
           rows={1}
           style={{ minHeight: MIN_INPUT_HEIGHT }}
@@ -635,24 +640,24 @@ export function ChatInput(): React.JSX.Element {
             onClick={handleAttachFile}
             disabled={isDisabled}
             className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors disabled:opacity-50"
-            title="Attach file"
-            aria-label="Attach file"
+            title={t(language, 'attachFile')}
+            aria-label={t(language, 'attachFile')}
           >
             <Paperclip size={15} />
           </button>
           <button
             onClick={() => setNotePickerOpen(true)}
             className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors"
-            title="Insert note (Ctrl+Shift+P)"
-            aria-label="Insert note"
+            title={t(language, 'insertNote')}
+            aria-label={t(language, 'insertNoteAria')}
           >
             <StickyNote size={15} />
           </button>
           <button
             onClick={() => toggleFileSearch()}
             className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors"
-            title="Search workspace (Ctrl+Shift+F)"
-            aria-label="Search workspace"
+            title={t(language, 'searchWorkspace')}
+            aria-label={t(language, 'searchWorkspaceAria')}
           >
             <Search size={15} />
           </button>
@@ -671,8 +676,8 @@ export function ChatInput(): React.JSX.Element {
               }}
               disabled={isDisabled || isStreaming}
               className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors disabled:opacity-50"
-              title={isDisabled ? 'Start Pi/OMP before planning with Council' : 'Plan with Council'}
-              aria-label="Plan with Council"
+              title={isDisabled ? t(language, 'startBeforeCouncil') : t(language, 'planWithCouncil')}
+              aria-label={t(language, 'planWithCouncil')}
             >
               <Users size={15} />
             </button>
@@ -680,9 +685,9 @@ export function ChatInput(): React.JSX.Element {
 
           <span className="ml-auto mr-1 hidden text-[11px] text-faint sm:inline">
             {isStreaming ? (
-              <span className="text-warning animate-pulse">Streaming…</span>
+              <span className="status-shimmer">{t(language, 'streaming')}</span>
             ) : (
-              'Shift+Enter newline'
+              t(language, 'newlineHint')
             )}
           </span>
 
@@ -698,8 +703,8 @@ export function ChatInput(): React.JSX.Element {
             <button
               onClick={handleAbort}
               className="hover:bg-highlight-strong flex items-center justify-center rounded-lg p-1.5 text-dim hover:text-secondary transition-colors"
-              title="Stop (Esc)"
-              aria-label="Stop generating"
+              title={t(language, 'stopEsc')}
+              aria-label={t(language, 'stopGenerating')}
             >
               <Square size={16} />
             </button>
@@ -713,8 +718,8 @@ export function ChatInput(): React.JSX.Element {
               }}
               disabled={isDisabled}
               className="hover:bg-highlight-strong flex items-center justify-center rounded-lg p-1.5 text-dim hover:text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              title="Send (Enter)"
-              aria-label="Send message"
+              title={t(language, 'sendEnter')}
+              aria-label={t(language, 'sendMessage')}
             >
               <CornerDownLeft size={16} />
             </button>
@@ -724,3 +729,4 @@ export function ChatInput(): React.JSX.Element {
     </div>
   )
 }
+

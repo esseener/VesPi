@@ -13,7 +13,8 @@ export function getSessionsRoot(): string {
 }
 
 /**
- * Absolute path to OMP's session store (`~/.omp/agent/sessions`).
+ * Absolute path to OMP's vespi-profile session store
+ * (`~/.omp/profiles/vespi/agent/sessions`).
  *
  * Each engine keeps its own sessions: OMP writes here, Pi writes under
  * `~/.pi`, and neither is pointed at the other's tree. Both stores use the
@@ -22,9 +23,10 @@ export function getSessionsRoot(): string {
  */
 export function getOmpSessionsRoot(): string {
   const agentDir = process.env.OMP_CODING_AGENT_DIR ||
-    join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.omp', 'agent')
+    join(process.env.HOME ?? process.env.USERPROFILE ?? '', '.omp', 'profiles', 'vespi', 'agent')
   return join(agentDir, 'sessions')
 }
+
 
 /**
  * Every store the session index reads, Pi's first so its rows win a tie.

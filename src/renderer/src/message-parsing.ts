@@ -32,6 +32,8 @@ export interface DisplayMessage {
   toolName?: string
   toolFile?: string
   isError?: boolean
+  i18nKey?: import('../../shared/i18n').MessageKey
+  i18nVars?: Record<string, string>
 }
 
 let fallbackMessageCounter = 0

@@ -1,21 +1,39 @@
 import { existsSync } from 'fs'
 import os from 'os'
-import pty, { type IPty } from 'node-pty'
+import type { IPty } from 'node-pty'
 import type { TerminalStartOptions, TerminalStartResult } from '../shared/ipc-contracts'
 
 type TerminalDataHandler = (data: string) => void
 type TerminalExitHandler = (event: { exitCode: number; signal?: number }) => void
+
+let ptyModule: typeof import('node-pty') | null = null
+
+async function loadPty(): Promise<typeof import('node-pty')> {
+  if (ptyModule) return ptyModule
+  try {
+    const loaded = await import('node-pty')
+    const pty = ('default' in loaded && loaded.default ? loaded.default : loaded) as typeof import('node-pty')
+    if (typeof pty.spawn !== 'function') {
+      throw new Error('node-pty.spawn is missing')
+    }
+    ptyModule = pty
+    return pty
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err)
+    throw new Error(`Terminal native module failed to load: ${detail}`)
+  }
+}
 
 export class TerminalService {
   private terminal: IPty | null = null
   private disposables: { dispose(): void }[] = []
   private cwd = os.homedir()
 
-  start(
+  async start(
     options: TerminalStartOptions,
     onData: TerminalDataHandler,
     onExit: TerminalExitHandler
-  ): TerminalStartResult {
+  ): Promise<TerminalStartResult> {
     this.stop()
 
     const shell = getShell()
@@ -26,6 +44,7 @@ export class TerminalService {
     } as Record<string, string>
 
     this.cwd = cwd
+    const pty = await loadPty()
     // node-pty's `encoding` option calls setEncoding() under the hood,
     // which Windows (conpty/winpty) does not support and logs a warning
     // for. Only pass it on POSIX platforms.

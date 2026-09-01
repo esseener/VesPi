@@ -1,5 +1,7 @@
 import { createContext, useContext } from 'react'
 import { formatRelativeTime } from './format-relative-time'
+import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE } from '../../../shared/i18n'
 
 export { formatRelativeTime }
 
@@ -11,10 +13,9 @@ export const NowContext = createContext<number>(Date.now())
 
 /**
  * Renders a relative-time label that re-renders on each tick of `NowContext`.
- * Kept as a tiny leaf so the surrounding (heavier) message bubble does not
- * re-render every 30s — only these labels do.
  */
 export function RelativeTime({ timestamp }: { timestamp: number }): React.JSX.Element {
   const now = useContext(NowContext)
-  return <span>{formatRelativeTime(timestamp, now)}</span>
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  return <span>{formatRelativeTime(timestamp, now, language)}</span>
 }

@@ -1,4 +1,6 @@
-import { ipcMain } from 'electron'
+import { BrowserWindow, ipcMain } from 'electron'
+
+
 import { setPiExecutableOverride } from '../pi-rpc-manager'
 import { WorkspaceManager } from '../workspace-manager'
 import { getGuiDataPath } from '../app-data-paths'
@@ -7,12 +9,28 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { DEFAULT_SETTINGS } from '../../shared/default-settings'
 import { applyRunOnStartup } from '../startup-launch'
 import { setTrayEnabled } from '../tray-manager'
+
 import { readFile, writeFile, mkdir } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import { isObject } from './validation'
 import { appLog } from '../app-log'
 import type { IpcContext } from './context'
+import { defaultOmpExecutablePath } from '../vespi-runtime'
+import { VESPI_PRIVATE_OMP_REL } from '../../shared/vespi'
+import { DEFAULT_LANGUAGE, isAppLanguage } from '../../shared/i18n'
+
+function withResolvedOmpPath(settings: AppSettings): AppSettings {
+  const path = settings.piExecutablePath?.trim()
+  const language = isAppLanguage(settings.language) ? settings.language : DEFAULT_LANGUAGE
+  if (!path || path === 'omp' || path === VESPI_PRIVATE_OMP_REL || path === 'pi') {
+    return { ...settings, piEngine: 'omp', piExecutablePath: defaultOmpExecutablePath(), language }
+  }
+  if (settings.piEngine !== 'omp') {
+    return { ...settings, piEngine: 'omp', language }
+  }
+  return { ...settings, language }
+}
 
 // ─── App Settings Persistence ────────────────────────────────────────────────
 
@@ -30,18 +48,19 @@ export async function loadAppSettings(workspaceManager: WorkspaceManager): Promi
       const data = await readFile(settingsPath, 'utf-8')
       const merged = { ...DEFAULT_SETTINGS, ...JSON.parse(data) }
       if (merged.piEngine !== 'auto' && merged.piEngine !== 'pi' && merged.piEngine !== 'omp') {
-        merged.piEngine = 'auto'
+        merged.piEngine = 'omp'
       }
-      return merged
+      return withResolvedOmpPath(merged)
     }
   } catch {
     // Fall through to defaults
   }
 
-  return {
+
+  return withResolvedOmpPath({
     ...DEFAULT_SETTINGS,
     defaultCwd: workspaceManager.getActiveWorkspace()?.path ?? (process.env.HOME ?? process.env.USERPROFILE ?? process.cwd()),
-  }
+  })
 }
 
 export async function saveAppSettings(settings: Partial<AppSettings>): Promise<void> {
@@ -97,13 +116,17 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
     if ('minimizeToTrayOnClose' in settings) {
       setTrayEnabled(Boolean((settings as Partial<AppSettings>).minimizeToTrayOnClose))
     }
-    // Re-resolve the Pi binary so a corrected executable path or explicit engine
-    // takes effect on the next runtime start without relying on filename sniffing.
     const updated = await loadAppSettings(workspaceManager)
     if ('piExecutablePath' in settings || 'piEngine' in settings) {
       setPiExecutableOverride(updated.piExecutablePath, updated.piEngine)
     }
+    if ('language' in settings) {
+      for (const win of BrowserWindow.getAllWindows()) {
+        win.webContents.send('menu:language-changed', updated.language)
+      }
+    }
     return updated
+
   })
 
   // Reconcile the OS-level "run on startup" state with the saved preference on

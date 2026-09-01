@@ -81,7 +81,13 @@ export const IPC_CHANNELS = {
   SYSTEM_GET_PATH: 'system:get-path',
   SYSTEM_PATH_KIND: 'system:path-kind',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
+  SYSTEM_REVEAL_PATH: 'system:reveal-path',
   SYSTEM_GET_VERSION: 'system:get-version',
+  SYSTEM_WINDOW_MINIMIZE: 'system:window-minimize',
+  SYSTEM_WINDOW_TOGGLE_MAXIMIZE: 'system:window-toggle-maximize',
+  SYSTEM_WINDOW_CLOSE: 'system:window-close',
+  SYSTEM_WINDOW_IS_MAXIMIZED: 'system:window-is-maximized',
+  EVENT_WINDOW_MAXIMIZED: 'event:window-maximized',
   UPDATE_CHECK: 'update:check',
 
   // Activity
@@ -118,14 +124,17 @@ export const IPC_CHANNELS = {
   PACKAGE_UPDATE: 'package:update',
   PACKAGE_CATALOG_FETCH: 'package:catalog-fetch',
 
-  // Skills
   SKILLS_LIST: 'skills:list',
+  SKILLS_CREATE: 'skills:create',
+  SKILLS_DELETE: 'skills:delete',
+  SKILLS_EVOLVE: 'skills:evolve',
   COMMANDS_LIST: 'commands:list',
   MCP_SERVERS_LIST: 'mcp:servers-list',
 
   // Models config
   MODELS_READ: 'models:read',
   MODELS_WRITE: 'models:write',
+  MODELS_PROBE: 'models:probe',
 
   // Council planning
   COUNCIL_DETECT: 'council:detect',
@@ -932,7 +941,18 @@ export interface CouncilProgressEvent {
 import type { ModelsConfig as ModelsConfigType } from './models-config'
 import type { CouncilConfig } from './council-config'
 /** Result of the MODELS_READ IPC call. */
-export type ModelsReadResult = { config: ModelsConfigType } | { error: string; raw: string }
+export type ModelsReadResult = { config: ModelsConfigType; path: string } | { error: string; raw: string; path: string }
+
+export interface ModelsProbeRequest {
+  baseUrl: string
+  api: string
+  apiKey: string
+}
+
+export type ModelsProbeResult =
+  | { ok: true; models: Array<{ id: string; name?: string }> }
+  | { ok: false; error: string }
+
 
 // ─── Agent Message Types ────────────────────────────────────────────────────
 
@@ -1067,7 +1087,10 @@ export interface AppSettings {
   piEngine: AgentEngine
   defaultArgs: string[]
   theme: string // 'system' or a theme id (built-in or user theme)
+  /** UI language. Chinese is the product default. */
+  language: 'zh' | 'en'
   defaultModel: string | null
+
   defaultProvider: string | null
   defaultCwd: string | null
   // UI font size in px (chat, panels, sidebar). Applied to the document root.
@@ -1090,9 +1113,9 @@ export interface AppSettings {
   collapsedSessionGroups: string[]
   /** Sidebar width in pixels; clamped by `clampSidebarWidth` on read. */
   sidebarWidth: number
-  // Show the Home/launcher screen on launch (Pi starts lazily on first action)
-  // instead of booting straight into Chat. When false, boot into Chat (empty
-  // chat is the Codex-style center prompt with project picker).
+  // Show the Home/launcher screen on launch instead of booting straight into
+  // Chat. A saved workspace still starts the private OMP in the background.
+  // When false, boot into Chat (empty chat is the center prompt with project picker).
   openToHomeOnLaunch: boolean
   // Launch Pi Desktop automatically when the user logs in to their computer.
   // Applied at the OS level: login items on macOS/Windows, a freedesktop
@@ -1285,8 +1308,26 @@ export interface InstalledSkill {
   name: string
   description: string
   path: string
-  source: 'global' | 'project' | 'package' | 'cli'
+  source: 'vespi' | 'project' | 'openspace' | 'bundled'
   enabled: boolean
+  skillId?: string
+  origin?: string
+  generation?: number
+  uses?: number
+  successes?: number
+  changeSummary?: string
+  managed?: boolean
+}
+
+export interface SkillMutationResult {
+  ok: boolean
+  error?: string
+  path?: string
+  name?: string
+  skillId?: string
+  jobs?: number
+  outcomes?: number
+  statuses?: string[]
 }
 
 // ─── App Log Types ──────────────────────────────────────────────────────────
@@ -1341,6 +1382,7 @@ export interface DiagnosticsReport {
     chrome: string
     node: string
     platform: string
+    arch: string
   }
   piBinary: {
     found: boolean

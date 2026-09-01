@@ -13,12 +13,15 @@ import {
   Play,
 } from 'lucide-react'
 import { useAppStore } from '../store'
-import piLogo from '../assets/pi-logo.svg'
+import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import { formatGitStatus } from './review-rail'
 import { StatsPanel } from './stats-panel'
 import type { GitFileStatus, SessionListItem } from '../../../shared/ipc-contracts'
 import { workspaceNameFromFolderPath } from '../../../shared/folder-drop'
 import { pathsEqual } from '../../../shared/path-compare'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { hasConfiguredChatModel } from '../../../shared/models-config'
+
 
 const MAX_RECENT_WORKSPACES = 6
 const MAX_RECENT_SESSIONS = 5
@@ -36,6 +39,8 @@ export function HomeScreen(): React.JSX.Element {
  * Home body: activity stats, changed files, recent workspaces/sessions.
  */
 export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.Element {
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
+
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspace = useAppStore((s) => s.activeWorkspace)
   const sessionList = useAppStore((s) => s.sessionList)
@@ -84,10 +89,12 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
     setBusy(true)
     try {
       if (!(await activateWorkspace(workspaceId))) return
-      if (useAppStore.getState().piStatus !== 'error') {
-        requestChatScrollToBottom()
-        setCurrentView('chat')
+      if (useAppStore.getState().piStatus === 'error') return
+      if (useAppStore.getState().piStatus !== 'running') {
+        void useAppStore.getState().startPi()
       }
+      requestChatScrollToBottom()
+      setCurrentView('chat')
     } finally {
       setBusy(false)
     }
@@ -138,14 +145,14 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
         <section className="space-y-3">
           <div className="rounded-lg border border-border bg-surface/50">
             <div className="flex items-center justify-between px-4 py-2.5">
-              <SectionLabel className="mb-0">Changed Files</SectionLabel>
+              <SectionLabel className="mb-0">{t(language, 'changedFiles')}</SectionLabel>
               <span className="rounded-full bg-card px-2 py-0.5 text-[10px] text-muted">
                 {changedFiles.length}
               </span>
             </div>
             {changedFiles.length === 0 ? (
               <div className="px-4 pb-3 text-xs text-faint">
-                {activeWorkspace ? 'No working tree changes.' : 'No workspace selected.'}
+                {activeWorkspace ? t(language, 'noWorkingTreeChanges') : t(language, 'noWorkspaceSelected')}
               </div>
             ) : (
               <div className="max-h-40 overflow-y-auto border-t border-border/60 py-1">
@@ -168,7 +175,7 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
                     className="flex w-full items-center gap-1.5 px-4 py-1.5 text-xs text-dim hover:text-secondary"
                   >
                     <GitCompare size={11} />
-                    +{changedFiles.length - MAX_CHANGED_FILES} more — open diff review
+                    {t(language, 'moreOpenDiff', { count: String(changedFiles.length - MAX_CHANGED_FILES) })}
                   </button>
                 )}
               </div>
@@ -178,25 +185,25 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
 
         <section className="space-y-6">
           <div>
-            <SectionLabel>Recent Workspaces</SectionLabel>
+            <SectionLabel>{t(language, 'recentWorkspaces')}</SectionLabel>
             <div className="space-y-1.5">
               {recentWorkspaces.length === 0 ? (
-                <EmptyHint>No workspaces yet.</EmptyHint>
+                <EmptyHint>{t(language, 'noWorkspacesYet')}</EmptyHint>
               ) : (
                 recentWorkspaces.map((ws) => (
                   <button
                     key={ws.id}
                     onClick={() => void openWorkspace(ws.id)}
-                    className="group flex w-full items-center gap-3 rounded-md border border-border bg-surface/40 px-3 py-2 text-left transition-colors hover:border-border-strong hover:bg-surface-hover/60"
+                    className="group flex w-full items-center gap-3 rounded-sm border border-border bg-transparent px-3 py-2 text-left transition-colors hover:border-border-strong"
                   >
-                    <Layers size={14} className="shrink-0" style={{ color: ws.color }} />
+                    <Layers size={14} className="shrink-0 text-secondary" />
                     <div className="min-w-0 flex-1">
                       <div className="truncate text-sm text-primary">{ws.name}</div>
                       <div className="truncate text-[11px] text-faint">{ws.path}</div>
                     </div>
                     {ws.id === activeWorkspace?.id && (
-                      <span className="shrink-0 rounded bg-accent-bg px-1.5 py-0.5 text-[10px] text-accent-fg">
-                        last
+                      <span className="shrink-0 border border-border px-1.5 py-0.5 text-[10px] text-muted">
+                        {t(language, 'last')}
                       </span>
                     )}
                   </button>
@@ -206,11 +213,12 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
           </div>
 
           <div>
-            <SectionLabel>Recent Sessions</SectionLabel>
+            <SectionLabel>{t(language, 'recentSessions')}</SectionLabel>
             <div className="space-y-1.5">
               {recentSessions.length === 0 ? (
-                <EmptyHint>No sessions yet.</EmptyHint>
+                <EmptyHint>{t(language, 'noSessionsYet')}</EmptyHint>
               ) : (
+
                 recentSessions.map((session) => (
                   <button
                     key={session.path}
@@ -240,21 +248,44 @@ function PiErrorBanner(): React.JSX.Element | null {
   const piError = useAppStore((s) => s.piError)
   const engineLabel = useAppStore((s) => agentEngineLabel(s.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
   const setCurrentView = useAppStore((s) => s.setCurrentView)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   if (piStatus !== 'error' || !piError) return null
   return (
     <div className="mb-6 flex items-start gap-3 rounded-lg border border-error-bg bg-error-bg px-4 py-3 text-sm text-error">
       <AlertTriangle size={16} className="mt-0.5 shrink-0" />
       <div className="flex-1">
-        <div className="font-medium">Couldn&apos;t start {engineLabel}</div>
+        <div className="font-medium">{t(language, 'couldNotStart', { engine: engineLabel })}</div>
         <div className="mt-0.5 text-error/80">{piError}</div>
-        <div className="mt-1 text-xs text-error/70">Check that {engineLabel} is installed and its path is correct.</div>
+        <div className="mt-1 text-xs text-error/70">{t(language, 'checkPath', { engine: engineLabel })}</div>
       </div>
       <button
         onClick={() => setCurrentView('settings')}
         className="flex shrink-0 items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
       >
         <SettingsIcon size={12} />
-        Settings
+        {t(language, 'settings')}
+      </button>
+    </div>
+  )
+}
+
+function ModelSetupBanner(): React.JSX.Element | null {
+  const customModels = useAppStore((s) => s.customModels)
+  const setCurrentView = useAppStore((s) => s.setCurrentView)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
+  if (hasConfiguredChatModel(customModels)) return null
+  return (
+    <div className="mb-6 flex items-start gap-3 rounded-lg border border-border-strong bg-surface/60 px-4 py-3 text-sm text-primary">
+      <AlertTriangle size={16} className="mt-0.5 shrink-0 text-warning" />
+      <div className="flex-1">
+        <div className="font-medium">{t(language, 'modelSetupTitle')}</div>
+        <div className="mt-0.5 text-xs text-dim">{t(language, 'modelSetupHomeHint')}</div>
+      </div>
+      <button
+        onClick={() => setCurrentView('model-setup')}
+        className="flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs text-white"
+      >
+        {t(language, 'modelSetupHomeAction')}
       </button>
     </div>
   )
@@ -288,6 +319,7 @@ function HomeScreenInfo(): React.JSX.Element {
   const setTaskLauncherOpen = useAppStore((s) => s.setTaskLauncherOpen)
   const setCurrentView = useAppStore((s) => s.setCurrentView)
   const requestChatScrollToBottom = useAppStore((s) => s.requestChatScrollToBottom)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   const [busy, setBusy] = useState(false)
 
   const goChatUnlessError = (): void => {
@@ -298,7 +330,7 @@ function HomeScreenInfo(): React.JSX.Element {
   }
 
   const openFolder = async (): Promise<void> => {
-    const path = await window.piDesktop.system.openDialog({ title: 'Open Folder' })
+    const path = await window.piDesktop.system.openDialog({ title: t(language, 'openFolderDialog') })
     if (!path) return
     setBusy(true)
     try {
@@ -309,6 +341,9 @@ function HomeScreenInfo(): React.JSX.Element {
       }
       if (ws) {
         if (!(await activateWorkspace(ws.id))) return
+        if (useAppStore.getState().piStatus !== 'running' && useAppStore.getState().piStatus !== 'error') {
+          void useAppStore.getState().startPi()
+        }
         goChatUnlessError()
       }
     } finally {
@@ -325,6 +360,9 @@ function HomeScreenInfo(): React.JSX.Element {
     try {
       if (!(await activateWorkspace(activeWorkspace.id))) return
       if (useAppStore.getState().piStatus === 'error') return
+      if (useAppStore.getState().piStatus !== 'running') {
+        void useAppStore.getState().startPi()
+      }
       await createNewSession()
       requestChatScrollToBottom()
       setCurrentView('chat')
@@ -337,44 +375,44 @@ function HomeScreenInfo(): React.JSX.Element {
     <div className="flex-1 overflow-y-auto">
       <div className={clsx('mx-auto max-w-[952px] px-8 py-12', busy && 'pointer-events-none opacity-60')}>
         <PiErrorBanner />
+        <ModelSetupBanner />
 
         <div className="mb-6 flex flex-col items-center text-center">
-          <img src={piLogo} alt="Pi Desktop" className="h-16 w-16" />
-          <h1 className="mt-4 text-2xl font-semibold text-primary">Pi Desktop</h1>
-          <p className="mt-1 text-sm text-dim">Open a workspace or pick up where you left off.</p>
+          <img src={vespiCenterLogo} alt={t(language, 'appName')} draggable={false} className="mx-auto mb-1 h-24 w-auto max-w-[28rem]" />
+          <p className="mt-3 text-sm text-dim">{t(language, 'homeSubtitle')}</p>
         </div>
 
         <div className="mb-6 grid gap-3 sm:grid-cols-3">
           <button
             onClick={() => void openFolder()}
-            className="flex w-full items-center gap-3 rounded-lg border border-border-strong bg-surface px-4 py-3 text-left transition-colors hover:border-border-strong-hover hover:bg-surface-hover"
+            className="flex w-full items-center gap-3 rounded-sm border border-border-strong bg-transparent px-4 py-3 text-left transition-colors hover:border-accent-fg"
           >
             <FolderOpen size={18} className="shrink-0 text-muted" />
             <div className="min-w-0">
-              <div className="text-sm font-medium text-primary">Open Folder</div>
-              <div className="text-xs text-dim">Browse for a project to open as a workspace</div>
+              <div className="text-sm font-medium text-primary">{t(language, 'openFolder')}</div>
+              <div className="text-xs text-dim">{t(language, 'openFolderHint')}</div>
             </div>
           </button>
           <button
             onClick={() => void newSession()}
-            className="flex w-full items-center gap-3 rounded-lg border border-border bg-surface/50 px-4 py-3 text-left transition-colors hover:border-border-strong hover:bg-surface-hover/60"
+            className="flex w-full items-center gap-3 rounded-sm border border-border bg-transparent px-4 py-3 text-left transition-colors hover:border-border-strong"
           >
             <Plus size={18} className="shrink-0 text-muted" />
             <div className="min-w-0">
-              <div className="text-sm font-medium text-primary">New Session</div>
+              <div className="text-sm font-medium text-primary">{t(language, 'newSession')}</div>
               <div className="truncate text-xs text-dim">
-                {activeWorkspace ? `In ${activeWorkspace.name}` : 'Pick a folder first'}
+                {activeWorkspace ? t(language, 'newSessionIn', { name: activeWorkspace.name }) : t(language, 'pickFolderFirst')}
               </div>
             </div>
           </button>
           <button
             onClick={() => setTaskLauncherOpen(true)}
-            className="flex w-full items-center gap-3 rounded-lg border border-accent/50 bg-accent-bg/30 px-4 py-3 text-left transition-colors hover:border-accent hover:bg-accent-bg/50"
+            className="flex w-full items-center gap-3 rounded-sm border border-border-strong bg-transparent px-4 py-3 text-left transition-colors hover:border-accent-fg"
           >
             <Play size={18} className="shrink-0 text-accent-fg" />
             <div className="min-w-0">
-              <div className="text-sm font-medium text-primary">New Task</div>
-              <div className="truncate text-xs text-dim">Start work in a fresh Pi session</div>
+              <div className="text-sm font-medium text-primary">{t(language, 'newTask')}</div>
+              <div className="truncate text-xs text-dim">{t(language, 'newTaskHint')}</div>
             </div>
           </button>
         </div>

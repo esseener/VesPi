@@ -16,24 +16,26 @@ import {
 } from './app-data-paths'
 
 test('getCanonicalUserDataDir appends the canonical dir name', () => {
-  assert.equal(getCanonicalUserDataDir('/home/test/.config'), '/home/test/.config/pi-desktop')
+  assert.equal(getCanonicalUserDataDir(join('/home', 'test', '.config')), join('/home', 'test', '.config', 'vespi'))
   assert.equal(
-    getCanonicalUserDataDir('/Users/test/Library/Application Support'),
-    '/Users/test/Library/Application Support/pi-desktop'
+    getCanonicalUserDataDir(join('/Users', 'test', 'Library', 'Application Support')),
+    join('/Users', 'test', 'Library', 'Application Support', 'vespi')
   )
   assert.equal(
-    getCanonicalUserDataDir('C:\\Users\\test\\AppData\\Roaming'),
-    'C:\\Users\\test\\AppData\\Roaming/pi-desktop'
+    getCanonicalUserDataDir(join('C:\\Users\\test\\AppData\\Roaming')),
+    join('C:\\Users\\test\\AppData\\Roaming', 'vespi')
   )
 })
 
 test('getLegacyGuiDataDirs lists home and electron legacy dirs', () => {
   assert.deepEqual(
-    getLegacyGuiDataDirs({ homeDir: '/home/test', appDataDir: '/home/test/.config' }),
+    getLegacyGuiDataDirs({ homeDir: join('/home', 'test'), appDataDir: join('/home', 'test', '.config') }),
     [
-      '/home/test/.pi-desktop-gui',
-      '/home/test/.config/PI Desktop',
-      '/home/test/.config/pi-desktop-gui',
+      join('/home', 'test', '.vespi'),
+      join('/home', 'test', '.config', 'VesPi'),
+      join('/home', 'test', '.config', 'Pi Desktop'),
+      join('/home', 'test', '.config', 'pi-desktop'),
+      join('/home', 'test', '.config', 'pi-desktop-gui'),
     ]
   )
 })
@@ -42,8 +44,8 @@ test('getExternalGuiDataDir returns the externally-set override as an absolute p
   assert.equal(getExternalGuiDataDir({}), undefined)
   assert.equal(getExternalGuiDataDir({ [GUI_DATA_ENV_VAR]: '' }), undefined)
   assert.equal(
-    getExternalGuiDataDir({ [GUI_DATA_ENV_VAR]: '/tmp/pi-desktop-scratch' }),
-    '/tmp/pi-desktop-scratch'
+    getExternalGuiDataDir({ [GUI_DATA_ENV_VAR]: join('/tmp', 'vespi-scratch') }),
+    resolve(join('/tmp', 'vespi-scratch'))
   )
   assert.equal(
     getExternalGuiDataDir({ [GUI_DATA_ENV_VAR]: 'scratch-profile' }),
@@ -52,15 +54,15 @@ test('getExternalGuiDataDir returns the externally-set override as an absolute p
 })
 
 test('getGuiDataPath / getLegacyGuiDataPath resolve under the right root', () => {
+  const userDataDir = join('/home', 'test', '.config', 'vespi')
   assert.equal(
-    getGuiDataPath('settings.json', { userDataDir: '/home/test/.config/pi-desktop' }),
-    '/home/test/.config/pi-desktop/settings.json'
+    getGuiDataPath('settings.json', { userDataDir }),
+    join(userDataDir, 'settings.json')
   )
   assert.equal(
-    getLegacyGuiDataPath('settings.json', { homeDir: '/home/test' }),
-    '/home/test/.pi-desktop-gui/settings.json'
+    getLegacyGuiDataPath('settings.json', { homeDir: join('/home', 'test') }),
+    join('/home', 'test', '.vespi', 'settings.json')
   )
-  const userDataDir = '/home/test/.config/pi-desktop'
   for (const fileName of GUI_DATA_FILES) {
     assert.equal(getGuiDataPath(fileName, { userDataDir }), join(userDataDir, fileName))
   }

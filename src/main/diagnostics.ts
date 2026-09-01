@@ -76,6 +76,7 @@ export async function collectDiagnostics(
       chrome: process.versions.chrome ?? 'unknown',
       node: process.versions.node ?? 'unknown',
       platform: process.platform,
+      arch: process.arch,
     },
     piBinary: {
       found: cli.found,

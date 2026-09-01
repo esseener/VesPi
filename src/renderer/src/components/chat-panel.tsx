@@ -1,6 +1,9 @@
 import { useAppStore } from '../store'
 import { agentEngineLabel } from '../../../shared/agent-engine-label'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { pickEmptyChatSuggestions } from '../empty-chat-suggestions'
 import { ChatInput } from './chat-input'
+
 import { ChatProjectPicker } from './chat-project-picker'
 import { CouncilPanels } from './council-panels'
 import { MessageBubble, ToolGroupBubble } from './message-bubble'
@@ -23,21 +26,22 @@ import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
 import { DiffViewer } from './diff-viewer'
 import { TerminalPanel } from './terminal'
+import { BrowserPanel } from './browser-panel'
+import { SideTabPicker } from './side-tab-picker'
+import { ReviewRail } from './review-rail'
 import { useChatScroll, useGlobalWorkflowOpen } from '../hooks'
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
-import piLogo from '../assets/pi-logo.svg'
+import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import {
   FolderTree,
   GitCompare,
-  Terminal,
+  Globe,
+  LayoutPanelLeft,
   ShieldCheck,
-  PanelLeft,
-  PanelLeftClose,
+  SquareTerminal,
   X,
   ChevronDown,
-  Loader2,
-  Workflow as WorkflowIcon,
 } from 'lucide-react'
 
 // Fallback padding when the composer has not measured yet (~idle pill + gradient).
@@ -69,13 +73,16 @@ export function ChatPanel(): React.JSX.Element {
   const streamingToolCalls = useAppStore((state) => state.streamingToolCalls)
   const piStatus = useAppStore((state) => state.piStatus)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? 'Pi')
-  const terminalOpen = useAppStore((state) => state.terminalOpen)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  const activeWorkspace = useAppStore((state) => state.activeWorkspace)
+  const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
+  const sessionState = useAppStore((state) => state.sessionState)
+
   const reviewOpen = useAppStore((state) => state.reviewOpen)
-  const sidebarOpen = useAppStore((state) => state.sidebarOpen)
+  const terminalOpen = useAppStore((state) => state.terminalOpen)
+  const previewTarget = useAppStore((state) => state.previewTarget)
   const fileSearchOpen = useAppStore((state) => state.fileSearchOpen)
   const toggleFileSearch = useAppStore((state) => state.toggleFileSearch)
-  const previewTarget = useAppStore((state) => state.previewTarget)
-  const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
 
   // sidePanel lives in the store so it survives view switches (e.g. Settings
   // round-trip). Widths stay local — resetting them on remount is benign.
@@ -133,6 +140,14 @@ export function ChatPanel(): React.JSX.Element {
   // the grouping only recomputes when the message list changes, and so lone
   // MessageBubbles keep their stable refs (no markdown re-parse on re-render).
   const renderItems = useMemo(() => groupToolMessages(prepareChatMessages(messages)), [messages])
+  const emptyChatSuggestions = useMemo(
+    () => pickEmptyChatSuggestions({
+      language,
+      seed: activeSessionRuntimeId ?? sessionState?.sessionFile ?? activeWorkspace?.id ?? 'empty',
+      workspacePath: activeWorkspace?.path,
+    }),
+    [language, activeSessionRuntimeId, sessionState?.sessionFile, activeWorkspace?.id, activeWorkspace?.path],
+  )
 
   const handleRetry = useCallback(async (messageId: string) => {
     // Read from the store so this callback stays referentially stable, keeping
@@ -144,12 +159,14 @@ export function ChatPanel(): React.JSX.Element {
     }
   }, [])
 
-  const activeWorkspace = useAppStore((state) => state.activeWorkspace)
-  const showSidePanel = sidePanel !== null || previewTarget !== null
+  const showPicker = sidePanel === 'picker'
+  const showSidePanel = showPicker || sidePanel !== null || previewTarget !== null
   const showFileTree = sidePanel === 'files'
   const showImage = previewTarget?.kind === 'image' && sidePanel !== 'diff'
   const showEditor = previewTarget?.kind === 'code' && sidePanel !== 'diff'
   const showDiff = sidePanel === 'diff'
+  const showReview = sidePanel === 'review'
+  const showBrowser = sidePanel === 'browser'
   const {
     fileTreeOnly: showFileTreeOnly,
     minSidePanelWidth,
@@ -163,63 +180,24 @@ export function ChatPanel(): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         {/* Main chat area */}
         <div className="chat-center flex flex-1 flex-col overflow-hidden">
-          {/* Toolbar */}
-          <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-            <div className="flex items-center gap-0.5">
-              {/* Workspace path — always visible */}
+          {/* Toolbar: path + view toggles. Sidebar/terminal live in status bar. */}
+          <div className="flex h-8 items-center justify-between border-b border-border px-2">
+            <div className="flex min-w-0 items-center gap-2">
               {activeWorkspace && (
-                <div className="flex items-center gap-1.5 mr-2 px-2 py-0.5 rounded bg-card/60" title={activeWorkspace.path}>
-                  <FolderTree size={12} className="text-dim shrink-0" />
-                  <span className="text-xs text-muted max-w-[300px] truncate">
-                    {activeWorkspace.name}: {activeWorkspace.path}
+                <div className="flex min-w-0 items-center gap-1.5 border border-border px-1.5 py-0.5" title={activeWorkspace.path}>
+                  <FolderTree size={12} className="shrink-0 text-secondary" />
+                  <span className="truncate font-jetbrains text-[11px] text-secondary">
+                    {activeWorkspace.path}
                   </span>
                 </div>
               )}
+            </div>
+            <div className="flex shrink-0 items-center gap-px">
               <ToolbarButton
-                icon={sidebarOpen ? <PanelLeftClose size={14} /> : <PanelLeft size={14} />}
-                active={false}
-                onClick={() => useAppStore.getState().toggleSidebar()}
-                title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-              />
-              <ToolbarButton
-                icon={<ShieldCheck size={14} />}
-                active={reviewOpen}
-                onClick={() => useAppStore.getState().toggleReview()}
-                title="Review panel"
-              />
-              <ToolbarButton
-                icon={<FolderTree size={14} />}
-                active={sidePanel === 'files'}
-                onClick={() => void setSidePanel(sidePanel === 'files' ? null : 'files')}
-                title="File tree"
-              />
-              <ToolbarButton
-                icon={<GitCompare size={14} />}
-                active={sidePanel === 'diff'}
-                onClick={() => void setSidePanel(sidePanel === 'diff' ? null : 'diff')}
-                title="Diff viewer"
-              />
-              <ToolbarButton
-                icon={<Terminal size={14} />}
-                active={terminalOpen}
-                onClick={() => useAppStore.getState().toggleTerminal()}
-                title="Terminal"
-              />
-              <ToolbarButton
-                icon={<WorkflowIcon size={14} />}
-                active={workflowPanelOpen}
-                workflowToggle
-                onClick={() => {
-                  // Session-surface button: while a session is active this opens
-                  // THAT session's runs (scoped by Pi's header UUID, the exact
-                  // identifier persisted runs carry). The global list is only a
-                  // fallback for the no-session state; closing preserves scope.
-                  const state = useAppStore.getState()
-                  if (state.workflowPanelOpen) state.setWorkflowPanelOpen(false)
-                  else if (state.sessionState?.sessionId) state.openWorkflowRunsForSession(state.sessionState.sessionId)
-                  else state.setWorkflowPanelOpen(true)
-                }}
-                title="Workflow runs"
+                icon={<LayoutPanelLeft size={13} />}
+                active={showSidePanel}
+                onClick={() => void setSidePanel(showSidePanel ? null : 'picker')}
+                title={showSidePanel ? t(language, 'closeSideTabs') : t(language, 'openSideTabs')}
               />
             </div>
           </div>
@@ -242,30 +220,29 @@ export function ChatPanel(): React.JSX.Element {
                   <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
                     <div className="mb-8 text-center">
                       <img
-                        src={piLogo}
-                        alt="Pi Desktop"
-                        className="mx-auto mb-4 block h-14 w-14"
+                        src={vespiCenterLogo}
+                        alt={t(language, 'appName')}
+                        draggable={false}
+                        className="mx-auto mb-4 block h-32 w-auto max-w-[40rem]"
                       />
-                      <h2 className="text-2xl font-semibold text-primary">What should {engineLabel} work on?</h2>
-                      <p className="mt-1 text-sm text-dim">
+                      <p className="text-sm text-dim">
                         {piStatus === 'running'
-                          ? 'Pick a project and describe what you want done.'
+                          ? t(language, 'pickProjectDescribe')
                           : piStatus === 'starting'
-                            ? `Starting ${engineLabel} agent…`
+                            ? t(language, 'startingAgent', { engine: engineLabel })
                             : piStatus === 'error'
-                              ? `Failed to start ${engineLabel}. Check settings.`
-                              : `Choose a project — ${engineLabel} starts when you send.`}
+                              ? t(language, 'failedStartCheckSettings', { engine: engineLabel })
+                              : t(language, 'chooseProjectStartsOnSend')}
                       </p>
                     </div>
                     <div className="w-full max-w-3xl">
                       {piStatus === 'running' && (
                         <div className="mb-4 flex flex-wrap justify-center gap-2 px-4">
-                          {EXAMPLE_PROMPTS.map((prompt) => (
+                          {emptyChatSuggestions.map((prompt) => (
                             <button
                               key={prompt}
                               type="button"
                               onClick={() => {
-                                // Fill the composer only — never start a turn from a chip misclick.
                                 useAppStore.getState().insertPrompt(prompt, true)
                               }}
                               className="rounded-lg border border-border-strong px-3 py-1.5 text-xs text-muted hover:border-border-strong-hover hover:text-secondary transition-colors"
@@ -290,7 +267,8 @@ export function ChatPanel(): React.JSX.Element {
                     {sessionLoading && messages.length === 0 ? (
                       <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-dim">
                         <div className="h-5 w-5 animate-spin rounded-full border-2 border-border-strong border-t-accent" />
-                        {piStatus === 'running' ? 'Loading session…' : 'Starting agent…'}
+                        {piStatus === 'running' ? t(language, 'startingAgent', { engine: engineLabel }) : t(language, 'startingAgent', { engine: engineLabel })}
+
                       </div>
                     ) : (
                       <NowContext.Provider value={now}>
@@ -331,12 +309,13 @@ export function ChatPanel(): React.JSX.Element {
                       onClick={scrollToBottom}
                       className="absolute left-1/2 z-20 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border-strong bg-card/90 text-secondary shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-elevated hover:text-primary"
                       style={{ bottom: composerPadPx + 12 }}
-                      title="Scroll to bottom"
-                      aria-label="Scroll to bottom"
+                      title={t(language, 'scrollToBottom')}
+                      aria-label={t(language, 'scrollToBottom')}
                     >
                       <ChevronDown size={16} />
                     </button>
                   )}
+
 
                   <div
                     ref={composerWrapRef}
@@ -347,10 +326,10 @@ export function ChatPanel(): React.JSX.Element {
                     </div>
                     {reattachedMidTurn && (
                       <div className="pointer-events-auto mx-auto mb-2 w-full max-w-5xl px-4">
-                        <div className="flex items-center gap-2.5 rounded-md bg-accent px-4 py-2.5 text-sm text-white shadow-lg shadow-black/30">
-                          <Loader2 size={16} className="shrink-0 animate-spin" />
-                          <span className="shrink-0 font-medium">{engineLabel} is still working in this session.</span>
-                          <span className="min-w-0 flex-1 truncate text-white/80">
+                        <div className="flex items-center gap-2.5 rounded-sm border border-border-strong bg-transparent px-4 py-2.5 text-sm text-primary">
+                          <span className="run-silver h-3 w-3 shrink-0 rounded-full" aria-hidden="true" />
+                          <span className="shrink-0 font-medium">still working</span>
+                          <span className="min-w-0 flex-1 truncate text-dim">
                             The response appears here the moment it finishes.
                           </span>
                         </div>
@@ -383,6 +362,9 @@ export function ChatPanel(): React.JSX.Element {
               }}
             />
             <div className="flex min-w-0 flex-1 overflow-hidden">
+              {showPicker && <SideTabPicker />}
+              {showReview && <ReviewRail embedded />}
+              {showBrowser && <BrowserPanel />}
               {showFileTree && (
                 <>
                   <div className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>
@@ -401,18 +383,15 @@ export function ChatPanel(): React.JSX.Element {
               )}
               {showDiff && (
                 <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-                  <DiffViewer onClose={() => setSidePanel(null)} />
+                  <DiffViewer onClose={() => void setSidePanel(null)} />
                 </div>
               )}
               {showEditor && (
                 <div
                   className={clsx(
                     'flex flex-1 flex-col overflow-hidden',
-                    // Divider only when the file tree is beside it; alone, the
-                    // outer panel's border-l is the left edge (avoids doubling).
                     showFileTree && 'border-l border-border'
                   )}
-                  // The same constant the file pane's ceiling reserves for.
                   style={{ minWidth: MIN_EDITOR_PANE_WIDTH }}
                 >
                   <FilePreview />
@@ -427,11 +406,11 @@ export function ChatPanel(): React.JSX.Element {
                 </div>
               )}
             </div>
-            {showFileTreeOnly && (
+            {!showPicker && (
               <button
-                onClick={() => setSidePanel(null)}
+                onClick={() => void setSidePanel(null)}
                 className="absolute top-1 right-1 z-10 rounded p-1 text-faint hover:text-muted"
-                title="Close file tree"
+                title={t(language, 'openSideTabs')}
               >
                 <X size={12} />
               </button>
@@ -454,18 +433,15 @@ function ToolbarButton({
   active,
   onClick,
   title,
-  workflowToggle = false,
 }: {
   icon: React.ReactNode
   active: boolean
   onClick: () => void
   title: string
-  workflowToggle?: boolean
 }): React.JSX.Element {
   return (
     <button
       onClick={onClick}
-      data-workflow-toggle={workflowToggle ? 'true' : undefined}
       className={clsx(
         'rounded p-1 transition-colors',
         active
@@ -479,9 +455,3 @@ function ToolbarButton({
   )
 }
 
-const EXAMPLE_PROMPTS = [
-  'Explain this project structure',
-  'Find all TODO comments',
-  'Run the test suite',
-  'Help me debug an error',
-]

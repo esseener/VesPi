@@ -13,13 +13,14 @@ export interface PiCommand {
 export const BUILTIN_SOURCE = 'builtin'
 
 const GROUPS: Array<{ source: string; label: string }> = [
-  { source: 'skill', label: 'Skills' },
-  { source: 'prompt', label: 'Prompts' },
-  { source: BUILTIN_SOURCE, label: 'Commands' },
-  { source: 'extension', label: 'Extensions' },
+  { source: 'skill', label: 'skill' },
+  { source: 'prompt', label: 'prompt' },
+  { source: BUILTIN_SOURCE, label: 'builtin' },
+  { source: 'extension', label: 'extension' },
 ]
 
 export interface CommandGroup {
+  source: string
   label: string
   items: PiCommand[]
 }
@@ -57,6 +58,7 @@ export function invocationToken(name: string, source: string): string {
  * Group commands by source in display order (empty groups dropped), with an
  * "Other" catch-all for any unexpected source so nothing is silently hidden.
  * `flat` matches the visual order — keyboard navigation indexes it.
+ * `label` stays the source key; UI localizes it.
  */
 export function groupCommands(results: PiCommand[]): {
   grouped: CommandGroup[]
@@ -64,10 +66,11 @@ export function groupCommands(results: PiCommand[]): {
 } {
   const known = new Set(GROUPS.map((g) => g.source))
   const grouped = GROUPS.map((g) => ({
+    source: g.source,
     label: g.label,
     items: results.filter((r) => r.source === g.source),
   })).filter((g) => g.items.length > 0)
   const other = results.filter((r) => !known.has(r.source))
-  if (other.length > 0) grouped.push({ label: 'Other', items: other })
+  if (other.length > 0) grouped.push({ source: 'other', label: 'other', items: other })
   return { grouped, flat: grouped.flatMap((g) => g.items) }
 }

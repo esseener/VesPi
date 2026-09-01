@@ -8,21 +8,22 @@ import {
   getPermissionModeLabel,
   getPermissionModeDescription,
 } from './permission-mode'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useAppStore } from '../store'
 
 interface ComposerPermissionMenuProps {
   value: PermissionMode | null | undefined
   onChange: (mode: PermissionMode) => Promise<void> | void
 }
 
-/**
- * Compact permission-mode picker for the composer toolbar (same modes as review).
- */
 export function ComposerPermissionMenu({ value, onChange }: ComposerPermissionMenuProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [isOpen, setIsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const mode = value ?? DEFAULT_PERMISSION_MODE
   const isTrusted = mode === 'trusted'
+
 
   useEffect(() => {
     if (!isOpen) return
@@ -54,9 +55,9 @@ export function ComposerPermissionMenu({ value, onChange }: ComposerPermissionMe
             ? 'bg-warning/15 text-warning hover:bg-warning/35'
             : 'hover:bg-highlight-strong text-secondary hover:text-primary'
         )}
-        title={getPermissionModeDescription(mode).replace(/\.$/, '')}
+        title={getPermissionModeDescription(mode, language).replace(/\.$/, '')}
       >
-        {getPermissionModeLabel(mode)}
+        {getPermissionModeLabel(mode, language)}
         <ChevronUp
           size={12}
           className={clsx(
@@ -69,7 +70,7 @@ export function ComposerPermissionMenu({ value, onChange }: ComposerPermissionMe
 
       {isOpen && (
         <div className="absolute bottom-full left-0 z-50 mb-1 min-w-[180px] rounded-lg border border-border-strong bg-app py-1 shadow-xl shadow-black/40">
-          <div className="px-3 pb-0.5 pt-1 text-[11px] text-dim">Permissions</div>
+          <div className="px-3 pb-0.5 pt-1 text-[11px] text-dim">{t(language, 'permissions')}</div>
           {PERMISSION_MODE_OPTIONS.map((option) => (
             <button
               key={option.value}
@@ -78,7 +79,8 @@ export function ComposerPermissionMenu({ value, onChange }: ComposerPermissionMe
               onClick={() => handleSelect(option.value)}
               className="hover:bg-highlight flex w-full items-center justify-between gap-6 whitespace-nowrap px-3 py-1 text-left text-xs text-primary transition-colors disabled:opacity-60"
             >
-              <span>{option.label}</span>
+              <span>{t(language, option.labelKey)}</span>
+
               {option.value === mode && <Check size={12} className="shrink-0 text-muted" />}
             </button>
           ))}

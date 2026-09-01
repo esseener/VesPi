@@ -39,6 +39,7 @@ import type {
   Workspace,
   InstalledPackage,
   InstalledSkill,
+  SkillMutationResult,
   CatalogPackage,
   TimelineEvent,
   PermissionMode,
@@ -58,6 +59,7 @@ import type {
   SessionDeleteResult,
 } from '../../shared/ipc-contracts'
 
+import { DEFAULT_LANGUAGE, t, type MessageKey } from '../../shared/i18n'
 export type { DisplayAttachment, DisplayMessage } from './message-parsing'
 
 // ─── Preview Target ──────────────────────────────────────────────────────────
@@ -113,34 +115,13 @@ export interface ConfirmRequest extends ConfirmOptions {
 /** The actions that abandon the live turn, either by replacing the session or by leaving it. */
 export type SessionChangeAction = 'switch' | 'new' | 'fork' | 'clone' | 'workspace' | 'changeFolder'
 
-const discardWarning = (verb: string): string =>
-  `Pi has not finished responding in this session. ${verb} stops it: whatever Pi already wrote ` +
-  'to the session is kept, but the rest of the response — including any tool calls still ' +
-  'running — is discarded.'
-
-const SESSION_CHANGE_PROMPTS: Record<SessionChangeAction, { message: string; confirmLabel: string }> = {
-  switch: { message: discardWarning('Opening another session'), confirmLabel: 'Switch anyway' },
-  new: { message: discardWarning('Starting a new session'), confirmLabel: 'Start anyway' },
-  fork: { message: discardWarning('Forking this session'), confirmLabel: 'Fork anyway' },
-  clone: { message: discardWarning('Cloning this branch'), confirmLabel: 'Clone anyway' },
-  // Leaving a workspace does not tear the session down — each workspace has its
-  // own Pi process and nothing stops it. The turn keeps running in the
-  // background: its output lands in the session file and is restored on
-  // switch-back, and any blocking prompt it raises while the user is away is
-  // held by the main process and re-shown when this workspace is active again.
-  workspace: {
-    message:
-      'Pi has not finished responding in this session. It keeps working after you switch: ' +
-      'the response is saved to the session and restored when you come back, and any ' +
-      'prompt Pi raises while you are away is held and shown on your return.',
-    confirmLabel: 'Switch anyway',
-  },
-  // Unlike a workspace switch, this restarts the workspace's Pi (its working
-  // directory is bound at spawn), so the turn does not survive in the background.
-  changeFolder: {
-    message: discardWarning('Changing the project folder restarts Pi, which'),
-    confirmLabel: 'Change anyway',
-  },
+const SESSION_CHANGE_PROMPTS: Record<SessionChangeAction, { messageKey: MessageKey; confirmKey: MessageKey; verbKey?: MessageKey }> = {
+  switch: { messageKey: 'confirmDiscardWarning', confirmKey: 'confirmSwitchAnyway', verbKey: 'confirmVerbSwitch' },
+  new: { messageKey: 'confirmDiscardWarning', confirmKey: 'confirmStartAnyway', verbKey: 'confirmVerbNew' },
+  fork: { messageKey: 'confirmDiscardWarning', confirmKey: 'confirmForkAnyway', verbKey: 'confirmVerbFork' },
+  clone: { messageKey: 'confirmDiscardWarning', confirmKey: 'confirmCloneAnyway', verbKey: 'confirmVerbClone' },
+  workspace: { messageKey: 'confirmWorkspaceSwitch', confirmKey: 'confirmSwitchAnyway' },
+  changeFolder: { messageKey: 'confirmDiscardWarning', confirmKey: 'confirmChangeAnyway', verbKey: 'confirmVerbChangeFolder' },
 }
 
 /** Total prompts held for workspaces other than the active one (whose prompt is already on screen). */
@@ -155,13 +136,13 @@ export function countPromptsWaitingElsewhere(
   return total
 }
 
-/** Badge/status label for held prompts, e.g. "2 Pi prompts waiting". */
-export function formatPromptsWaiting(count: number): string {
-  return `${count} Pi prompt${count === 1 ? '' : 's'} waiting`
+/** Badge/status label for held prompts. */
+export function formatPromptsWaiting(count: number, language = DEFAULT_LANGUAGE): string {
+  return t(language, 'statusPromptsWaiting', { count: String(count) })
 }
 
 function councilErrorMessage(error: unknown): string {
-  return `Council failed: ${error instanceof Error ? error.message : String(error)}`
+  return t(DEFAULT_LANGUAGE, 'sysCouncilFailed', { detail: errDetail(error) })
 }
 
 /**
@@ -242,6 +223,11 @@ interface AppState {
   >
   isStreaming: boolean
   /**
+   * Bumped when a model turn finishes successfully. The renderer plays a
+   * short chime off this; abort/session-switch must not touch it.
+   */
+  completionChimeAt: number
+  /**
    * The renderer attached to a turn already in flight (workspace switch-back
    * or notification click into a working workspace). The stream buffers only
    * hold what arrived after the attach, so the next turn boundary must
@@ -256,7 +242,7 @@ interface AppState {
   pendingFollowUp: string[]
 
   // UI
-  currentView: 'home' | 'chat' | 'mission-control' | 'settings' | 'sessions' | 'timeline' | 'packages' | 'diff' | 'notes' | 'skills' | 'diagnostics'
+  currentView: 'home' | 'chat' | 'mission-control' | 'settings' | 'sessions' | 'timeline' | 'packages' | 'diff' | 'notes' | 'skills' | 'diagnostics' | 'about' | 'model-setup'
   // Scope for the Sessions view: 'current' shows only the active workspace's
   // sessions, 'all' keeps every project's history visible. Entry points set it
   // (sidebar Sessions = current, View all / command palette = all); the panel's
@@ -272,10 +258,9 @@ interface AppState {
   // session/workspace from Home). In-app session switches leave it untouched so
   // the chat restores each session's remembered scroll position instead.
   chatScrollBottomNonce: number
-  // Chat side panel: which secondary view (file tree or diff) is open in
-  // the chat workspace. Lifted into the store so it survives navigating
-  // away from chat (e.g. into Settings) and back.
-  chatSidePanel: 'files' | 'diff' | null
+  // Chat side panel: which secondary view is open in the chat workspace.
+  // Lifted into the store so it survives navigating away from chat and back.
+  chatSidePanel: 'files' | 'diff' | 'review' | 'terminal' | 'browser' | 'picker' | null
   sidebarOpen: boolean
   terminalOpen: boolean
   reviewOpen: boolean
@@ -350,9 +335,11 @@ interface AppState {
   // Skills
   installedSkills: InstalledSkill[]
 
-  // Custom models config (~/.pi/agent/models.json)
+  // Custom models config (~/.omp/profiles/vespi/agent/models.json for OMP)
   customModels: ModelsConfig | null
   customModelsError: string | null
+  customModelsPath: string | null
+
 
   // Council run UI state (null when no council run is active)
   councilRun: CouncilRunState | null
@@ -542,8 +529,10 @@ interface AppActions {
   loadCatalog: () => Promise<void>
   clearPackageNotification: () => void
 
-  // Skills
   loadSkills: () => Promise<void>
+  createSkill: (name: string, description: string) => Promise<SkillMutationResult>
+  deleteSkill: (path: string) => Promise<SkillMutationResult>
+  evolveSkill: (path: string, direction: string) => Promise<SkillMutationResult>
 
   // Custom models config
   loadCustomModels: () => Promise<void>
@@ -602,6 +591,30 @@ function generateId(): string {
   return `msg-${Date.now()}-${++messageCounter}`
 }
 
+function currentLanguage(get: () => AppState & AppActions): typeof DEFAULT_LANGUAGE {
+  const state = get()
+  return state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+}
+
+function notice(
+  key: MessageKey,
+  vars?: Record<string, string>,
+): DisplayMessage {
+  return {
+    id: generateId(),
+    role: 'system',
+    content: t(DEFAULT_LANGUAGE, key, vars),
+    timestamp: Date.now(),
+    i18nKey: key,
+    i18nVars: vars,
+  }
+}
+
+function errDetail(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  return raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '')
+}
+
 function normalizePiCommands(raw: unknown): PiCommand[] {
   if (!Array.isArray(raw)) return []
   return raw
@@ -617,6 +630,24 @@ function normalizePiCommands(raw: unknown): PiCommand[] {
 // Bumps on every session switch / explicit reload so in-flight getMessages
 // results from a previous switch are dropped instead of fighting the UI.
 let sessionLoadGeneration = 0
+
+const AUTO_COMPACT_PERCENT = 80
+let autoCompactInFlight = false
+
+function maybeAutoCompact(get: () => AppState & AppActions): void {
+  if (autoCompactInFlight) return
+  const state = get()
+  if (state.piStatus !== 'running') return
+  if (state.isStreaming) return
+  if (state.sessionState?.isCompacting) return
+  const percent = state.sessionStats?.contextUsage?.percent
+  if (!Number.isFinite(percent) || (percent as number) < AUTO_COMPACT_PERCENT) return
+  autoCompactInFlight = true
+  void get().compactContext().finally(() => {
+    autoCompactInFlight = false
+  })
+}
+
 
 /**
  * Texts of prompts this GUI just sent to Pi, awaiting their echo on the RPC
@@ -839,11 +870,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   streamingThinking: '',
   streamingToolCalls: new Map(),
   isStreaming: false,
-  reattachedMidTurn: false,
+  completionChimeAt: 0,
   sessionLoading: false,
 
   pendingSteering: [],
   pendingFollowUp: [],
+  reattachedMidTurn: false,
 
   // Default to the Home/launcher view; useInitialize switches to 'chat' when
   // the openToHomeOnLaunch setting is off (legacy boot-into-chat behavior).
@@ -886,6 +918,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   customModels: null,
   customModelsError: null,
+  customModelsPath: null,
+
   councilRun: null,
 
   previewTarget: null,
@@ -1044,12 +1078,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         await window.piDesktop.commands.prompt(prompt, options)
       }
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysError', { detail: errDetail(err) }))
       set({ isStreaming: false })
     }
   },
@@ -1061,12 +1090,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       recordLocalEcho(message)
       await window.piDesktop.commands.steer(message)
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Steer error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysSteerError', { detail: errDetail(err) }))
     }
   },
 
@@ -1076,12 +1100,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       recordLocalEcho(message)
       await window.piDesktop.commands.followUp(message)
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Follow-up error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysFollowUpError', { detail: errDetail(err) }))
     }
   },
 
@@ -1216,14 +1235,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // `isStreaming`, which is the signal this gate reads.
   confirmSessionChange: async (action) => {
     if (!get().isStreaming) return true
-    const { message, confirmLabel } = SESSION_CHANGE_PROMPTS[action]
+    const lang = currentLanguage(get)
+    const spec = SESSION_CHANGE_PROMPTS[action]
+    const message = spec.verbKey
+      ? t(lang, spec.messageKey, { verb: t(lang, spec.verbKey) })
+      : t(lang, spec.messageKey)
     return get().requestConfirm({
-      title: 'Pi is still working',
+      title: t(lang, 'confirmPiWorking'),
       message,
-      confirmLabel,
-      cancelLabel: 'Keep working',
-      // Discards work in progress, so the confirm button reads as destructive and
-      // "Keep working" takes the initial focus.
+      confirmLabel: t(lang, spec.confirmKey),
+      cancelLabel: t(lang, 'confirmKeepWorking'),
       danger: true,
     })
   },
@@ -1238,44 +1259,46 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const result = await window.piDesktop.session.createNew() as SessionRuntimeInfo | { success?: boolean; error?: string } | null
       if (gen !== sessionLoadGeneration) return
       if (result && 'success' in result && result.success === false) {
-        get().addMessage({
-          id: generateId(),
-          role: 'system',
-          content: result.error ?? 'Cannot create session',
-          timestamp: Date.now(),
-        })
+        get().addMessage(notice('sysCannotCreateSession', { detail: result.error ? `: ${result.error}` : '' }))
         set(idleTurnState())
         return
       }
       get().clearMessages()
       const runtime = result && 'runtimeId' in result ? result : null
-      set({
-        currentView: 'chat',
-        sessionState: null,
-        sessionStats: null,
-        // A new session has no history to wait for. Show the empty chat
-        // immediately; the runtime event hydrates its generated session path
-        // when Pi is ready, while piStatus still communicates startup.
-        sessionLoading: false,
-        ...(runtime ? {
-          activeSessionRuntimeId: runtime.runtimeId,
-          piStatus: runtime.status === 'stopped' ? 'starting' : runtime.status,
-          piPid: runtime.pid,
-          piEngine: runtime.engine ?? 'pi',
-          piError: runtime.error,
-        } : {}),
+      set((state) => {
+        const nextRuntimes = { ...state.sessionRuntimes }
+        if (runtime) {
+          for (const id of Object.keys(nextRuntimes)) {
+            if (nextRuntimes[id].workspaceId === runtime.workspaceId) {
+              nextRuntimes[id] = { ...nextRuntimes[id], active: false }
+            }
+          }
+          nextRuntimes[runtime.runtimeId] = { ...runtime, active: true }
+        }
+        return {
+          currentView: 'chat' as const,
+          sessionState: null,
+          sessionStats: null,
+          // A new session has no history to wait for. Show the empty chat
+          // immediately; the runtime event hydrates its generated session path
+          // when Pi is ready, while piStatus still communicates startup.
+          sessionLoading: false,
+          sessionRuntimes: nextRuntimes,
+          ...(runtime ? {
+            activeSessionRuntimeId: runtime.runtimeId,
+            piStatus: runtime.status === 'stopped' ? 'starting' : runtime.status,
+            piPid: runtime.pid,
+            piEngine: runtime.engine ?? 'pi',
+            piError: runtime.error,
+          } : {}),
+        }
       })
       // The runtime start is intentionally asynchronous. Its runtime event
       // hydrates this empty chat once Pi is ready.
       scheduleSessionListRefresh(get)
     } catch (err) {
       if (gen !== sessionLoadGeneration) return
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `New session error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysNewSessionError', { detail: errDetail(err) }))
     }
   },
 
@@ -1323,23 +1346,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         piError: runtime.error,
       })
       if (reusedWorktree) {
-        get().addMessage({
-          id: generateId(),
-          role: 'system',
-          content: 'Found the related existing Git worktree and continued the task there.',
-          timestamp: Date.now(),
-        })
+        get().addMessage(notice('sysWorktreeContinued'))
       }
       scheduleSessionListRefresh(get)
       return true
     } catch (err) {
       if (gen !== 0 && gen !== sessionLoadGeneration) return false
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Task launch error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysTaskLaunchError', { detail: errDetail(err) }))
       set({ sessionLoading: false })
       return false
     }
@@ -1351,10 +1364,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
     if (runtime.activity === 'working' || runtime.activity === 'needs-approval') {
       const confirmed = await get().requestConfirm({
-        title: 'Close session tab?',
-        message: 'Pi is still working in this session. Closing the tab stops its runtime; saved messages remain available from Sessions.',
-        confirmLabel: 'Close tab',
-        cancelLabel: 'Keep working',
+        title: t(currentLanguage(get), 'confirmCloseTabTitle'),
+        message: t(currentLanguage(get), 'confirmCloseTabMessage'),
+        confirmLabel: t(currentLanguage(get), 'confirmCloseTab'),
+        cancelLabel: t(currentLanguage(get), 'confirmKeepWorking'),
         danger: true,
       })
       if (!confirmed) return
@@ -1394,12 +1407,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
       void get().refreshSessionList()
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Close session error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysCloseSessionError', { detail: errDetail(err) }))
     }
   },
 
@@ -1412,6 +1420,20 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       !get().sessionLoading &&
       get().messages.length > 0
     ) {
+      return
+    }
+    // An empty new tab can receive a sessionPath from Pi before the JSONL
+    // exists on disk. Clicking that same tab must not call session:switch.
+    const live = Object.values(get().sessionRuntimes).find((runtime) =>
+      runtime.sessionPath != null && pathsEqual(runtime.sessionPath, path)
+    )
+    if (
+      live &&
+      live.runtimeId === get().activeSessionRuntimeId &&
+      !get().sessionLoading &&
+      get().messages.length === 0
+    ) {
+      set({ currentView: 'chat' })
       return
     }
 
@@ -1456,12 +1478,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         if (gen !== sessionLoadGeneration) return
         if (result && 'success' in result && result.success === false) {
           set({ sessionLoading: false, ...idleTurnState() })
-          get().addMessage({
-            id: generateId(),
-            role: 'system',
-            content: result.error ?? 'Cannot activate session',
-            timestamp: Date.now(),
-          })
+          get().addMessage(notice('sysCannotActivateSession', { detail: result.error ? `: ${result.error}` : '' }))
           return
         }
         const runtime = result && 'runtimeId' in result ? result : null
@@ -1491,12 +1508,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       } catch (err) {
         if (gen !== sessionLoadGeneration) return
         set({ sessionLoading: false, ...idleTurnState() })
-        get().addMessage({
-          id: generateId(),
-          role: 'system',
-          content: `Switch session error: ${err instanceof Error ? err.message : String(err)}`,
-          timestamp: Date.now(),
-        })
+        get().addMessage(notice('sysSwitchSessionError', { detail: errDetail(err) }))
       }
     }
 
@@ -1513,10 +1525,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     // flash the empty new-session view between the click and startup.
     if (get().piStatus !== 'running') return
 
-    get().clearMessages()
-    set({ sessionLoading: true })
+    const alreadyEmpty = get().messages.length === 0 && !get().isStreaming
+    if (!alreadyEmpty) {
+      get().clearMessages()
+      set({ sessionLoading: true })
+    }
     void get().refreshSessionState()
-    void get().refreshSessionStats()
+    if (!alreadyEmpty) void get().refreshSessionStats()
 
     try {
       const response = await window.piDesktop.session.getMessages()
@@ -1542,12 +1557,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           // Surface a one-line notice when older turns were dropped for perf.
           // Use the raw shipped count (not parse survivors) for "latest N of M".
           if (truncated && shippedCount > 0) {
-            loaded.unshift({
-              id: generateId(),
-              role: 'system',
-              content: `Showing the latest ${shippedCount} of ${total} messages for performance. Older turns are still on disk in the session file.`,
-              timestamp: Date.now(),
-            })
+            loaded.unshift(notice('sysShowingLatestMessages', {
+              shown: String(shippedCount),
+              total: String(total),
+            }))
           }
           set({ messages: loaded, sessionLoading: false })
         } else {
@@ -1719,12 +1732,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
       get().refreshSessionState()
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Model error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysModelError', { detail: errDetail(err) }))
     }
   },
 
@@ -1766,12 +1774,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   compactContext: async () => {
+    if (get().sessionState?.isCompacting) return
     try {
       await window.piDesktop.session.compact()
       // compaction_start/end events drive the chat system messages; refresh
       // state + stats so the context-usage figures update afterwards.
-      get().refreshSessionState()
-      get().refreshSessionStats()
+      await get().refreshSessionState()
+      await get().refreshSessionStats()
     } catch {
       // Silent failure
     }
@@ -1824,7 +1833,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       set({ chatSidePanel: panel, editorDirty: false })
       return true
     }
-    set({ chatSidePanel: panel })
+    if (panel === 'terminal') {
+      set({ terminalOpen: true, chatSidePanel: get().chatSidePanel === 'terminal' ? null : get().chatSidePanel })
+      return true
+    }
+    set({ chatSidePanel: panel, reviewOpen: panel === 'review' ? true : panel === null ? false : get().reviewOpen })
     return true
   },
 
@@ -1937,7 +1950,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
               id: generateId(),
               type: 'system',
               timestamp: Date.now(),
-              title: 'External prompt received',
+              title: 'timelineExternalPrompt',
               status: 'success',
             })
           }
@@ -1955,18 +1968,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // turn_end re-delivers the same message, so errors surface only here.
         const turnError = turnErrorText(endedMessage)
         if (turnError) {
-          get().addMessage({
-            id: generateId(),
-            role: 'system',
-            content: `Error: ${turnError}`,
-            timestamp: Date.now(),
-          })
+          get().addMessage(notice('sysError', { detail: turnError }))
         }
         get().addTimelineEvent({
           id: generateId(),
           type: 'assistant_message',
           timestamp: Date.now(),
-          title: turnError ? 'Assistant response failed' : 'Assistant response complete',
+          title: turnError ? 'timelineAssistantFailed' : 'timelineAssistantComplete',
           status: turnError ? 'error' : 'success',
         })
         // Attached mid-turn: the commit above only held the post-attach
@@ -2004,7 +2012,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           id: generateId(),
           type: 'system',
           timestamp: Date.now(),
-          title: 'Agent started processing',
+          title: 'timelineAgentStarted',
           status: 'running',
         })
         break
@@ -2012,19 +2020,20 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       case 'agent_end':
         set((state) => ({
           isStreaming: false,
+          completionChimeAt: Date.now(),
           // Close out the matching 'Agent started processing' entry so its
           // spinner stops. Without this, the run-state indicator on the
           // start entry persists forever even after the agent completes.
           timelineEvents: closeMostRecentRunning(state.timelineEvents, (e) =>
-            e.type === 'system' && e.title === 'Agent started processing'
+            e.type === 'system' && e.title === 'timelineAgentStarted'
           , 'success'),
         }))
-        get().refreshSessionStats()
+        void get().refreshSessionStats().then(() => maybeAutoCompact(get))
         get().addTimelineEvent({
           id: generateId(),
           type: 'system',
           timestamp: Date.now(),
-          title: 'Agent finished',
+          title: 'timelineAgentFinished',
           status: 'success',
         })
         // Attached mid-turn and the turn just ended: the stream buffers never
@@ -2042,10 +2051,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           id: generateId(),
           type: 'tool_start',
           timestamp: Date.now(),
-          title: `Tool: ${(event as PiToolExecutionStartEvent).toolName}`,
+          title: 'timelineTool',
           detail: JSON.stringify((event as PiToolExecutionStartEvent).args).slice(0, 200),
           status: 'running',
-          metadata: { toolCallId: (event as PiToolExecutionStartEvent).toolCallId },
+          metadata: {
+            toolCallId: (event as PiToolExecutionStartEvent).toolCallId,
+            name: (event as PiToolExecutionStartEvent).toolName,
+          },
         })
         break
 
@@ -2068,9 +2080,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           id: generateId(),
           type: 'tool_end',
           timestamp: Date.now(),
-          title: `Tool: ${toolEvent.toolName}`,
+          title: 'timelineTool',
           status: toolEvent.isError ? 'error' : 'success',
-          metadata: { toolCallId: toolEvent.toolCallId },
+          metadata: { toolCallId: toolEvent.toolCallId, name: toolEvent.toolName },
         })
         break
       }
@@ -2086,9 +2098,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           id: generateId(),
           type: 'compaction',
           timestamp: Date.now(),
-          title: event.type === 'compaction_start' ? 'Compaction started' : 'Compaction complete',
+          title: event.type === 'compaction_start' ? 'timelineCompactionStarted' : 'timelineCompactionComplete',
           status: event.type === 'compaction_start' ? 'running' : 'success',
         })
+        if (event.type === 'compaction_end') void get().refreshSessionStats()
         break
 
       case 'auto_retry_start':
@@ -2098,8 +2111,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           id: generateId(),
           type: 'retry',
           timestamp: Date.now(),
-          title: event.type === 'auto_retry_start' ? `Retry attempt ${(event as PiAutoRetryStartEvent).attempt}` : 'Retry complete',
+          title: event.type === 'auto_retry_start' ? 'timelineRetryAttempt' : 'timelineRetryComplete',
           status: event.type === 'auto_retry_start' ? 'running' : ((event as PiAutoRetryEndEvent).success ? 'success' : 'error'),
+          metadata: event.type === 'auto_retry_start' ? { attempt: String((event as PiAutoRetryStartEvent).attempt) } : undefined,
         })
         break
 
@@ -2293,10 +2307,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         ...(runtime.status === 'error' || runtime.status === 'stopped' ? { sessionLoading: false } : {}),
       } : {}),
     }))
-    // A newly-created session is intentionally empty, so its renderer stays
-    // in sessionLoading until Pi reports the generated session path. Hydrate
-    // that expected active runtime even though loading is still true; the old
-    // guard made New Session look stuck forever after Pi was already ready.
+    // A newly-created session is intentionally empty. If the empty chat is
+    // already on screen, only bind the generated path — reloadActiveSession
+    // would flash a spinner over the same blank view.
     const current = get()
     if (
       runtime.active &&
@@ -2305,6 +2318,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       current.sessionState?.sessionFile !== runtime.sessionPath &&
       (!current.sessionLoading || current.activeSessionRuntimeId === runtime.runtimeId)
     ) {
+      const alreadyEmpty = current.messages.length === 0 && !current.isStreaming && !current.sessionLoading
+      if (alreadyEmpty && current.activeSessionRuntimeId === runtime.runtimeId) {
+        void get().refreshSessionState()
+        return
+      }
       void get().reloadActiveSession({ refreshList: false })
     }
   },
@@ -2348,26 +2366,23 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       if (status.hasAllowRules && !status.trusted) {
         // The repo defines allow rules that would let Pi skip permission prompts.
         // They stay inert until the user explicitly trusts this workspace.
+        const lang = currentLanguage(get)
         const trust = await get().requestConfirm({
-          title: 'Trust this workspace?',
-          message:
-            'This workspace defines permission rules (.pi-desktop/permission-rules.json) with allow ' +
-            'rules that would let Pi skip confirmation prompts. They are ignored until you trust this ' +
-            'workspace; its deny rules always apply. Only trust workspaces from a source you trust.',
-          confirmLabel: 'Trust workspace',
-          cancelLabel: 'Keep untrusted',
+          title: t(lang, 'confirmTrustWorkspaceTitle'),
+          message: t(lang, 'confirmTrustWorkspaceMessage'),
+          confirmLabel: t(lang, 'confirmTrustWorkspace'),
+          cancelLabel: t(lang, 'confirmKeepUntrusted'),
         })
         if (trust) {
           await window.piDesktop.permissionRules.setWorkspaceTrust(true)
         }
       } else {
+        const lang = currentLanguage(get)
         await get().requestConfirm({
-          title: 'Workspace permission rules',
-          message:
-            'This workspace defines its own permission rules (.pi-desktop/permission-rules.json). ' +
-            'Its deny rules restrict Pi while you work here; your global rules apply otherwise.',
-          confirmLabel: 'OK',
-          cancelLabel: 'Dismiss',
+          title: t(lang, 'confirmWorkspaceRulesTitle'),
+          message: t(lang, 'confirmWorkspaceRulesMessage'),
+          confirmLabel: t(lang, 'confirmOk'),
+          cancelLabel: t(lang, 'confirmDismiss'),
         })
       }
 
@@ -2419,12 +2434,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       await get().loadWorkspaces()
       adoptMainSideActivation(get, set, previousActiveId)
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Create workspace error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysCreateWorkspaceError', { detail: errDetail(err) }))
     }
   },
 
@@ -2439,25 +2449,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       if (switched) {
         get().setCurrentView('chat')
         if (workspace.sourceWasDirty) {
-          get().addMessage({
-            id: generateId(),
-            role: 'system',
-            content: 'This tab starts from the last commit. Uncommitted files remain in the source tab.',
-            timestamp: Date.now(),
-          })
+          get().addMessage(notice('sysTabFromLastCommit'))
         }
       }
     } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err)
-      const content = /not a git repository/i.test(detail)
-        ? 'This project is not a Git repository. Use New session for another conversation, or open a Git project for an isolated tab.'
-        : `New isolated tab error: ${detail}`
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content,
-        timestamp: Date.now(),
-      })
+      const detail = errDetail(err)
+      get().addMessage(
+        /not a git repository/i.test(detail)
+          ? notice('sysNotGitRepo')
+          : notice('sysIsolatedTabError', { detail }),
+      )
     }
   },
 
@@ -2468,12 +2469,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     try {
       const kind = await window.piDesktop.system.pathKind(folderPath)
       if (!kind.exists || !kind.isDirectory) {
-        get().addMessage({
-          id: generateId(),
-          role: 'system',
-          content: `Cannot open as project — not a folder: ${folderPath}`,
-          timestamp: Date.now(),
-        })
+        get().addMessage(notice('sysNotAFolder', { path: folderPath }))
         get().setCurrentView('chat')
         return false
       }
@@ -2499,15 +2495,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         if (!ws) return false
       }
       const switched = await get().activateWorkspace(ws.id)
-      if (switched) get().setCurrentView('chat')
+      if (switched) {
+        get().setCurrentView('chat')
+        if (get().piStatus !== 'running' && get().piStatus !== 'starting') {
+          await get().startPi()
+        }
+      }
       return switched
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Open folder error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysOpenFolderError', { detail: errDetail(err) }))
       return false
     }
   },
@@ -2557,12 +2553,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
       return true
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Switch workspace error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysSwitchWorkspaceError', { detail: errDetail(err) }))
       return false
     }
   },
@@ -2645,12 +2636,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       await get().maybeWarnWorkspacePermissionRules()
       return true
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Switch workspace error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysSwitchWorkspaceError', { detail: errDetail(err) }))
       return false
     } finally {
       // Replay any blocking prompt main holds for the new workspace. In
@@ -2667,15 +2653,19 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     const workspace = get().workspaces.find((w) => w.id === workspaceId)
     const isWorktree = workspace?.kind === 'worktree'
     const isManagedWorktree = isWorktree && workspace?.managed !== false
+    const lang = currentLanguage(get)
+    const name = workspace?.name ?? workspaceId
     const confirmed = await get().requestConfirm({
-      title: isWorktree ? 'Close tab' : 'Remove workspace',
-      message: isWorktree
-        ? isManagedWorktree
-          ? `Close "${workspace?.name ?? workspaceId}"? Clean worktrees are removed; tabs with uncommitted changes are preserved on disk.`
-          : `Close "${workspace?.name ?? workspaceId}"? This existing worktree and its files remain on disk.`
-        : `Remove "${workspace?.name ?? workspaceId}" from the sidebar? Its Pi process stops; files on disk are not touched.`,
-      confirmLabel: isWorktree ? 'Close tab' : 'Remove',
-      cancelLabel: 'Cancel',
+      title: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemoveWorkspace'),
+      message: t(
+        lang,
+        isWorktree
+          ? (isManagedWorktree ? 'confirmCloseManagedWorktree' : 'confirmCloseExistingWorktree')
+          : 'confirmRemoveWorkspaceMessage',
+        { name },
+      ),
+      confirmLabel: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemove'),
+      cancelLabel: t(lang, 'confirmCancel'),
       danger: true,
     })
     if (!confirmed) return
@@ -2690,20 +2680,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       await get().loadWorkspaces()
       adoptMainSideActivation(get, set, previousActiveId)
       if (result.preservedWorktreePath) {
-        get().addMessage({
-          id: generateId(),
-          role: 'system',
-          content: `Tab closed, but its uncommitted worktree was preserved at ${result.preservedWorktreePath}`,
-          timestamp: Date.now(),
-        })
+        get().addMessage(notice('sysWorktreePreserved', { path: result.preservedWorktreePath }))
       }
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Remove workspace error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysRemoveWorkspaceError', { detail: errDetail(err) }))
     }
   },
 
@@ -2735,12 +2715,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       // one back up in the new folder.
       if (restartNeeded) await get().restartPi()
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Change folder error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysChangeFolderError', { detail: errDetail(err) }))
     }
   },
 
@@ -2825,16 +2800,35 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
+  createSkill: async (name, description) => {
+    const result = await window.piDesktop.skills.create(name, description)
+    if (result.ok) await get().loadSkills()
+    return result
+  },
+
+  deleteSkill: async (path) => {
+    const result = await window.piDesktop.skills.delete(path)
+    if (result.ok) await get().loadSkills()
+    return result
+  },
+
+  evolveSkill: async (path, direction) => {
+    const result = await window.piDesktop.skills.evolve(path, direction)
+    if (result.ok) await get().loadSkills()
+    return result
+  },
+
   loadCustomModels: async () => {
     try {
       const result = await window.piDesktop.models.read()
       if ('error' in result) {
-        set({ customModels: null, customModelsError: result.error })
+        set({ customModels: null, customModelsError: result.error, customModelsPath: result.path })
       } else {
-        set({ customModels: result.config, customModelsError: null })
+        set({ customModels: result.config, customModelsError: null, customModelsPath: result.path })
       }
     } catch (err) {
       set({ customModels: null, customModelsError: err instanceof Error ? err.message : String(err) })
+
     }
   },
 
@@ -2874,11 +2868,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   confirmDiscardEditorChanges: async () => {
     if (!get().editorDirty) return true
     const name = get().previewTarget?.name
+    const lang = currentLanguage(get)
     return get().requestConfirm({
-      title: 'Unsaved changes',
-      message: name ? `Discard unsaved changes to ${name}?` : 'Discard unsaved changes?',
-      confirmLabel: 'Discard changes',
-      cancelLabel: 'Keep editing',
+      title: t(lang, 'confirmUnsavedTitle'),
+      message: name ? t(lang, 'confirmDiscardNamed', { name }) : t(lang, 'confirmDiscardUnnamed'),
+      confirmLabel: t(lang, 'confirmDiscardChanges'),
+      cancelLabel: t(lang, 'confirmKeepEditing'),
       danger: true,
     })
   },
@@ -2975,12 +2970,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const archived = await window.piDesktop.session.archive(sessionId)
       set({ archivedSessions: archived })
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Archive error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysArchiveError', { detail: errDetail(err) }))
     }
   },
 
@@ -2989,12 +2979,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const archived = await window.piDesktop.session.unarchive(sessionId)
       set({ archivedSessions: archived })
     } catch (err) {
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Unarchive error: ${err instanceof Error ? err.message : String(err)}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysUnarchiveError', { detail: errDetail(err) }))
     }
   },
 
@@ -3029,12 +3014,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       return result
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err)
-      get().addMessage({
-        id: generateId(),
-        role: 'system',
-        content: `Delete error: ${message}`,
-        timestamp: Date.now(),
-      })
+      get().addMessage(notice('sysDeleteError', { detail: message }))
       return { ok: false, method: 'unlink' as const, error: message }
     }
   },
@@ -3094,7 +3074,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   checkForUpdates: async () => {
     try {
       const info = await window.piDesktop.updates.check()
-      if (info.updateAvailable) set({ updateInfo: info, updateDismissed: false })
+      set({ updateInfo: info, updateDismissed: !info.updateAvailable })
     } catch {
       // Silent — update check is best-effort
     }
@@ -3569,39 +3549,18 @@ function handleCompaction(
     set((state) => ({
       messages: [
         ...state.messages,
-        {
-          id: generateId(),
-          role: 'system',
-          content: `Compacting context (${(event as PiCompactionStartEvent).reason})...`,
-          timestamp: Date.now(),
-        },
+        notice('sysCompactingContext', { reason: (event as PiCompactionStartEvent).reason }),
       ],
     }))
   } else {
     const endEvent = event as PiCompactionEndEvent
     if (endEvent.aborted) {
       set((state) => ({
-        messages: [
-          ...state.messages,
-          {
-            id: generateId(),
-            role: 'system',
-            content: 'Compaction aborted.',
-            timestamp: Date.now(),
-          },
-        ],
+        messages: [...state.messages, notice('sysCompactionAborted')],
       }))
     } else if (endEvent.result) {
       set((state) => ({
-        messages: [
-          ...state.messages,
-          {
-            id: generateId(),
-            role: 'system',
-            content: 'Context compacted.',
-            timestamp: Date.now(),
-          },
-        ],
+        messages: [...state.messages, notice('sysContextCompacted')],
       }))
     }
   }
@@ -3616,12 +3575,11 @@ function handleAutoRetry(
     set((state) => ({
       messages: [
         ...state.messages,
-        {
-          id: generateId(),
-          role: 'system',
-          content: `Retrying (attempt ${event.attempt}/${event.maxAttempts}): ${event.errorMessage}`,
-          timestamp: Date.now(),
-        },
+        notice('sysRetrying', {
+          attempt: String(event.attempt),
+          max: String(event.maxAttempts),
+          detail: event.errorMessage,
+        }),
       ],
     }))
   } else {

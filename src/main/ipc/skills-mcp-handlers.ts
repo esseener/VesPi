@@ -1,10 +1,34 @@
-import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc-contracts'
+import { app, ipcMain } from 'electron'
+import { IPC_CHANNELS, type InstalledSkill, type SkillMutationResult } from '../../shared/ipc-contracts'
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import type { IpcContext } from './context'
-import { getPiCli } from '../pi-rpc-manager'
+import { VESPI_PROFILE } from '../../shared/vespi'
+import { resolvePrivateOpenspacePython, vespiOpenspaceProcessEnv } from '../vespi-runtime'
+
+const execFileAsync = promisify(execFile)
+
+function resourceScript(name: string): string | null {
+  const candidates = [
+    join(app.getAppPath(), 'resources', name),
+    join(process.cwd(), 'resources', name),
+  ]
+  if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
+    candidates.unshift(join(process.resourcesPath, 'resources', name))
+  }
+  return candidates.find((path) => existsSync(path)) ?? null
+}
+
+function openspaceManageScript(): string | null {
+  return resourceScript('openspace-manage-skills.py')
+}
+
+function openspaceListScript(): string | null {
+  return openspaceManageScript() ?? resourceScript('openspace-list-skills.py')
+}
 
 export function registerSkillsMcpHandlers(ctx: IpcContext): void {
   const { workspaceManager } = ctx
@@ -15,6 +39,30 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
     return listSkills(cwd)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SKILLS_CREATE, async (_event, name: unknown, description: unknown) => {
+    if (typeof name !== 'string' || typeof description !== 'string') {
+      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+    }
+    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
+    return runSkillMutation(['create', '--cwd', cwd, '--name', name, '--description', description], cwd)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SKILLS_DELETE, async (_event, path: unknown) => {
+    if (typeof path !== 'string') {
+      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+    }
+    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
+    return runSkillMutation(['delete', '--cwd', cwd, '--path', path], cwd)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SKILLS_EVOLVE, async (_event, path: unknown, direction: unknown) => {
+    if (typeof path !== 'string' || typeof direction !== 'string') {
+      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+    }
+    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
+    return runSkillMutation(['evolve', '--cwd', cwd, '--path', path, '--direction', direction], cwd, 180_000)
   })
 
   ipcMain.handle(IPC_CHANNELS.COMMANDS_LIST, async () => {
@@ -40,47 +88,120 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
 
 // ─── Skills Listing ──────────────────────────────────────────────────────────
 
-interface InstalledSkill {
-  name: string
-  description: string
-  path: string
-  source: string
-  enabled: boolean
+async function listSkills(cwd: string): Promise<InstalledSkill[]> {
+  const fromRegistry = await listSkillsFromOpenspace(cwd)
+  if (fromRegistry !== null) return fromRegistry
+  return listSkillsFromDisk(cwd)
 }
 
-async function listSkills(cwd: string): Promise<InstalledSkill[]> {
+async function listSkillsFromOpenspace(cwd: string): Promise<InstalledSkill[] | null> {
+  const python = resolvePrivateOpenspacePython()
+  const script = openspaceListScript()
+  if (!python || !script) return null
+  try {
+    const args = script.endsWith('openspace-manage-skills.py') ? [script, 'list', '--cwd', cwd] : [script, cwd]
+    const { stdout } = await execFileAsync(python, args, {
+      timeout: 15_000,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ...vespiOpenspaceProcessEnv(cwd),
+      },
+    })
+    const parsed = JSON.parse(extractJsonPayload(stdout, '[')) as unknown
+    if (!Array.isArray(parsed)) return null
+    return parsed.filter(isInstalledSkill)
+  } catch {
+    return null
+  }
+}
+
+async function runSkillMutation(args: string[], cwd: string, timeout = 15_000): Promise<SkillMutationResult> {
+  const python = resolvePrivateOpenspacePython()
+  const script = openspaceManageScript()
+  if (!python || !script) return { ok: false, error: 'OpenSpace runtime is not packaged' }
+  try {
+    const { stdout } = await execFileAsync(python, [script, ...args], {
+      timeout,
+      windowsHide: true,
+      env: {
+        ...process.env,
+        ...vespiOpenspaceProcessEnv(cwd),
+      },
+    })
+    return parseMutationResult(stdout) ?? { ok: false, error: 'invalid manager output' }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    if (err && typeof err === 'object' && 'stdout' in err && typeof err.stdout === 'string') {
+      const parsed = parseMutationResult(err.stdout)
+      if (parsed) return parsed
+    }
+    return { ok: false, error: message }
+  }
+}
+
+function parseMutationResult(stdout: string): SkillMutationResult | null {
+  try {
+    const parsed: unknown = JSON.parse(extractJsonPayload(stdout, '{'))
+    if (!parsed || typeof parsed !== 'object' || !('ok' in parsed) || typeof parsed.ok !== 'boolean') {
+      return null
+    }
+    const error = 'error' in parsed && typeof parsed.error === 'string' ? parsed.error : undefined
+    const path = 'path' in parsed && typeof parsed.path === 'string' ? parsed.path : undefined
+    const name = 'name' in parsed && typeof parsed.name === 'string' ? parsed.name : undefined
+    const skillId = 'skillId' in parsed && typeof parsed.skillId === 'string' ? parsed.skillId : undefined
+    const jobs = 'jobs' in parsed && typeof parsed.jobs === 'number' ? parsed.jobs : undefined
+    const outcomes = 'outcomes' in parsed && typeof parsed.outcomes === 'number' ? parsed.outcomes : undefined
+    const statuses =
+      'statuses' in parsed && Array.isArray(parsed.statuses)
+        ? parsed.statuses.filter((item): item is string => typeof item === 'string')
+        : undefined
+    return { ok: parsed.ok, error, path, name, skillId, jobs, outcomes, statuses }
+  } catch {
+    return null
+  }
+}
+
+
+function extractJsonPayload(stdout: string, startChar: '[' | '{' = '['): string {
+  const start = stdout.indexOf(startChar)
+  const end = stdout.lastIndexOf(startChar === '[' ? ']' : '}')
+  if (start >= 0 && end > start) return stdout.slice(start, end + 1)
+  return stdout.trim()
+}
+
+function isInstalledSkill(value: unknown): value is InstalledSkill {
+  if (typeof value !== 'object' || value === null) return false
+  const row = value as Record<string, unknown>
+  return (
+    typeof row.name === 'string' &&
+    typeof row.description === 'string' &&
+    typeof row.path === 'string' &&
+    (row.source === 'vespi' || row.source === 'project' || row.source === 'openspace' || row.source === 'bundled') &&
+    row.enabled === true
+  )
+}
+
+async function listSkillsFromDisk(cwd: string): Promise<InstalledSkill[]> {
   const skills: InstalledSkill[] = []
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
-
-  // Global skills
-  const globalPaths = [
-    join(homeDir, '.pi', 'agent', 'skills'),
-    join(homeDir, '.omp', 'agent', 'skills'),
-    join(homeDir, '.agents', 'skills'),
+  const vespiPaths: Array<{ dir: string; source: InstalledSkill['source'] }> = [
+    { dir: join(homeDir, '.omp', 'profiles', VESPI_PROFILE, 'agent', 'skills'), source: 'vespi' },
+    { dir: join(homeDir, '.vespi', 'skills'), source: 'vespi' },
+    { dir: join(homeDir, '.openspace', 'skills'), source: 'openspace' },
+    { dir: join(cwd, '.vespi', 'skills'), source: 'project' },
+    { dir: join(cwd, '.openspace', 'skills'), source: 'project' },
   ]
-
-  for (const skillsDir of globalPaths) {
-    await collectSkills(skillsDir, skills, 'global')
+  for (const { dir, source } of vespiPaths) {
+    await collectSkills(dir, skills, source)
   }
-
-  // Project skills
-  const projectPaths = [
-    join(cwd, '.pi', 'skills'),
-    join(cwd, '.omp', 'skills'),
-    join(cwd, '.agents', 'skills'),
-  ]
-
-  for (const skillsDir of projectPaths) {
-    await collectSkills(skillsDir, skills, 'project')
-  }
-
   return skills
 }
 
 async function collectSkills(
   dir: string,
   skills: InstalledSkill[],
-  source: string
+  source: InstalledSkill['source']
 ): Promise<void> {
   try {
     if (!existsSync(dir)) return
@@ -102,6 +223,7 @@ async function collectSkills(
               path: fullPath,
               source,
               enabled: true,
+              managed: source === 'vespi',
             })
           }
         } catch {
@@ -121,6 +243,7 @@ async function collectSkills(
                 path: skillFile,
                 source,
                 enabled: true,
+                managed: source === 'vespi',
               })
             }
           } catch {
@@ -167,54 +290,28 @@ interface McpServerInfo {
 async function listMcpServers(wsPath?: string): Promise<McpServerInfo[]> {
   const servers: McpServerInfo[] = []
   const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
-  const omp = getPiCli().kind === 'omp'
-  const globalSettingsPaths = omp
-    ? [
-        join(homeDir, '.omp', 'agent', 'mcp.json'),
-        join(homeDir, '.omp', 'agent', '.mcp.json'),
-        join(homeDir, '.pi', 'agent', 'settings.json'),
-      ]
-    : [
-        join(homeDir, '.pi', 'agent', 'settings.json'),
-        join(homeDir, '.omp', 'agent', 'mcp.json'),
-        join(homeDir, '.omp', 'agent', '.mcp.json'),
-      ]
-  for (const settingsPath of globalSettingsPaths) {
+  const vespiPaths = [
+    join(homeDir, '.omp', 'profiles', VESPI_PROFILE, 'agent', 'mcp.json'),
+    join(homeDir, '.omp', 'profiles', VESPI_PROFILE, 'agent', '.mcp.json'),
+    join(homeDir, '.vespi', 'mcp.json'),
+  ]
+  for (const settingsPath of vespiPaths) {
     await collectMcpServers(settingsPath, servers, 'global')
   }
 
   if (wsPath) {
-    const projectSettingsPaths = omp
-      ? [
-          join(wsPath, '.omp', 'mcp.json'),
-          join(wsPath, '.omp', '.mcp.json'),
-          join(wsPath, '.pi', 'settings.json'),
-        ]
-      : [
-          join(wsPath, '.pi', 'settings.json'),
-          join(wsPath, '.omp', 'mcp.json'),
-          join(wsPath, '.omp', '.mcp.json'),
-        ]
+    const projectSettingsPaths = [
+      join(wsPath, '.vespi', 'mcp.json'),
+      join(wsPath, '.vespi', '.mcp.json'),
+    ]
     for (const settingsPath of projectSettingsPaths) {
       await collectMcpServers(settingsPath, servers, 'project')
     }
   }
 
-  const mcpConfigPaths = [
-    join(homeDir, '.config', 'claude', 'claude_desktop_config.json'),
-    join(homeDir, '.cursor', 'mcp.json'),
-    join(homeDir, '.codeium', 'mcp.json'),
-  ]
-  for (const configPath of mcpConfigPaths) {
-    await collectMcpServersFromConfig(configPath, servers)
-  }
-
   const unique = new Map<string, McpServerInfo>()
   for (const server of servers) {
-    const existing = unique.get(server.name)
-    if (!existing || (existing.source === 'global' && server.source === 'project')) {
-      unique.set(server.name, server)
-    }
+    unique.set(server.name, server)
   }
   return [...unique.values()]
 }
@@ -250,35 +347,3 @@ async function collectMcpServers(
   }
 }
 
-async function collectMcpServersFromConfig(
-  configPath: string,
-  servers: McpServerInfo[]
-): Promise<void> {
-  try {
-    if (!existsSync(configPath)) return
-    const content = await readFile(configPath, 'utf-8')
-    const config = JSON.parse(content)
-
-    // Claude Desktop format: { mcpServers: { name: { command, args } } }
-    const mcpServers = config.mcpServers ?? {}
-
-    for (const [name, serverConfig] of Object.entries(mcpServers)) {
-      if (typeof serverConfig === 'object' && serverConfig !== null) {
-        const cfg = serverConfig as Record<string, unknown>
-        // Avoid duplicates
-        if (!servers.some((s) => s.name === name)) {
-          servers.push({
-            name,
-            command: String(cfg.command ?? ''),
-            args: Array.isArray(cfg.args) ? cfg.args.map(String) : [],
-            env: typeof cfg.env === 'object' && cfg.env !== null ? cfg.env as Record<string, string> : {},
-            source: 'global',
-            status: 'configured',
-          })
-        }
-      }
-    }
-  } catch {
-    // Skip unreadable files
-  }
-}

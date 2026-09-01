@@ -121,12 +121,20 @@ export function registerSessionHandlers(ctx: IpcContext): void {
   })
 
   const activateSession = async (sessionPath: string, cwd?: string): Promise<SessionRuntimeInfo> => {
-    if (!isWithinSessionRoots(sessionPath) || !existsSync(sessionPath)) {
-      throw new Error('sessionPath must point to an existing Pi session file')
-    }
     const workspace = workspaceManager.getActiveWorkspace()
     if (!workspace) throw new Error('No active workspace')
     if (cwd && !pathsEqual(workspace.path, cwd)) throw new Error('Session project does not match the active workspace')
+    const live = workspaceManager.getSessionRuntimeForPath(sessionPath)
+    if (!isWithinSessionRoots(sessionPath) || !existsSync(sessionPath)) {
+      // Pi can announce the generated path before the JSONL is flushed.
+      // A live tab already bound to that path is still the right target.
+      if (live && live.workspaceId === workspace.id) {
+        const runtime = await workspaceManager.activateSession(workspace.id, sessionPath)
+        if (runtime.status !== 'running') void startRuntime(runtime).catch(() => undefined)
+        return runtime
+      }
+      throw new Error('sessionPath must point to an existing Pi session file')
+    }
     const runtime = await workspaceManager.activateSession(workspace.id, sessionPath)
     if (runtime.status !== 'running') void startRuntime(runtime, sessionPath).catch(() => undefined)
     return runtime

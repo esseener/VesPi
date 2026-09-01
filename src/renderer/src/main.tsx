@@ -1,13 +1,11 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { App } from './app'
+import { ErrorBoundary } from './components/error-boundary'
 import '@fontsource-variable/inter'
 import '@fontsource-variable/jetbrains-mono'
 import './index.css'
 
-// OpenMoji COLRv1 color emoji font (vendored woff2, @font-face in index.css) —
-// sharp vector emoji that read better on dark than the OS emoji font. Preloaded
-// eagerly so glyphs render in OpenMoji from the first paint.
 void document.fonts?.load('16px "OpenMoji Color"').catch(() => {})
 
 const rootElement = document.getElementById('root')
@@ -16,8 +14,17 @@ if (!rootElement) {
   throw new Error('Root element not found')
 }
 
+window.addEventListener('error', (event) => {
+  console.error('[renderer error]', event.error ?? event.message)
+})
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[renderer rejection]', event.reason)
+})
+
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>
-    <App />
+    <ErrorBoundary>
+      <App />
+    </ErrorBoundary>
   </React.StrictMode>
 )

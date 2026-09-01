@@ -13,11 +13,19 @@ import {
   MessageSquare,
   StickyNote,
   Pencil,
+  FolderOpen,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { useAppStore } from '../store'
 import { getSessionTitle } from '../utils/session-title'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+
+function menuLang() {
+  const state = useAppStore.getState()
+  return state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+}
+
 
 interface ContextMenuItem {
   id: string
@@ -58,6 +66,8 @@ export function useContextMenu(): {
   const show = useCallback((e: React.MouseEvent, items: ContextMenuItem[]) => {
     e.preventDefault()
     e.stopPropagation()
+    const visibleItems = items.filter((item) => !item.divider || items.length > 1)
+    if (visibleItems.length === 0) return
 
     // Remember the element to restore focus to when the menu closes.
     triggerRef.current = document.activeElement as HTMLElement | null
@@ -72,12 +82,12 @@ export function useContextMenu(): {
       x = viewportWidth - MENU_WIDTH - PADDING
     }
 
-    const estimatedHeight = items.filter((i) => !i.divider).length * MENU_ITEM_HEIGHT + 20
+    const estimatedHeight = visibleItems.filter((i) => !i.divider).length * MENU_ITEM_HEIGHT + 20
     if (y + estimatedHeight > viewportHeight - PADDING) {
       y = viewportHeight - estimatedHeight - PADDING
     }
 
-    setState({ visible: true, x, y, items })
+    setState({ visible: true, x, y, items: visibleItems })
   }, [])
 
   const hide = useCallback(() => {
@@ -112,10 +122,13 @@ export function useContextMenu(): {
     }
   }, [state.visible, hide])
 
-  // Close on scroll
+  // Close on window scroll, but ignore scrolls originating inside the menu.
   useEffect(() => {
     if (!state.visible) return
-    const handleScroll = () => hide()
+    const handleScroll = (e: Event) => {
+      if (menuRef.current && e.target instanceof Node && menuRef.current.contains(e.target)) return
+      hide()
+    }
     window.addEventListener('scroll', handleScroll, true)
     return () => window.removeEventListener('scroll', handleScroll, true)
   }, [state.visible, hide])
@@ -187,104 +200,144 @@ function getSelectedText(): string {
   return selection?.toString() ?? ''
 }
 
-export function buildDefaultContextMenu(): ContextMenuItem[] {
-  const selectedText = getSelectedText()
-  const hasSelection = selectedText.length > 0
+function isTextField(el: HTMLElement | null | undefined): el is HTMLInputElement | HTMLTextAreaElement {
+  return !!el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA')
+}
 
+function fieldSelection(field: HTMLInputElement | HTMLTextAreaElement): { start: number; end: number; text: string } {
+  const start = field.selectionStart ?? 0
+  const end = field.selectionEnd ?? 0
+  return { start, end, text: field.value.slice(start, end) }
+}
+
+function replaceFieldRange(field: HTMLInputElement | HTMLTextAreaElement, start: number, end: number, insert: string): void {
+  const before = field.value.slice(0, start)
+  const after = field.value.slice(end)
+  field.value = before + insert + after
+  const caret = start + insert.length
+  field.selectionStart = field.selectionEnd = caret
+  field.dispatchEvent(new Event('input', { bubbles: true }))
+  field.focus()
+}
+
+export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenuItem[] {
+  const active = isTextField(field) ? field : isTextField(document.activeElement as HTMLElement | null) ? document.activeElement as HTMLInputElement | HTMLTextAreaElement : null
+
+  if (active) {
+    const { start, end, text } = fieldSelection(active)
+    const hasSelection = text.length > 0
+    const hasValue = active.value.length > 0
+    return [
+      {
+        id: 'cut',
+        label: '剪切',
+        icon: <Scissors size={14} />,
+        shortcut: 'Ctrl+X',
+        disabled: !hasSelection || active.readOnly || active.disabled,
+        action: () => {
+          if (!hasSelection || active.readOnly || active.disabled) return
+          void navigator.clipboard.writeText(text)
+          replaceFieldRange(active, start, end, '')
+        },
+      },
+      {
+        id: 'copy',
+        label: '复制',
+        icon: <Copy size={14} />,
+        shortcut: 'Ctrl+C',
+        disabled: !hasSelection,
+        action: () => {
+          if (hasSelection) void navigator.clipboard.writeText(text)
+        },
+      },
+      {
+        id: 'paste',
+        label: '粘贴',
+        icon: <ClipboardPaste size={14} />,
+        shortcut: 'Ctrl+V',
+        disabled: active.readOnly || active.disabled,
+        action: async () => {
+          try {
+            const pasted = await navigator.clipboard.readText()
+            const range = fieldSelection(active)
+            replaceFieldRange(active, range.start, range.end, pasted)
+          } catch {
+            // Clipboard API may be blocked
+          }
+        },
+      },
+      {
+        id: 'delete',
+        label: '删除',
+        icon: <Trash2 size={14} />,
+        shortcut: 'Del',
+        disabled: !hasSelection || active.readOnly || active.disabled,
+        action: () => {
+          if (!hasSelection || active.readOnly || active.disabled) return
+          replaceFieldRange(active, start, end, '')
+        },
+      },
+      {
+        id: 'divider-1',
+        label: '',
+        divider: true,
+        action: () => {},
+      },
+      {
+        id: 'select-all',
+        label: '全选',
+        icon: <TextSelect size={14} />,
+        shortcut: 'Ctrl+A',
+        disabled: !hasValue,
+        action: () => {
+          active.focus()
+          active.select()
+        },
+      },
+    ]
+  }
+
+  const selectedText = getSelectedText()
+  if (selectedText.length === 0) return []
   return [
     {
       id: 'copy',
-      label: 'Copy',
+      label: t(menuLang(), 'copySelection'),
       icon: <Copy size={14} />,
       shortcut: 'Ctrl+C',
-      disabled: !hasSelection,
       action: () => {
-        if (hasSelection) {
-          navigator.clipboard.writeText(selectedText)
-        }
-      },
-    },
-    {
-      id: 'cut',
-      label: 'Cut',
-      icon: <Scissors size={14} />,
-      shortcut: 'Ctrl+X',
-      disabled: !hasSelection,
-      action: () => {
-        if (hasSelection) {
-          navigator.clipboard.writeText(selectedText)
-          // Try to delete the selection (works in input/textarea)
-          document.execCommand('delete')
-        }
-      },
-    },
-    {
-      id: 'paste',
-      label: 'Paste',
-      icon: <ClipboardPaste size={14} />,
-      shortcut: 'Ctrl+V',
-      action: async () => {
-        try {
-          const text = await navigator.clipboard.readText()
-          // Try to paste into focused element
-          const active = document.activeElement as HTMLInputElement | HTMLTextAreaElement | null
-          if (active && (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')) {
-            const start = active.selectionStart ?? 0
-            const end = active.selectionEnd ?? 0
-            const before = active.value.slice(0, start)
-            const after = active.value.slice(end)
-            active.value = before + text + after
-            active.selectionStart = active.selectionEnd = start + text.length
-            active.dispatchEvent(new Event('input', { bubbles: true }))
-          } else {
-            document.execCommand('insertText', false, text)
-          }
-        } catch {
-          // Clipboard API may be blocked
-        }
-      },
-    },
-    {
-      id: 'divider-1',
-      label: '',
-      divider: true,
-      action: () => {},
-    },
-    {
-      id: 'select-all',
-      label: 'Select All',
-      icon: <TextSelect size={14} />,
-      shortcut: 'Ctrl+A',
-      action: () => {
-        document.execCommand('selectAll')
-      },
-    },
-    {
-      id: 'copy-all',
-      label: 'Copy All Visible Text',
-      icon: <Copy size={14} />,
-      disabled: !hasSelection,
-      action: () => {
-        if (hasSelection) {
-          navigator.clipboard.writeText(selectedText)
-        }
+        void navigator.clipboard.writeText(selectedText)
       },
     },
   ]
 }
 
+export function buildWorkspaceContextMenu(workspacePath: string): ContextMenuItem[] {
+  return [
+    {
+      id: 'open-folder',
+      label: t(menuLang(), 'openInExplorer'),
+      icon: <FolderOpen size={14} />,
+      action: () => {
+        void window.piDesktop.system.revealPath(workspacePath)
+      },
+    },
+  ]
+}
+
+
 export function buildCodeBlockContextMenu(code: string): ContextMenuItem[] {
   return [
     {
       id: 'copy-code',
-      label: 'Copy Code Block',
+      label: t(menuLang(), 'copyCodeBlock'),
       icon: <Copy size={14} />,
       shortcut: 'Ctrl+Shift+C',
       action: () => navigator.clipboard.writeText(code),
     },
     {
       id: 'search-code',
-      label: 'Search Selection',
+      label: t(menuLang(), 'searchSelection'),
       icon: <Search size={14} />,
       disabled: !getSelectedText(),
       action: () => {
@@ -310,13 +363,13 @@ export function buildMessageContextMenu(
   return [
     {
       id: 'copy-message',
-      label: 'Copy Message',
+      label: t(menuLang(), 'copyMessage'),
       icon: <Copy size={14} />,
       action: () => navigator.clipboard.writeText(messageContent),
     },
     {
       id: 'copy-selection',
-      label: 'Copy Selection',
+      label: t(menuLang(), 'copySelection'),
       icon: <Copy size={14} />,
       disabled: !hasSelection,
       action: () => {
@@ -325,7 +378,7 @@ export function buildMessageContextMenu(
     },
     {
       id: 'add-to-notes',
-      label: hasSelection ? 'Add Selection to Notes' : 'Add Message to Notes',
+      label: hasSelection ? t(menuLang(), 'addSelectionToNotes') : t(menuLang(), 'addMessageToNotes'),
       icon: <StickyNote size={14} />,
       action: () => onAddToNotes(hasSelection ? selectedText : messageContent),
     },
@@ -367,14 +420,14 @@ export function buildSessionContextMenu(
   const items: ContextMenuItem[] = [
     {
       id: 'session-open',
-      label: 'Open Session',
+      label: t(menuLang(), 'openSession'),
       icon: <MessageSquare size={14} />,
       action: () => actions.onOpen(session),
     },
     ...(actions.onRuns
       ? [{
           id: 'session-runs',
-          label: 'Workflow Runs',
+          label: t(menuLang(), 'workflowRuns'),
           icon: <WorkflowIcon size={14} />,
           action: () => actions.onRuns!(session),
         }]
@@ -388,13 +441,13 @@ export function buildSessionContextMenu(
     isArchived
       ? {
           id: 'session-unarchive',
-          label: 'Unarchive',
+          label: t(menuLang(), 'unarchive'),
           icon: <ArchiveRestore size={14} />,
           action: () => actions.onUnarchive(session.sessionId),
         }
       : {
           id: 'session-archive',
-          label: 'Archive',
+          label: t(menuLang(), 'archive'),
           icon: <Archive size={14} />,
           action: () => actions.onArchive(session.sessionId),
         },
@@ -403,7 +456,7 @@ export function buildSessionContextMenu(
   if (actions.onRename) {
     items.push({
       id: 'session-rename',
-      label: 'Rename…',
+      label: t(menuLang(), 'renameEllipsis'),
       icon: <Pencil size={14} />,
       action: () => actions.onRename!(session),
     })
@@ -411,17 +464,18 @@ export function buildSessionContextMenu(
 
   items.push({
     id: 'session-delete',
-    label: 'Delete…',
+    label: t(menuLang(), 'deleteEllipsis'),
     icon: <Trash2 size={14} />,
     action: async () => {
       // Confirm before destructive action via an in-app themed dialog (not the
       // native window.confirm, which mismatches the theme and leaves the
       // Electron window without keyboard focus). Trash is recoverable when
       // installed; without it, delete is permanent — the wording is honest.
+      const lang = menuLang()
       const ok = await useAppStore.getState().requestConfirm({
-        title: 'Delete session',
-        message: `Delete session "${displayName}"?\n\nWill use the system 'trash' CLI if installed (recoverable); otherwise the .jsonl session file is permanently removed.`,
-        confirmLabel: 'Delete',
+        title: t(lang, 'deleteSessionTitle'),
+        message: t(lang, 'deleteSessionMessage', { name: displayName }),
+        confirmLabel: t(lang, 'confirmRemove'),
         danger: true,
       })
       if (ok) actions.onDelete(session)
@@ -435,13 +489,13 @@ export function buildLinkContextMenu(url: string): ContextMenuItem[] {
   return [
     {
       id: 'open-link',
-      label: 'Open Link',
+      label: t(menuLang(), 'openLink'),
       icon: <ExternalLink size={14} />,
       action: () => window.piDesktop.system.openExternal(url),
     },
     {
       id: 'copy-link',
-      label: 'Copy Link',
+      label: t(menuLang(), 'copyLink'),
       icon: <Copy size={14} />,
       action: () => navigator.clipboard.writeText(url),
     },

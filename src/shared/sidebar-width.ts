@@ -8,14 +8,14 @@
  */
 
 /** Narrow enough to reclaim space, wide enough for the nav labels. */
-export const MIN_SIDEBAR_WIDTH = 240
+export const MIN_SIDEBAR_WIDTH = 220
 /** Wide enough for a long session title without crowding out the chat. */
-export const MAX_SIDEBAR_WIDTH = 560
+export const MAX_SIDEBAR_WIDTH = 480
 /**
- * Fits roughly 36 characters of a session title — the previous 272px cut most
- * first-message previews mid-word.
+ * Console rail: dense enough to feel like a workbench, not a card stack.
  */
-export const DEFAULT_SIDEBAR_WIDTH = 320
+export const DEFAULT_SIDEBAR_WIDTH = 256
+
 
 /** Coerce any stored or dragged value into a usable whole-pixel width. */
 export function clampSidebarWidth(raw: number): number {

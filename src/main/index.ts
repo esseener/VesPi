@@ -14,16 +14,20 @@ import { shouldHideToTray } from './tray-decision'
 import { createEditorGuard } from './editor-guard'
 import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
+import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV } from './vespi-runtime'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
+
 
 // Env var honored on startup: if set, the named directory becomes the active
 // workspace (created on first run, switched to on subsequent runs). The CLI
-// launcher in bin/pi-desktop.js sets this from `pi-desktop <path>`.
-const WORKSPACE_ENV_VAR = 'PI_DESKTOP_WORKSPACE'
+// launcher in bin/pi-desktop.js sets this from `vespi <path>`.
+const WORKSPACE_ENV_VAR = VESPI_WORKSPACE_ENV
 
 // Electron's development executable otherwise registers as Electron on Windows,
 // which makes the taskbar and notification identity use Electron branding.
-app.setName('Pi Desktop')
-if (process.platform === 'win32') app.setAppUserModelId('dev.pi.desktop-gui')
+app.setName(VESPI_PRODUCT_NAME)
+if (process.platform === 'win32') app.setAppUserModelId(VESPI_APP_ID)
+
 
 // Suppress EPIPE errors from closed subprocess pipes
 process.on('uncaughtException', (err) => {
@@ -59,7 +63,8 @@ function getAppIconPath(): string {
   const base = app.isPackaged
     ? join(process.resourcesPath, 'resources')
     : join(app.getAppPath(), 'resources')
-  cachedAppIconPath = join(base, 'icons', 'icon.png')
+  const file = process.platform === 'win32' ? 'icon.ico' : 'icon.png'
+  cachedAppIconPath = join(base, 'icons', file)
   return cachedAppIconPath
 }
 
@@ -172,10 +177,16 @@ function createMainWindow(): BrowserWindow {
     height: WINDOW_HEIGHT,
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
-    title: 'Pi Desktop',
-    backgroundColor: '#0a0a0a',
+    title: VESPI_PRODUCT_NAME,
+    backgroundColor: '#070707',
     icon: appIcon,
     show: false,
+    autoHideMenuBar: true,
+    ...(process.platform === 'win32'
+      ? {
+          frame: false,
+        }
+      : {}),
     webPreferences: {
       preload: PRELOAD_PATH,
       contextIsolation: true,
@@ -184,18 +195,46 @@ function createMainWindow(): BrowserWindow {
       webSecurity: true,
       allowRunningInsecureContent: false,
       experimentalFeatures: false,
-      // Enables the <webview> tag used by the HTML file preview to run its own
-      // JavaScript in an isolated guest process (no Node, separate origin),
-      // without loosening the app's own CSP.
       webviewTag: true,
     },
   })
 
-  // Hide the top menu bar (File/Edit/View/Window). The application menu stays
-  // set so its accelerators (Ctrl+N, Ctrl+O, copy/paste, etc.) keep working;
-  // only the visible bar is hidden. autoHideMenuBar is left off so Alt won't
-  // reveal it.
+  // Hide the native File/Edit/View/Window bar. Accelerators still work via
+  // the application menu. Windows is frameless so renderer-drawn caption
+  // buttons sit on the mesh and remain clickable.
   window.setMenuBarVisibility(false)
+
+  const sendMaximized = (): void => {
+    if (window.isDestroyed()) return
+    window.webContents.send(IPC_CHANNELS.EVENT_WINDOW_MAXIMIZED, window.isMaximized())
+  }
+  window.on('maximize', sendMaximized)
+  window.on('unmaximize', sendMaximized)
+
+  window.webContents.on('context-menu', (_event, params) => {
+    if (!params.isEditable && params.editFlags.canCopy === false) return
+    const language: AppLanguage = DEFAULT_LANGUAGE
+    const flags = params.editFlags
+    const template: Electron.MenuItemConstructorOptions[] = []
+    if (params.isEditable) {
+      template.push(
+        { role: 'undo', label: t(language, 'editUndo'), enabled: flags.canUndo },
+        { role: 'redo', label: t(language, 'editRedo'), enabled: flags.canRedo },
+        { type: 'separator' },
+        { role: 'cut', label: t(language, 'editCut'), enabled: flags.canCut },
+        { role: 'copy', label: t(language, 'editCopy'), enabled: flags.canCopy },
+        { role: 'paste', label: t(language, 'editPaste'), enabled: flags.canPaste },
+        { role: 'delete', label: t(language, 'editDelete'), enabled: flags.canDelete },
+        { type: 'separator' },
+        { role: 'selectAll', label: t(language, 'editSelectAll'), enabled: flags.canSelectAll },
+      )
+    } else if (flags.canCopy) {
+      template.push({ role: 'copy', label: t(language, 'editCopy') })
+    }
+    if (template.length === 0) return
+    Menu.buildFromTemplate(template).popup({ window, x: params.x, y: params.y })
+  })
+
 
   // Graceful show (avoid white flash)
   window.once('ready-to-show', () => {
@@ -287,7 +326,6 @@ function createMainWindow(): BrowserWindow {
     window.loadFile(RENDERER_INDEX_PATH)
   }
 
-  // Dev tools in development
   if (process.env.NODE_ENV === 'development') {
     window.webContents.openDevTools({ mode: 'detach' })
   }
@@ -310,13 +348,13 @@ function showMainWindow(): void {
 
 // ─── Application Menu ────────────────────────────────────────────────────────
 
-function createApplicationMenu(): void {
+function createApplicationMenu(language: AppLanguage = DEFAULT_LANGUAGE): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
-      label: 'File',
+      label: t(language, 'menuFile'),
       submenu: [
         {
-          label: 'New Session',
+          label: t(language, 'menuNewSession'),
           accelerator: 'CmdOrCtrl+N',
           click: () => {
             const focusedWindow = BrowserWindow.getFocusedWindow()
@@ -324,7 +362,7 @@ function createApplicationMenu(): void {
           },
         },
         {
-          label: 'New Workspace...',
+          label: t(language, 'menuNewWorkspace'),
           accelerator: 'CmdOrCtrl+Shift+N',
           click: () => {
             const focusedWindow = BrowserWindow.getFocusedWindow()
@@ -332,7 +370,7 @@ function createApplicationMenu(): void {
           },
         },
         {
-          label: 'Open Project...',
+          label: t(language, 'menuOpenProject'),
           accelerator: 'CmdOrCtrl+O',
           click: () => {
             const focusedWindow = BrowserWindow.getFocusedWindow()
@@ -344,7 +382,7 @@ function createApplicationMenu(): void {
       ],
     },
     {
-      label: 'Edit',
+      label: t(language, 'menuEdit'),
       submenu: [
         { role: 'undo' },
         { role: 'redo' },
@@ -356,18 +394,15 @@ function createApplicationMenu(): void {
       ],
     },
     {
-      label: 'View',
+      label: t(language, 'menuView'),
       submenu: [
-        // Not the bare roles: a reload destroys the renderer and its unsaved
-        // editor buffer, so both run through the same discard guard as
-        // close/quit before touching webContents.
         {
-          label: 'Reload',
+          label: t(language, 'menuReload'),
           accelerator: 'CmdOrCtrl+R',
           click: () => void reloadMainWindowWithGuard(false),
         },
         {
-          label: 'Force Reload',
+          label: t(language, 'menuForceReload'),
           accelerator: 'Shift+CmdOrCtrl+R',
           click: () => void reloadMainWindowWithGuard(true),
         },
@@ -381,13 +416,14 @@ function createApplicationMenu(): void {
       ],
     },
     {
-      label: 'Window',
+      label: t(language, 'menuWindow'),
       submenu: [{ role: 'minimize' }, { role: 'zoom' }, { role: 'close' }],
     },
   ]
 
   Menu.setApplicationMenu(Menu.buildFromTemplate(template))
 }
+
 
 // ─── App Lifecycle ───────────────────────────────────────────────────────────
 
@@ -419,6 +455,8 @@ app.whenReady().then(async () => {
   // binary before this setting is applied.
   const settings = await loadAppSettings(workspaceManager)
   setPiExecutableOverride(settings.piExecutablePath, settings.piEngine)
+  createApplicationMenu(settings.language)
+
 
   // Register IPC handlers before creating windows. The window getter is a
   // lazy closure — mainWindow is created later and the notification wiring
@@ -434,12 +472,13 @@ app.whenReady().then(async () => {
   ipcMain.on(IPC_CHANNELS.UI_EDITOR_DIRTY_SET, (_event, dirty: unknown, fileName: unknown) => {
     editorGuard.setDirty(dirty === true, typeof fileName === 'string' ? fileName : null)
   })
+  ipcMain.on('menu:language-changed', (_event, language: unknown) => {
+    if (language === 'zh' || language === 'en') createApplicationMenu(language)
+  })
 
-  // Create application menu
-  createApplicationMenu()
-
-  // Create main window
   createMainWindow()
+
+
 
   // System tray: inject deps once, then enable it if the setting is on. The
   // one-time "still running" hint reads/persists via app settings.

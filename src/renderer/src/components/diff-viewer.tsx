@@ -14,6 +14,8 @@ import {
 } from 'lucide-react'
 import { formatIpcError } from '../utils/ipc-error'
 import { GitConveyorActions } from './git-conveyor-actions'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+
 
 interface DiffLine {
   type: 'add' | 'remove' | 'context' | 'header' | 'hunk'
@@ -35,12 +37,14 @@ interface DiffViewerProps {
 }
 
 export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [files, setFiles] = useState<DiffFileBlock[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [expandedFiles, setExpandedFiles] = useState<Set<string>>(new Set())
   const [stagedMode, setStagedMode] = useState(false)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
+
 
   const loadDiff = useCallback(async () => {
     setLoading(true)
@@ -78,11 +82,12 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
         <div className="flex flex-wrap items-center gap-2">
           <div className="order-1 flex min-w-0 flex-1 items-center gap-2">
             <GitCompare size={16} className="shrink-0 text-muted" />
-            <h2 className="truncate text-sm font-medium text-primary">Diff Viewer</h2>
+            <h2 className="truncate text-sm font-medium text-primary">{t(language, 'diffViewer')}</h2>
             <span className="shrink-0 rounded-full bg-card px-2 py-0.5 text-xs text-dim">
-              {files.length} file{files.length !== 1 ? 's' : ''}
+              {t(language, 'filesCount', { count: String(files.length) })}
             </span>
           </div>
+
           <div className="order-2 flex shrink-0 items-center gap-2">
             <button
               onClick={() => setStagedMode(!stagedMode)}
@@ -93,12 +98,12 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
                   : 'bg-card text-muted hover:text-secondary'
               )}
             >
-              {stagedMode ? 'Staged' : 'Working'}
+              {stagedMode ? t(language, 'staged') : t(language, 'working')}
             </button>
             <button
               onClick={loadDiff}
               className="rounded p-1.5 text-dim transition-colors hover:bg-surface-hover hover:text-secondary"
-              aria-label="Refresh diff"
+              aria-label={t(language, 'refreshDiff')}
             >
               <RefreshCw size={14} />
             </button>
@@ -111,7 +116,7 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
                 }
               }}
               className="rounded p-1.5 text-dim transition-colors hover:bg-surface-hover hover:text-secondary"
-              aria-label="Close diff viewer"
+              aria-label={t(language, 'closeDiff')}
             >
               <X size={14} />
             </button>
@@ -122,7 +127,6 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
         </div>
       </div>
 
-      {/* Content */}
       <div className="flex-1 overflow-y-auto">
         {loading ? (
           <div className="flex items-center justify-center py-12">
@@ -131,21 +135,21 @@ export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element
         ) : loadError !== null ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <AlertTriangle size={32} className="mb-3 text-warning" />
-            <p className="text-sm text-secondary">Couldn't load the diff</p>
+            <p className="text-sm text-secondary">{t(language, 'couldNotLoadDiff')}</p>
             <p className="mt-1 max-w-md break-words px-4 text-center text-xs text-faint">{loadError}</p>
             <button
               onClick={loadDiff}
               className="mt-3 rounded bg-card px-3 py-1 text-xs text-secondary transition-colors hover:bg-surface-hover"
             >
-              Retry
+              {t(language, 'retry')}
             </button>
           </div>
         ) : files.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <GitCompare size={32} className="mb-3 text-faint" />
-            <p className="text-sm">No changes</p>
+            <p className="text-sm">{t(language, 'noChanges')}</p>
             <p className="mt-1 text-xs text-faint">
-              {stagedMode ? 'No staged changes' : 'Working tree is clean'}
+              {stagedMode ? t(language, 'noStagedChanges') : t(language, 'workingTreeClean')}
             </p>
           </div>
         ) : (

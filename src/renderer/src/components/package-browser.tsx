@@ -1,6 +1,8 @@
 import { useAppStore } from '../store'
 import type { CatalogPackage } from '../../../shared/ipc-contracts'
 import { filterCatalog } from '../../../shared/package-filter'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import {
@@ -19,6 +21,7 @@ import {
 } from 'lucide-react'
 
 export function PackageBrowser(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const installedPackages = useAppStore((state) => state.installedPackages)
   const catalogPackages = useAppStore((state) => state.catalogPackages)
   const packageLoading = useAppStore((state) => state.packageLoading)
@@ -31,6 +34,7 @@ export function PackageBrowser(): React.JSX.Element {
   const clearPackageNotification = useAppStore((state) => state.clearPackageNotification)
   const installedSkills = useAppStore((state) => state.installedSkills)
   const loadSkills = useAppStore((state) => state.loadSkills)
+
 
   // Memoized so the tab components (below, React.memo'd) don't re-render just
   // because this Set was rebuilt on an unrelated render.
@@ -66,29 +70,28 @@ export function PackageBrowser(): React.JSX.Element {
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 mb-3">
           <Package size={16} className="text-muted" />
-          <h2 className="text-sm font-medium text-primary">Packages & Skills</h2>
+          <h2 className="text-sm font-medium text-primary">{t(language, 'extensionsDock')}</h2>
         </div>
 
-        {/* Tabs */}
         <div className="flex gap-1">
           <TabButton
             active={activeTab === 'installed'}
             onClick={() => setActiveTab('installed')}
             icon={<FolderOpen size={12} />}
-            label="Installed"
+            label={t(language, 'installed')}
             count={installedPackages.length}
           />
           <TabButton
             active={activeTab === 'catalog'}
             onClick={() => setActiveTab('catalog')}
             icon={<Store size={12} />}
-            label="Catalog"
+            label={t(language, 'catalog')}
           />
           <TabButton
             active={activeTab === 'skills'}
             onClick={() => setActiveTab('skills')}
             icon={<Puzzle size={12} />}
-            label="Skills"
+            label={t(language, 'skills')}
             count={installedSkills.length}
           />
         </div>
@@ -469,7 +472,9 @@ const SkillsTab = memo(function SkillsTab({
             <span className="text-sm font-medium text-primary">{skill.name}</span>
             <span className={clsx(
               'rounded px-1.5 py-0.5 text-[10px]',
-              skill.source === 'global' ? 'bg-accent-bg text-accent-fg' : 'bg-success-bg text-success'
+              skill.source === 'openspace' || skill.source === 'bundled'
+                ? 'bg-accent-bg text-accent-fg'
+                : 'bg-success-bg text-success'
             )}>
               {skill.source}
             </span>

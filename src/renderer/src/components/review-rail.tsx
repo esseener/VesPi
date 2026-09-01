@@ -5,13 +5,14 @@ import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/ag
 import { PermissionSelector } from './permission-selector'
 import { formatIpcError } from '../utils/ipc-error'
 import type { GitFileStatus } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 interface ChangedFile {
   path: string
   status: GitFileStatus
 }
 
-export function ReviewRail(): React.JSX.Element | null {
+export function ReviewRail({ embedded = false }: { embedded?: boolean }): React.JSX.Element | null {
   const reviewOpen = useAppStore((state) => state.reviewOpen)
   const settings = useAppStore((state) => state.settings)
   const setPermissionMode = useAppStore((state) => state.setPermissionMode)
@@ -20,7 +21,9 @@ export function ReviewRail(): React.JSX.Element | null {
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const isStreaming = useAppStore((state) => state.isStreaming)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
+
   const messages = useAppStore((state) => state.messages)
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({})
   const [gitError, setGitError] = useState<string | null>(null)
@@ -61,24 +64,25 @@ export function ReviewRail(): React.JSX.Element | null {
     }
   }, [activeWorkspace?.id, messages.length, isStreaming])
 
-  if (!reviewOpen) return null
+  if (!embedded && !reviewOpen) return null
 
   return (
-    <aside className="flex w-80 shrink-0 flex-col border-l border-border bg-app">
+    <aside className={embedded ? 'flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden' : 'flex w-80 shrink-0 flex-col border-l border-border bg-app'}>
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <ShieldCheck size={16} className="text-success" />
-          <h2 className="text-sm font-semibold text-primary">Review</h2>
+          <h2 className="text-sm font-semibold text-primary">{t(language, 'review')}</h2>
+
         </div>
         <p className="mt-1 text-xs leading-5 text-dim">
-          Control what Pi can do before changes move forward.
+          {t(language, 'reviewHint')}
         </p>
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <section>
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-dim">
-            Permissions
+            {t(language, 'permissions')}
           </div>
           <PermissionSelector
             value={settings?.permissionMode}
@@ -89,7 +93,7 @@ export function ReviewRail(): React.JSX.Element | null {
         <section className="mt-6">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-xs font-medium uppercase tracking-wide text-dim">
-              Pending Approvals
+              {t(language, 'pendingApprovals')}
             </div>
             <span className="rounded-full bg-card px-2 py-0.5 text-[10px] text-muted">
               {pendingCount}
@@ -99,12 +103,12 @@ export function ReviewRail(): React.JSX.Element | null {
             {pendingCount > 0 ? (
               <div className="flex items-start gap-2 text-sm text-warning">
                 <AlertCircle size={15} className="mt-0.5 shrink-0" />
-                <span>{pendingCount} queued item{pendingCount === 1 ? '' : 's'} waiting for the active session.</span>
+                <span>{t(language, 'queuedWaiting', { count: String(pendingCount) })}</span>
               </div>
             ) : (
               <div className="flex items-start gap-2 text-sm text-muted">
                 <CheckCircle2 size={15} className="mt-0.5 shrink-0 text-success" />
-                <span>No approval requests waiting.</span>
+                <span>{t(language, 'noApprovalsWaiting')}</span>
               </div>
             )}
           </div>
@@ -113,7 +117,7 @@ export function ReviewRail(): React.JSX.Element | null {
         <section className="mt-6">
           <div className="mb-2 flex items-center justify-between">
             <div className="text-xs font-medium uppercase tracking-wide text-dim">
-              Changed Files
+              {t(language, 'changedFiles')}
             </div>
             <span className="rounded-full bg-card px-2 py-0.5 text-[10px] text-muted">
               {changedFiles.length}
@@ -123,10 +127,10 @@ export function ReviewRail(): React.JSX.Element | null {
             {gitError !== null ? (
               <div className="flex items-center gap-2 px-3 py-3 text-xs text-warning" title={gitError}>
                 <AlertCircle size={13} className="shrink-0" />
-                <span className="min-w-0 flex-1 truncate">Git status unavailable</span>
+                <span className="min-w-0 flex-1 truncate">{t(language, 'gitStatusUnavailable')}</span>
               </div>
             ) : changedFiles.length === 0 ? (
-              <div className="px-3 py-3 text-sm text-dim">No working tree changes.</div>
+              <div className="px-3 py-3 text-sm text-dim">{t(language, 'noWorkingTreeChanges')}</div>
             ) : (
               <div className="max-h-44 overflow-y-auto py-1">
                 {changedFiles.slice(0, 8).map((file) => (
@@ -145,7 +149,7 @@ export function ReviewRail(): React.JSX.Element | null {
                 ))}
                 {changedFiles.length > 8 && (
                   <div className="px-3 py-1.5 text-xs text-dim">
-                    +{changedFiles.length - 8} more
+                    {t(language, 'moreCount', { count: String(changedFiles.length - 8) })}
                   </div>
                 )}
               </div>
@@ -158,9 +162,9 @@ export function ReviewRail(): React.JSX.Element | null {
           >
             <GitCompare size={15} className="shrink-0 text-dim" />
             <span className="min-w-0 flex-1">
-              <span className="block">Open diff review</span>
+              <span className="block">{t(language, 'openDiffReview')}</span>
               <span className="mt-0.5 block text-xs text-dim">
-                Inspect working tree changes.
+                {t(language, 'inspectWorkingTree')}
               </span>
             </span>
           </button>
@@ -168,7 +172,8 @@ export function ReviewRail(): React.JSX.Element | null {
 
         <section className="mt-6">
           <div className="mb-2 text-xs font-medium uppercase tracking-wide text-dim">
-            Session Status
+            {t(language, 'sessionStatus')}
+
           </div>
           <div className="rounded-md border border-border bg-surface/50 p-3 text-sm text-muted">
             <div className="flex items-center gap-2">

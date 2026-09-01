@@ -1,4 +1,5 @@
 import type { WorkspaceActivity, WorkspaceActivityMap } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 
 /**
  * Pure helpers mapping the main-process workspace-activity map to sidebar
@@ -18,14 +19,15 @@ export interface ActivityIndicator {
 
 export function workspaceActivityIndicator(
   activity: WorkspaceActivity | undefined,
+  language: AppLanguage = DEFAULT_LANGUAGE,
 ): ActivityIndicator | null {
   switch (activity?.state) {
     case 'working':
-      return { colorClass: 'bg-accent', pulse: true, label: 'Pi is working' }
+      return { colorClass: 'bg-accent', pulse: true, label: t(language, 'activityWorking') }
     case 'completed':
-      return { colorClass: 'bg-success', pulse: false, label: 'Finished in the background' }
+      return { colorClass: 'bg-success', pulse: false, label: t(language, 'activityCompleted') }
     case 'failed':
-      return { colorClass: 'bg-error', pulse: false, label: 'Stopped with an error' }
+      return { colorClass: 'bg-error', pulse: false, label: t(language, 'activityFailed') }
     default:
       return null
   }
@@ -39,6 +41,7 @@ export function workspaceActivityIndicator(
 export function summarizeBackgroundActivity(
   map: WorkspaceActivityMap,
   activeWorkspaceId: string | null,
+  language: AppLanguage = DEFAULT_LANGUAGE,
 ): ActivityIndicator | null {
   let best: ActivityIndicator | null = null
   let bestRank = -1
@@ -48,9 +51,9 @@ export function summarizeBackgroundActivity(
     if (workspaceId === activeWorkspaceId) continue
     const rank = activity.state in ranks ? ranks[activity.state as keyof typeof ranks] : 0
     if (rank > bestRank) {
-      const indicator = workspaceActivityIndicator(activity)
+      const indicator = workspaceActivityIndicator(activity, language)
       if (indicator) {
-        best = { ...indicator, label: `${indicator.label} in another workspace` }
+        best = { ...indicator, label: t(language, 'activityOtherWorkspace', { label: indicator.label }) }
         bestRank = rank
       }
     }

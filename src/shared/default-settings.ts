@@ -1,6 +1,8 @@
 import type { AppSettings } from './ipc-contracts'
 import { DEFAULT_COUNCIL_CONFIG } from './council-config'
 import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-width'
+import { VESPI_PRIVATE_OMP_REL } from './vespi'
+import { DEFAULT_LANGUAGE } from './i18n'
 
 /**
  * The single source of truth for default app settings. Used by the main process
@@ -9,11 +11,13 @@ import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-width'
  * and it applies everywhere.
  */
 export const DEFAULT_SETTINGS: AppSettings = {
-  piExecutablePath: 'pi',
-  piEngine: 'auto',
+  piExecutablePath: VESPI_PRIVATE_OMP_REL,
+  piEngine: 'omp',
   defaultArgs: [],
   theme: 'dark',
+  language: DEFAULT_LANGUAGE,
   defaultModel: null,
+
   defaultProvider: null,
   defaultCwd: null,
   fontSize: 16,

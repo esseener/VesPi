@@ -14,6 +14,7 @@ export interface FileDragTransfer {
 
 export interface FileDragItem {
   kind: string
+  type?: string
   webkitGetAsEntry?: () => { isDirectory: boolean; isFile: boolean } | null
   getAsFile: () => File | null
 }
@@ -26,15 +27,30 @@ export function workspaceNameFromFolderPath(folderPath: string): string {
 
 /**
  * Whether a DataTransfer looks like an OS file/folder drag (not internal
- * text/HTML drags). Used to decide when to show the drop overlay and accept drops.
+ * text/HTML/image drags). Dragging the in-app logo must not open a workspace.
  */
 export function isFileDrag(dataTransfer: FileDragTransfer | null | undefined): boolean {
   if (!dataTransfer?.types) return false
-  const types = dataTransfer.types
-  for (let i = 0; i < types.length; i++) {
-    if (types[i] === 'Files') return true
+  const types = Array.from(dataTransfer.types)
+  if (!types.includes('Files')) return false
+  if (types.some((type) => type === 'text/uri-list' || type === 'text/html' || type.startsWith('image/'))) {
+    return false
   }
-  return false
+  const items = dataTransfer.items
+  if (items && items.length > 0) {
+    let sawFile = false
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]
+      if (item.kind !== 'file') continue
+      sawFile = true
+      if (typeof item.type === 'string' && item.type.startsWith('image/')) return false
+      const file = item.getAsFile()
+      if (file && typeof file.type === 'string' && file.type.startsWith('image/')) return false
+      if (file && /\.(svg|png|jpe?g|gif|webp|ico)$/i.test(file.name)) return false
+    }
+    if (!sawFile) return false
+  }
+  return true
 }
 
 /**
@@ -58,12 +74,15 @@ export function droppedFolderCandidates(
   for (let i = 0; i < items.length; i++) {
     const item = items[i]
     if (item.kind !== 'file') continue
+    if (typeof item.type === 'string' && item.type.startsWith('image/')) continue
+    const file = item.getAsFile()
+    if (file && typeof file.type === 'string' && file.type.startsWith('image/')) continue
+    if (file && /\.(svg|png|jpe?g|gif|webp|ico)$/i.test(file.name)) continue
 
     const entry =
       typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
     if (entry && !entry.isDirectory) continue
 
-    const file = item.getAsFile()
     if (!file) continue
     const p = getPathForFile(file)
     if (!p) continue

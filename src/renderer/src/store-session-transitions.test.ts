@@ -201,7 +201,17 @@ const piDesktopStub = {
     },
     createNew: async () => {
       calls.push('createNew')
-      return { success: true }
+      return {
+        runtimeId: 'rt-created',
+        workspaceId: WORKSPACE_ONE.id,
+        sessionPath: null,
+        sessionId: null,
+        status: 'starting',
+        pid: null,
+        error: null,
+        activity: null,
+        active: true,
+      }
     },
     closeRuntime: async (runtimeId: string) => {
       calls.push(`closeRuntime:${runtimeId}`)
@@ -457,9 +467,9 @@ test('confirmSessionChange labels the dialog for the action being confirmed', as
   const pending = useAppStore.getState().confirmSessionChange('fork')
   const request = useAppStore.getState().confirmRequest
   assert.ok(request, 'a streaming turn must raise the dialog')
-  assert.equal(request.confirmLabel, 'Fork anyway')
-  assert.equal(request.cancelLabel, 'Keep working')
-  assert.match(request.message, /Forking this session/)
+  assert.equal(request.confirmLabel, '仍要分叉')
+  assert.equal(request.cancelLabel, '继续工作')
+  assert.match(request.message, /分叉此会话/)
   assert.equal(request.danger, true, 'discarding a running turn must not be the default action')
 
   useAppStore.getState().resolveConfirm(false)
@@ -537,6 +547,38 @@ test('createNewSession opens the new conversation in Chat', async () => {
   assert.equal(calls.includes('createNew'), true)
   assert.equal(state.currentView, 'chat')
   assert.equal(state.sessionLoading, false, 'an empty new session should render immediately')
+  assert.equal(state.sessionStats, null, 'a blank session must not keep the previous context usage')
+  assert.equal(state.sessionRuntimes['rt-created']?.active, true)
+  assert.equal(state.activeSessionRuntimeId, 'rt-created')
+})
+
+test('a ready empty new session binds its path without reloading history', async () => {
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE],
+    activeSessionRuntimeId: 'rt-new',
+    sessionLoading: false,
+    sessionState: null,
+    sessionStats: null,
+    messages: [],
+    isStreaming: false,
+  })
+
+  useAppStore.getState().handleSessionRuntime({
+    runtimeId: 'rt-new',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session-new',
+    status: 'running',
+    pid: 123,
+    error: null,
+    activity: null,
+    active: true,
+  })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(calls.includes('getMessages'), false, 'empty new chat must not flash a history reload')
+  assert.equal(useAppStore.getState().sessionLoading, false)
 })
 
 test('forkFrom is gated by the same warning', async () => {
@@ -691,8 +733,8 @@ test('pending prompt counts land in state and sum over non-active workspaces', (
   assert.deepEqual(useAppStore.getState().pendingPromptCounts, { 'ws-2': 2, 'ws-9': 1 })
   assert.equal(countPromptsWaitingElsewhere({ 'ws-2': 2, 'ws-9': 1 }, 'ws-2'), 1)
   assert.equal(countPromptsWaitingElsewhere({ 'ws-2': 2, 'ws-9': 1 }, null), 3)
-  assert.equal(formatPromptsWaiting(1), '1 Pi prompt waiting')
-  assert.equal(formatPromptsWaiting(3), '3 Pi prompts waiting')
+  assert.equal(formatPromptsWaiting(1), '1 个确认等待处理')
+  assert.equal(formatPromptsWaiting(3), '3 个确认等待处理')
 })
 
 test('removing the workspace flushes prompts only when a new one is promoted', async () => {
@@ -810,13 +852,13 @@ test('openFolderAsWorkspace switches when the dropped folder is an existing othe
   assert.equal(useAppStore.getState().currentView, 'chat')
   assert.equal(
     useAppStore.getState().piStatus,
-    'stopped',
-    'an idle target shows the empty view instantly — no process is spawned'
+    'running',
+    'opening a folder as the workspace starts the agent'
   )
   assert.equal(
     calls.includes('pi.start'),
-    false,
-    'navigation must not spawn a process'
+    true,
+    'opening a folder must spawn the agent instead of waiting for the first send'
   )
 })
 
@@ -1533,6 +1575,37 @@ test('switchSession still skips a reload when the session is already on screen',
   await useAppStore.getState().switchSession(SESSION_PATH)
 
   assert.equal(calls.includes(`switch:${SESSION_PATH}`), false)
+})
+
+test('switchSession does not switch an empty tab that is already active', async () => {
+  useAppStore.setState({
+    sessionState: sessionStateWith(SESSION_PATH),
+    messages: [],
+    sessionLoading: false,
+    activeSessionRuntimeId: 'rt-new',
+    sessionRuntimes: {
+      'rt-new': {
+        runtimeId: 'rt-new',
+        workspaceId: WORKSPACE_ONE.id,
+        sessionPath: SESSION_PATH,
+        sessionId: 'session-new',
+        status: 'running',
+        pid: 123,
+        error: null,
+        activity: null,
+        active: true,
+      },
+    },
+  })
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+
+  assert.equal(
+    calls.includes(`switch:${SESSION_PATH}`),
+    false,
+    'clicking the empty new tab must not wait for a session file that is not on disk yet'
+  )
+  assert.equal(useAppStore.getState().currentView, 'chat')
 })
 
 test('the cross-workspace open flow loads the clicked session end to end', async () => {

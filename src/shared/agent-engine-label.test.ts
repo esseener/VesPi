@@ -21,7 +21,8 @@ test('an unknown engine has no name, so callers choose their own fallback', () =
 })
 
 test('the fallback is a real engine name, not a placeholder', () => {
-  // The permission extension renders this when the GUI told it nothing.
-  assert.equal(DEFAULT_AGENT_ENGINE_LABEL, 'Pi')
-  assert.equal(agentEngineLabel('pi'), DEFAULT_AGENT_ENGINE_LABEL)
+  // VesPi always runs OMP; the permission extension uses this when the GUI
+  // has not yet reported a live engine.
+  assert.equal(DEFAULT_AGENT_ENGINE_LABEL, 'OMP')
+  assert.equal(agentEngineLabel('omp'), DEFAULT_AGENT_ENGINE_LABEL)
 })

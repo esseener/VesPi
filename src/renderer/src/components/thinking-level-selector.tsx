@@ -2,16 +2,38 @@ import { useEffect, useRef, useState } from 'react'
 import { Check, ChevronUp, Zap } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 
 interface ThinkingLevelSelectorProps {
   className?: string
 }
 
-/** Compact model-aware effort picker for the composer action rail. */
+function thinkingLevelLabel(language: AppLanguage, level: string): string {
+  switch (level) {
+    case 'off':
+      return t(language, 'thinkingOff')
+    case 'minimal':
+      return t(language, 'thinkingMinimal')
+    case 'low':
+      return t(language, 'thinkingLow')
+    case 'medium':
+      return t(language, 'thinkingMedium')
+    case 'high':
+      return t(language, 'thinkingHigh')
+    case 'xhigh':
+      return t(language, 'thinkingXhigh')
+    case 'max':
+      return t(language, 'thinkingMax')
+    default:
+      return level
+  }
+}
+
 export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps): React.JSX.Element {
   const sessionState = useAppStore((state) => state.sessionState)
   const setThinkingLevel = useAppStore((state) => state.setThinkingLevel)
   const piStatus = useAppStore((state) => state.piStatus)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [isOpen, setIsOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
@@ -44,20 +66,20 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
           'flex h-6 items-center gap-1 rounded-md px-2 text-[11px] transition-colors active:scale-[0.98]',
           isOpen ? 'bg-surface-hover text-primary' : 'text-dim hover:bg-surface-hover hover:text-secondary',
         )}
-        title={`Thinking effort: ${currentLevel}`}
-        aria-label={`Thinking effort: ${currentLevel}`}
+        title={t(language, 'thinkingEffortValue', { level: thinkingLevelLabel(language, currentLevel) })}
+        aria-label={t(language, 'thinkingEffortValue', { level: thinkingLevelLabel(language, currentLevel) })}
         aria-expanded={isOpen}
       >
         <Zap size={11} className="shrink-0 text-accent-fg" />
-        <span>{currentLevel}</span>
+        <span>{thinkingLevelLabel(language, currentLevel)}</span>
         <ChevronUp size={10} className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')} />
       </button>
 
       {isOpen && (
         <div className="absolute bottom-full right-0 z-50 mb-2 w-40 overflow-hidden rounded-xl border border-border-strong bg-surface py-1 shadow-xl shadow-black/30 animate-fade-in">
           <div className="border-b border-border px-3 py-2">
-            <div className="text-[10px] font-medium uppercase tracking-wide text-faint">Effort</div>
-            <div className="mt-0.5 text-xs text-dim">Model-aware thinking depth</div>
+            <div className="text-[10px] font-medium uppercase tracking-wide text-faint">{t(language, 'thinkingEffort')}</div>
+            <div className="mt-0.5 text-xs text-dim">{t(language, 'thinkingHint')}</div>
           </div>
           {levels.map((level) => (
             <button
@@ -73,7 +95,8 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
               )}
             >
               {currentLevel === level ? <Check size={11} className="text-success" /> : <span className="w-[11px]" />}
-              <span>{level}</span>
+              <span>{thinkingLevelLabel(language, level)}</span>
+
             </button>
           ))}
         </div>

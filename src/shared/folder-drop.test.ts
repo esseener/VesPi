@@ -22,7 +22,22 @@ test('workspaceNameFromFolderPath falls back when empty-ish', () => {
 test('isFileDrag detects the Files type (Chromium array)', () => {
   assert.equal(isFileDrag({ types: ['Files'] }), true)
   assert.equal(isFileDrag({ types: ['text/plain'] }), false)
+  assert.equal(isFileDrag({ types: ['Files', 'text/uri-list'] }), false)
   assert.equal(isFileDrag(null), false)
+})
+
+test('isFileDrag ignores in-app image drags such as the logo', () => {
+  const svg = { name: 'vespi-wordmark.svg', type: 'image/svg+xml' } as File
+  const dt = transferOf([
+    {
+      kind: 'file',
+      type: 'image/svg+xml',
+      webkitGetAsEntry: () => null,
+      getAsFile: () => svg,
+    },
+  ])
+  assert.equal(isFileDrag(dt), false)
+  assert.deepEqual(droppedFolderCandidates(dt, () => '/tmp/vespi-wordmark.svg'), [])
 })
 
 function transferOf(items: FileDragItem[]): FileDragTransfer {

@@ -14,6 +14,8 @@ import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/ag
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { formatIpcError } from '../utils/ipc-error'
 import { CopyButton } from './copy-button'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+
 
 type RowTone = 'ok' | 'warn' | 'fail' | 'plain'
 
@@ -41,6 +43,8 @@ export function DiagnosticsPanel(): React.JSX.Element {
   // The report describes whichever CLI resolved, so labelling it "Pi version"
   // while OMP is configured reports the wrong program's version number.
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -63,7 +67,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Stethoscope size={16} className="text-muted" />
-          <h2 className="text-sm font-medium text-primary">Diagnostics</h2>
+          <h2 className="text-sm font-medium text-primary">{t(language, 'diagnostics')}</h2>
         </div>
         <div className="flex items-center gap-2">
           {report && (
@@ -74,8 +78,9 @@ export function DiagnosticsPanel(): React.JSX.Element {
           )}
           <button
             onClick={() => void load()}
-            title="Refresh"
-            aria-label="Refresh diagnostics"
+            title={t(language, 'refresh')}
+            aria-label={t(language, 'refreshDiagnostics')}
+
             className="rounded p-1.5 text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
           >
             <RefreshCw size={14} />
@@ -243,7 +248,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
               ) : (
                 <div className="space-y-1">
                   {report.recentErrors.slice(-MAX_VISIBLE_LOG_ENTRIES).map((entry, index) => (
-                    <LogEntryRow key={`${entry.ts}-${index}`} entry={entry} now={report.generatedAt} />
+                    <LogEntryRow key={`${entry.ts}-${index}`} entry={entry} now={report.generatedAt} language={language} />
                   ))}
                 </div>
               )}
@@ -297,7 +302,7 @@ function StatusGlyph({ tone }: { tone: Exclude<RowTone, 'plain'> }): React.JSX.E
   return <XCircle size={13} className="shrink-0 text-error" />
 }
 
-function LogEntryRow({ entry, now }: { entry: AppLogEntry; now: number }): React.JSX.Element {
+function LogEntryRow({ entry, now, language }: { entry: AppLogEntry; now: number; language: import('../../../shared/i18n').AppLanguage }): React.JSX.Element {
   return (
     <div className="flex items-start gap-2 text-xs" title={entry.detail}>
       <span
@@ -308,7 +313,7 @@ function LogEntryRow({ entry, now }: { entry: AppLogEntry; now: number }): React
       >
         {entry.level}
       </span>
-      <span className="shrink-0 text-faint">{formatRelativeTime(entry.ts, now)}</span>
+      <span className="shrink-0 text-faint">{formatRelativeTime(entry.ts, now, language)}</span>
       <span className="shrink-0 text-muted">[{entry.scope}]</span>
       <span className="min-w-0 flex-1 break-words text-secondary">{entry.message}</span>
     </div>

@@ -4,6 +4,7 @@ import { Plus, Search, Pencil, Trash2, CornerDownLeft, Tag, ArrowLeft, StickyNot
 import { useAppStore } from '../store'
 import { MarkdownRenderer } from './markdown-renderer'
 import type { Note, NoteInput } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 const GLOBAL_SCOPE = 'global'
 
@@ -19,6 +20,7 @@ function parseTags(raw: string): string[] {
 
 export function NotesPanel(): React.JSX.Element {
   const notes = useAppStore((state) => state.notes)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const saveNote = useAppStore((state) => state.saveNote)
   const updateNote = useAppStore((state) => state.updateNote)
@@ -46,10 +48,10 @@ export function NotesPanel(): React.JSX.Element {
 
   const scopeLabel = (scope: string): string =>
     scope === GLOBAL_SCOPE
-      ? 'Global'
+      ? t(language, 'noteScopeGlobal')
       : scope === activeWorkspace?.id
-        ? (activeWorkspace?.name ?? 'Workspace')
-        : 'Other workspace'
+        ? (activeWorkspace?.name ?? t(language, 'noteScopeWorkspace'))
+        : t(language, 'noteScopeOther')
 
   // Only global notes and notes for the active workspace are relevant here.
   const visible = useMemo(() => {
@@ -75,6 +77,10 @@ export function NotesPanel(): React.JSX.Element {
         workspaceId={activeWorkspace?.id ?? null}
         workspaceName={activeWorkspace?.name ?? null}
         onCancel={leaveForm}
+        onDelete={editing === 'new' ? undefined : async () => {
+          await deleteNote(editing.id)
+          leaveForm()
+        }}
         onSubmit={async (input) => {
           if (editing === 'new') {
             await saveNote(input)
@@ -102,22 +108,23 @@ export function NotesPanel(): React.JSX.Element {
 
   return (
     <div className="flex h-full flex-col">
-      {/* Header */}
       <div className="flex h-12 items-center justify-between border-b border-border px-4">
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 items-center gap-2">
           <StickyNote size={16} className="text-muted" />
-          <h1 className="text-sm font-medium text-primary">Notes</h1>
+          <div className="min-w-0">
+            <h1 className="text-sm font-medium text-primary">{t(language, 'notes')}</h1>
+            <p className="truncate text-[11px] text-faint">{t(language, 'notesHint')}</p>
+          </div>
         </div>
         <button
           onClick={() => setEditing('new')}
           className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover transition-colors"
         >
           <Plus size={13} />
-          New Note
+          {t(language, 'newNote')}
         </button>
       </div>
 
-      {/* Search */}
       <div className="px-4 py-3">
         <div className="flex items-center gap-2 rounded-md border border-border-strong bg-surface px-3 py-2">
           <Search size={14} className="shrink-0 text-dim" />
@@ -125,7 +132,7 @@ export function NotesPanel(): React.JSX.Element {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search title, body, or tag..."
+            placeholder={t(language, 'searchNotes')}
             className="flex-1 bg-transparent text-sm text-primary placeholder:text-faint outline-none"
           />
         </div>
@@ -135,7 +142,7 @@ export function NotesPanel(): React.JSX.Element {
       <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-6">
         {visible.length === 0 ? (
           <div className="mt-8 text-center text-sm text-faint">
-            {query.trim() ? 'No notes match your search.' : 'No notes yet. Create one to reuse prompts.'}
+            {query.trim() ? t(language, 'noteNoMatch') : t(language, 'noteEmpty')}
           </div>
         ) : (
           visible.map((note) => (
@@ -146,7 +153,7 @@ export function NotesPanel(): React.JSX.Element {
               <button
                 onClick={() => setViewing(note)}
                 className="block w-full text-left"
-                title="View note"
+                title={t(language, 'notes')}
               >
                 <div className="flex items-center gap-2">
                   <span className="truncate text-sm font-medium text-primary">{note.title}</span>
@@ -178,24 +185,26 @@ export function NotesPanel(): React.JSX.Element {
                 <button
                   onClick={() => insertPrompt(note.body)}
                   className="flex items-center gap-1 rounded bg-card px-2 py-1 text-xs text-secondary hover:bg-elevated transition-colors"
-                  title="Insert into chat input"
+                  title={t(language, 'noteInsert')}
                 >
                   <CornerDownLeft size={11} />
-                  Insert
+                  {t(language, 'noteInsert')}
                 </button>
                 <button
                   onClick={() => setEditing(note)}
                   className="rounded p-1 text-dim hover:text-secondary transition-colors"
-                  title="Edit note"
-                  aria-label="Edit note"
+                  title={t(language, 'editNote')}
+                  aria-label={t(language, 'editNote')}
                 >
                   <Pencil size={13} />
                 </button>
                 <button
-                  onClick={() => deleteNote(note.id)}
+                  onClick={() => {
+                    if (window.confirm(t(language, 'noteDeleteConfirm'))) void deleteNote(note.id)
+                  }}
                   className="rounded p-1 text-dim hover:text-error transition-colors"
-                  title="Delete note"
-                  aria-label="Delete note"
+                  title={t(language, 'noteDelete')}
+                  aria-label={t(language, 'noteDelete')}
                 >
                   <Trash2 size={13} />
                 </button>
@@ -225,6 +234,7 @@ function NoteReadView({
   onEdit: () => void
   onDelete: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
@@ -233,10 +243,10 @@ function NoteReadView({
           <button
             onClick={onBack}
             className="flex shrink-0 items-center gap-1.5 rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-hover hover:text-primary transition-colors"
-            title="Back to notes"
+            title={t(language, 'noteBack')}
           >
             <ArrowLeft size={13} />
-            Back
+            {t(language, 'noteBack')}
           </button>
           <h1 className="truncate text-sm font-medium text-primary">{note.title}</h1>
           <span className="shrink-0 rounded bg-card px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-muted">
@@ -247,24 +257,26 @@ function NoteReadView({
           <button
             onClick={onInsert}
             className="flex items-center gap-1 rounded bg-card px-2 py-1 text-xs text-secondary hover:bg-elevated transition-colors"
-            title="Insert into chat input"
+            title={t(language, 'noteInsert')}
           >
             <CornerDownLeft size={11} />
-            Insert
+            {t(language, 'noteInsert')}
           </button>
           <button
             onClick={onEdit}
             className="rounded p-1 text-dim hover:text-secondary transition-colors"
-            title="Edit note"
-            aria-label="Edit note"
+            title={t(language, 'editNote')}
+            aria-label={t(language, 'editNote')}
           >
             <Pencil size={13} />
           </button>
           <button
-            onClick={onDelete}
+            onClick={() => {
+              if (window.confirm(t(language, 'noteDeleteConfirm'))) onDelete()
+            }}
             className="rounded p-1 text-dim hover:text-error transition-colors"
-            title="Delete note"
-            aria-label="Delete note"
+            title={t(language, 'noteDelete')}
+            aria-label={t(language, 'noteDelete')}
           >
             <Trash2 size={13} />
           </button>
@@ -302,6 +314,7 @@ function NoteForm({
   workspaceName,
   onSubmit,
   onCancel,
+  onDelete,
 }: {
   note: Note | null
   initialBody: string
@@ -309,7 +322,9 @@ function NoteForm({
   workspaceName: string | null
   onSubmit: (input: NoteInput) => Promise<void>
   onCancel: () => void
+  onDelete?: () => Promise<void>
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [title, setTitle] = useState(note?.title ?? '')
   const [body, setBody] = useState(note?.body ?? initialBody)
   const [tagsRaw, setTagsRaw] = useState(note?.tags.join(' ') ?? '')
@@ -326,7 +341,7 @@ function NoteForm({
     try {
       await onSubmit({ title: title.trim(), body: body.trim(), tags: parseTags(tagsRaw), scope })
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to save note')
+      setError(err instanceof Error ? err.message : t(language, 'noteSaveFailed'))
       setSaving(false)
     }
   }
@@ -334,53 +349,53 @@ function NoteForm({
   return (
     <div className="flex h-full flex-col">
       <div className="border-b border-border px-4 py-3">
-        <h1 className="text-sm font-medium text-primary">{note ? 'Edit Note' : 'New Note'}</h1>
+        <h1 className="text-sm font-medium text-primary">{note ? t(language, 'editNote') : t(language, 'newNote')}</h1>
       </div>
 
       <div className="flex-1 space-y-4 overflow-y-auto px-4 py-4">
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">Title</label>
+          <label className="mb-1 block text-xs font-medium text-muted">{t(language, 'noteTitle')}</label>
           <input
             type="text"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Refactor with tests"
+            placeholder={t(language, 'noteTitlePlaceholder')}
             className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
             autoFocus
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">Prompt / Command</label>
+          <label className="mb-1 block text-xs font-medium text-muted">{t(language, 'noteBody')}</label>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="The reusable prompt or command text..."
+            placeholder={t(language, 'noteBodyPlaceholder')}
             rows={8}
             className="w-full resize-y rounded-md border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">Tags</label>
+          <label className="mb-1 block text-xs font-medium text-muted">{t(language, 'noteTags')}</label>
           <input
             type="text"
             value={tagsRaw}
             onChange={(e) => setTagsRaw(e.target.value)}
-            placeholder="space or comma separated"
+            placeholder={t(language, 'noteTagsPlaceholder')}
             className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
           />
         </div>
 
         <div>
-          <label className="mb-1 block text-xs font-medium text-muted">Scope</label>
+          <label className="mb-1 block text-xs font-medium text-muted">{t(language, 'noteScope')}</label>
           <div className="flex gap-2">
-            <ScopeButton active={scope === GLOBAL_SCOPE} onClick={() => setScope(GLOBAL_SCOPE)} label="Global" />
+            <ScopeButton active={scope === GLOBAL_SCOPE} onClick={() => setScope(GLOBAL_SCOPE)} label={t(language, 'noteScopeGlobal')} />
             {workspaceId && (
               <ScopeButton
                 active={scope === workspaceId}
                 onClick={() => setScope(workspaceId)}
-                label={workspaceName ?? 'This workspace'}
+                label={workspaceName ?? t(language, 'noteScopeWorkspace')}
               />
             )}
           </div>
@@ -395,14 +410,25 @@ function NoteForm({
           disabled={!canSave}
           className="rounded-md bg-accent px-4 py-1.5 text-sm text-white hover:bg-accent-hover disabled:opacity-50 transition-colors"
         >
-          {saving ? 'Saving...' : 'Save'}
+          {saving ? t(language, 'noteSaving') : t(language, 'noteSave')}
         </button>
         <button
           onClick={onCancel}
           className="rounded-md px-4 py-1.5 text-sm text-muted hover:text-primary transition-colors"
         >
-          Cancel
+          {t(language, 'noteCancel')}
         </button>
+        {onDelete && (
+          <button
+            onClick={() => {
+              if (window.confirm(t(language, 'noteDeleteConfirm'))) void onDelete()
+            }}
+            className="ml-auto flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-error hover:bg-error-bg transition-colors"
+          >
+            <Trash2 size={13} />
+            {t(language, 'noteDelete')}
+          </button>
+        )}
       </div>
     </div>
   )

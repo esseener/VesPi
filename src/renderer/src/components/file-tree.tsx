@@ -3,6 +3,7 @@ import { useAppStore } from '../store'
 import { createDebouncedBuffer } from '../utils/debounced-buffer'
 import { createStaleGuard } from '../utils/stale-guard'
 import type { FileTreeNode, GitFileStatus, FileSearchResult } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { CodeEditor } from './code-editor'
 import { MarkdownRenderer } from './markdown-renderer'
 import { isImagePath } from './chat-file-link'
@@ -233,7 +234,7 @@ function TreeNodeComponent({
         >
           {expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
           {expanded ? (
-            <FolderOpen size={12} className="text-accent-fg shrink-0" />
+            <FolderOpen size={12} className="text-secondary shrink-0" />
           ) : (
             <FolderClosed size={12} className="text-dim shrink-0" />
           )}
@@ -259,7 +260,7 @@ function TreeNodeComponent({
       className={clsx(
         'flex w-full items-center gap-1.5 py-0.5 px-2 text-sm transition-colors',
         isSelected
-          ? 'bg-accent-bg text-accent-fg'
+          ? 'bg-transparent text-primary'
           : 'text-muted hover:bg-surface-hover/50 hover:text-secondary'
       )}
       style={{ paddingLeft: `${depth * 12 + 20}px` }}
@@ -461,6 +462,7 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
 const EDITOR_INPUT_DEBOUNCE_MS = 150
 
 export function FilePreview(): React.JSX.Element | null {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const target = useAppStore((state) => state.previewTarget)
   const file = target?.kind === 'code' ? target : null
   const [content, setContent] = useState<string | null>(null)
@@ -709,14 +711,14 @@ export function FilePreview(): React.JSX.Element | null {
               <div className="flex items-center justify-between gap-2 border-b border-warning-bg bg-warning-bg px-3 py-1.5 text-xs text-warning">
                 <span className="flex items-center gap-1.5">
                   <ShieldAlert size={13} className="shrink-0" />
-                  Scripts are disabled for this untrusted workspace&apos;s preview.
+                  {t(language, 'permPreviewScriptsDisabled')}
                 </span>
                 <button
                   type="button"
                   onClick={() => void handleTrustWorkspace()}
                   className="shrink-0 rounded-md border border-border-strong bg-surface px-2 py-1 text-primary transition-colors hover:border-border-strong-hover"
                 >
-                  Trust workspace
+                  {t(language, 'permTrustWorkspace')}
                 </button>
               </div>
             )}

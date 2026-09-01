@@ -1,35 +1,36 @@
 import type { PermissionMode } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 
 export const DEFAULT_PERMISSION_MODE: PermissionMode = 'ask-edits'
 
 export const PERMISSION_MODE_OPTIONS: Array<{
   value: PermissionMode
-  label: string
-  description: string
+  labelKey: 'permPlan' | 'permAskEdits' | 'permAskCommands' | 'permTrusted'
+  descriptionKey: 'permPlanHint' | 'permAskEditsHint' | 'permAskCommandsHint' | 'permTrustedHint'
   tone: 'safe' | 'review' | 'command' | 'trusted'
 }> = [
   {
     value: 'plan-readonly',
-    label: 'Plan / Read-only',
-    description: 'Only read/search/list tools are enabled. File edits and shell commands are blocked.',
+    labelKey: 'permPlan',
+    descriptionKey: 'permPlanHint',
     tone: 'safe',
   },
   {
     value: 'ask-edits',
-    label: 'Ask before edits',
-    description: 'Pi will ask before file edits and shell commands that can change files.',
+    labelKey: 'permAskEdits',
+    descriptionKey: 'permAskEditsHint',
     tone: 'review',
   },
   {
     value: 'ask-commands',
-    label: 'Ask before commands',
-    description: 'Pi will ask before running shell commands.',
+    labelKey: 'permAskCommands',
+    descriptionKey: 'permAskCommandsHint',
     tone: 'command',
   },
   {
     value: 'trusted',
-    label: 'Trusted',
-    description: 'All Pi tools are enabled for workflows you trust.',
+    labelKey: 'permTrusted',
+    descriptionKey: 'permTrustedHint',
     tone: 'trusted',
   },
 ]
@@ -42,13 +43,12 @@ export function isPermissionMode(value: unknown): value is PermissionMode {
   return typeof value === 'string' && PERMISSION_MODE_VALUES.has(value as PermissionMode)
 }
 
-export function getPermissionModeLabel(mode: PermissionMode): string {
-  return PERMISSION_MODE_OPTIONS.find((option) => option.value === mode)?.label ?? 'Ask before edits'
+export function getPermissionModeLabel(mode: PermissionMode, language?: AppLanguage | null): string {
+  const option = PERMISSION_MODE_OPTIONS.find((item) => item.value === mode)
+  return t(language ?? DEFAULT_LANGUAGE, option?.labelKey ?? 'permAskEdits')
 }
 
-export function getPermissionModeDescription(mode: PermissionMode): string {
-  return (
-    PERMISSION_MODE_OPTIONS.find((option) => option.value === mode)?.description ??
-    'Pi will ask before file edits and shell commands that can change files.'
-  )
+export function getPermissionModeDescription(mode: PermissionMode, language?: AppLanguage | null): string {
+  const option = PERMISSION_MODE_OPTIONS.find((item) => item.value === mode)
+  return t(language ?? DEFAULT_LANGUAGE, option?.descriptionKey ?? 'permAskEditsHint')
 }

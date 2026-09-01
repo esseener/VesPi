@@ -9,9 +9,10 @@ import {
   existsSync,
 } from 'fs'
 import { basename, dirname, join } from 'path'
-import { getSessionsRoot } from './pi-paths'
+import { getOmpSessionsRoot, getSessionsRoot } from './pi-paths'
 import { getPiCli } from './pi-rpc-manager'
 import { getGuiDataPath } from './app-data-paths'
+
 import type {
   ActivityStatsResult,
   ActivityRangeStats,
@@ -170,9 +171,10 @@ export class ActivityStatsStore {
   private modelsPath(): string {
     if (this.modelsConfigPathOverride) return this.modelsConfigPathOverride
     const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
-    const root = getPiCli().kind === 'omp' ? join(homeDir, '.omp', 'agent') : join(homeDir, '.pi', 'agent')
+    const root = getPiCli().kind === 'omp' ? dirname(getOmpSessionsRoot()) : join(homeDir, '.pi', 'agent')
     return join(root, 'models.json')
   }
+
 
   // Resolved lazily: the production singleton is constructed at import time,
   // before index.ts calls configureGuiDataDir() to set the userData path — so

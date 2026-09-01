@@ -9,13 +9,15 @@ import {
   DollarSign,
   Layers,
   Minimize2,
-  Settings,
   Loader2,
   GitBranch,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 export function StatusBar(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+
   const piStatus = useAppStore((state) => state.piStatus)
   const piPid = useAppStore((state) => state.piPid)
   // Name the engine that is actually running; the two are not interchangeable
@@ -23,13 +25,13 @@ export function StatusBar(): React.JSX.Element {
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? 'Pi')
   const sessionStats = useAppStore((state) => state.sessionStats)
   const isStreaming = useAppStore((state) => state.isStreaming)
+  const hasChatMessages = useAppStore((state) => state.messages.length > 0 || state.isStreaming)
   const pendingSteering = useAppStore((state) => state.pendingSteering)
   const pendingFollowUp = useAppStore((state) => state.pendingFollowUp)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
   const toggleSidebar = useAppStore((state) => state.toggleSidebar)
   const toggleTerminal = useAppStore((state) => state.toggleTerminal)
   const terminalOpen = useAppStore((state) => state.terminalOpen)
-  const setCurrentView = useAppStore((state) => state.setCurrentView)
   const compactContext = useAppStore((state) => state.compactContext)
   const isCompacting = useAppStore((state) => state.sessionState?.isCompacting ?? false)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
@@ -74,74 +76,98 @@ export function StatusBar(): React.JSX.Element {
   }, [activeWorkspace?.id])
 
   return (
-    <div className="flex h-7 items-center justify-between border-t border-border bg-app px-3 text-xs">
-      {/* Left section */}
-      <div className="flex items-center gap-3">
-        {/* Pi Status */}
+    <div className="flex h-6 items-center justify-between border-t border-border bg-transparent px-2 font-jetbrains text-[11px]">
+      <div className="flex min-w-0 items-center gap-3">
         <div className="flex items-center gap-1.5">
           <div
             className={clsx(
               'h-1.5 w-1.5 rounded-full',
-              piStatus === 'running' && 'bg-success',
-              piStatus === 'starting' && 'bg-warning animate-pulse',
+              piStatus === 'running' && 'run-silver',
+              piStatus === 'starting' && 'run-silver',
               piStatus === 'error' && 'bg-error',
               piStatus === 'stopped' && 'bg-elevated'
             )}
           />
           <span className="text-dim">
-            {piStatus === 'running' ? `${engineLabel} running (PID: ${piPid})` : `${engineLabel} ${piStatus}`}
+            {piStatus === 'running' ? t(language, 'statusReady')
+              : piStatus === 'starting' ? t(language, 'statusStarting')
+              : piStatus === 'stopped' ? t(language, 'statusStopped')
+              : piStatus === 'error' ? t(language, 'statusError')
+              : piStatus}
           </span>
         </div>
 
-        {/* Git branch of the active workspace */}
         {gitBranch && (
-          <div className="flex items-center gap-1 text-dim" title={`Git branch: ${gitBranch}`}>
+          <div className="flex items-center gap-1 text-dim" title={t(language, 'statusGitBranch', { branch: gitBranch })}>
             <GitBranch size={11} />
             <span>{gitBranch}</span>
           </div>
         )}
 
-        {/* Streaming indicator */}
         {isStreaming && (
-          <div className="flex items-center gap-1 text-accent-fg">
-            <Loader2 size={10} className="animate-spin" />
-            <span>streaming</span>
+          <div className="flex items-center gap-1 text-secondary">
+            <span className="run-silver h-2 w-2 rounded-full" aria-hidden="true" />
+            <span>{t(language, 'statusStream')}</span>
           </div>
         )}
 
-        {/* Queue indicators */}
         {pendingSteering.length > 0 && (
-          <span className="text-warning">
-            {pendingSteering.length} steer queued
-          </span>
+          <span className="text-warning">{t(language, 'statusSteer', { count: String(pendingSteering.length) })}</span>
         )}
         {pendingFollowUp.length > 0 && (
-          <span className="text-warning">
-            {pendingFollowUp.length} follow-up queued
-          </span>
+          <span className="text-warning">{t(language, 'statusFollowUp', { count: String(pendingFollowUp.length) })}</span>
         )}
-
-        {/* Prompts held for other workspaces (switch back to answer them) */}
         {promptsWaitingElsewhere > 0 && (
           <span
             className="text-warning"
-            title={`${engineLabel} is waiting on a prompt in another workspace; switch to it to answer`}
+            title={t(language, 'statusPromptsWaitingOther')}
           >
-            {formatPromptsWaiting(promptsWaitingElsewhere)}
+            {formatPromptsWaiting(promptsWaitingElsewhere, language)}
           </span>
         )}
       </div>
 
-      {/* Right section */}
-      <div className="flex items-center gap-3">
-        {/* Dedicated workflow navigator */}
+      <div className="flex shrink-0 items-center gap-2">
+        {hasChatMessages && sessionStats?.contextUsage && (
+          <div className="flex items-center gap-1 text-dim" title={t(language, 'statusContextTokens', {
+            used: sessionStats.contextUsage.tokens?.toLocaleString() ?? '?',
+            total: sessionStats.contextUsage.contextWindow.toLocaleString(),
+          })}>
+            <Layers size={10} />
+            <span>
+              {Number.isFinite(sessionStats.contextUsage.percent)
+                ? `${Math.round(sessionStats.contextUsage.percent as number)}%`
+                : '0%'}
+            </span>
+          </div>
+        )}
+
+        {hasChatMessages && sessionStats?.contextUsage && (
+          <button
+            onClick={() => compactContext()}
+            disabled={isCompacting}
+            className="flex items-center gap-1 text-dim hover:text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            title={t(language, 'autoCompactHint')}
+          >
+            {isCompacting ? (
+              <Loader2 size={10} className="animate-spin" />
+            ) : (
+              <Minimize2 size={10} />
+            )}
+            <span>{isCompacting ? t(language, 'compacting') : t(language, 'compactContext')}</span>
+          </button>
+        )}
+
+        {sessionStats?.cost !== undefined && sessionStats.cost > 0 && (
+          <div className="flex items-center gap-1 text-dim">
+            <DollarSign size={10} />
+            <span>${sessionStats.cost.toFixed(2)}</span>
+          </div>
+        )}
+
         <button
           data-workflow-toggle="true"
           onClick={() => {
-            // Session-surface button: opens the active session's runs (scoped by
-            // Pi's header UUID, the exact identifier persisted runs carry). The
-            // global list is only a fallback for the no-session state; closing
-            // preserves the scope so a close/reopen stays in-session.
             const state = useAppStore.getState()
             if (state.workflowPanelOpen) state.setWorkflowPanelOpen(false)
             else if (state.sessionState?.sessionId) state.openWorkflowRunsForSession(state.sessionState.sessionId)
@@ -155,77 +181,28 @@ export function StatusBar(): React.JSX.Element {
           aria-label="Open workflow runs"
         >
           <WorkflowIcon size={11} />
-          <span>{activeWorkflowCount > 0 ? `${activeWorkflowCount} workflow${activeWorkflowCount === 1 ? '' : 's'}` : 'workflows'}</span>
+          <span>{activeWorkflowCount > 0 ? String(activeWorkflowCount) : 'wf'}</span>
         </button>
 
-        {/* Token usage */}
-        {sessionStats?.contextUsage && (
-          <div className="flex items-center gap-1 text-dim" title={`Context: ${sessionStats.contextUsage.tokens?.toLocaleString() ?? '?'} / ${sessionStats.contextUsage.contextWindow.toLocaleString()} tokens`}>
-            <Layers size={10} />
-            <span>
-              {Number.isFinite(sessionStats.contextUsage.percent)
-                ? `${Math.round(sessionStats.contextUsage.percent as number)}%`
-                : '0%'}
-            </span>
-          </div>
-        )}
-
-        {/* Compact context */}
-        {sessionStats?.contextUsage && (
-          <button
-            onClick={() => compactContext()}
-            disabled={isCompacting}
-            className="flex items-center gap-1 text-dim hover:text-secondary disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            title="Compact context — summarize the conversation to free up space"
-          >
-            {isCompacting ? (
-              <Loader2 size={10} className="animate-spin" />
-            ) : (
-              <Minimize2 size={10} />
-            )}
-            <span>{isCompacting ? 'compacting…' : 'compact'}</span>
-          </button>
-        )}
-
-        {/* Cost */}
-        {sessionStats?.cost !== undefined && sessionStats.cost > 0 && (
-          <div className="flex items-center gap-1 text-dim">
-            <DollarSign size={10} />
-            <span>${sessionStats.cost.toFixed(2)}</span>
-          </div>
-        )}
-
-        {/* Toggle sidebar */}
-        <button
-          onClick={toggleSidebar}
-          className="rounded p-0.5 text-dim hover:text-secondary transition-colors"
-          title={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-          aria-label={sidebarOpen ? 'Hide sidebar' : 'Show sidebar'}
-        >
-          {sidebarOpen ? <PanelLeftClose size={12} /> : <PanelLeft size={12} />}
-        </button>
-
-        {/* Toggle terminal */}
         <button
           onClick={toggleTerminal}
           className={clsx(
-            'rounded p-0.5 transition-colors',
+            'rounded-sm p-0.5 transition-colors',
             terminalOpen ? 'text-accent-fg' : 'text-dim hover:text-secondary'
           )}
-          title={terminalOpen ? 'Hide terminal' : 'Show terminal'}
-          aria-label={terminalOpen ? 'Hide terminal' : 'Show terminal'}
+          title={terminalOpen ? t(language, 'hideTerminal') : t(language, 'showTerminal')}
+          aria-label={terminalOpen ? t(language, 'hideTerminal') : t(language, 'showTerminal')}
         >
           <Terminal size={12} />
         </button>
 
-        {/* Settings */}
         <button
-          onClick={() => setCurrentView('settings')}
-          className="rounded p-0.5 text-dim hover:text-secondary transition-colors"
-          title="Settings"
-          aria-label="Settings"
+          onClick={toggleSidebar}
+          className="rounded-sm p-0.5 text-dim hover:text-secondary transition-colors"
+          title={sidebarOpen ? t(language, 'hideSidebar') : t(language, 'showSidebar')}
+          aria-label={sidebarOpen ? t(language, 'hideSidebar') : t(language, 'showSidebar')}
         >
-          <Settings size={12} />
+          {sidebarOpen ? <PanelLeftClose size={12} /> : <PanelLeft size={12} />}
         </button>
       </div>
     </div>

@@ -3,6 +3,8 @@ import { useEffect, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import type { PermissionMode } from '../../../shared/ipc-contracts'
 import { DEFAULT_PERMISSION_MODE, PERMISSION_MODE_OPTIONS } from './permission-mode'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useAppStore } from '../store'
 
 interface PermissionSelectorProps {
   value: PermissionMode | null | undefined
@@ -15,11 +17,13 @@ export function PermissionSelector({
   onChange,
   compact = false,
 }: PermissionSelectorProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [isOpen, setIsOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const mode = value ?? DEFAULT_PERMISSION_MODE
   const current = PERMISSION_MODE_OPTIONS.find((option) => option.value === mode) ?? PERMISSION_MODE_OPTIONS[1]
+
 
   useEffect(() => {
     if (!isOpen) return
@@ -48,17 +52,18 @@ export function PermissionSelector({
         type="button"
         onClick={() => setIsOpen((open) => !open)}
         className={clsx(
-          'flex w-full items-center justify-between gap-2 rounded-md border border-border-strong bg-surface text-left transition-colors hover:border-border-strong-hover',
+          'flex w-full items-center justify-between gap-2 rounded-md border bg-transparent text-left transition-colors',
+          isOpen ? 'border-accent-fg text-primary' : 'border-border-strong hover:border-border-strong-hover',
           compact ? 'px-2 py-1.5 text-xs' : 'px-3 py-2 text-sm'
         )}
       >
         <span className="flex min-w-0 items-center gap-2">
           <ShieldCheck size={compact ? 13 : 15} className="shrink-0 text-success" />
           <span className="min-w-0">
-            <span className="block truncate text-primary">{current.label}</span>
+            <span className="block truncate text-primary">{t(language, current.labelKey)}</span>
             {!compact && (
               <span className="mt-0.5 block truncate text-xs text-dim">
-                {current.description}
+                {t(language, current.descriptionKey)}
               </span>
             )}
           </span>
@@ -83,9 +88,9 @@ export function PermissionSelector({
                 {option.value === mode && <Check size={13} className="text-success" />}
               </span>
               <span className="min-w-0">
-                <span className="block text-sm text-primary">{option.label}</span>
+                <span className="block text-sm text-primary">{t(language, option.labelKey)}</span>
                 <span className="mt-0.5 block text-xs leading-4 text-dim">
-                  {option.description}
+                  {t(language, option.descriptionKey)}
                 </span>
               </span>
             </button>

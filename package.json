@@ -1,10 +1,10 @@
 {
-  "name": "pi-desktop",
-  "version": "0.1.6-alpha",
-  "description": "Desktop GUI frontend for the Pi coding agent",
+  "name": "vespi",
+  "version": "0.2.0",
+  "description": "VesPi desktop client for private OMP",
   "main": "out/main/index.js",
-  "desktopName": "pi-desktop.desktop",
-  "author": "Pi Desktop GUI Contributors",
+  "desktopName": "vespi.desktop",
+  "author": "VesPi",
   "license": "Apache-2.0",
   "homepage": "https://github.com/FaqFirebase/pi-desktop",
   "repository": {
@@ -12,15 +12,15 @@
     "url": "https://github.com/FaqFirebase/pi-desktop"
   },
   "keywords": [
-    "pi",
+    "vespi",
+    "omp",
+    "oh-my-pi",
     "coding-agent",
-    "ai",
     "electron",
-    "desktop",
-    "ide"
+    "desktop"
   ],
   "bin": {
-    "pi-desktop": "./bin/pi-desktop.js"
+    "vespi": "./bin/pi-desktop.js"
   },
   "scripts": {
     "dev": "electron-vite build && electron-vite preview -- --no-sandbox",
@@ -97,9 +97,16 @@
     "vite": "^6.3.5"
   },
   "build": {
-    "appId": "dev.pi.desktop-gui",
-    "productName": "Pi Desktop",
-    "copyright": "Copyright 2026 Pi Desktop GUI Contributors. Licensed under the Apache License, Version 2.0.",
+    "appId": "com.vespi.desktop",
+    "productName": "VesPi",
+    "copyright": "Copyright 2026 VesPi. Based on Pi Desktop (Apache-2.0).",
+    "npmRebuild": false,
+    "nodeGypRebuild": false,
+    "buildDependenciesFromSource": false,
+    "publish": null,
+    "asarUnpack": [
+      "**/node_modules/node-pty/**"
+    ],
     "files": [
       "out/**/*",
       "bin/**/*"
@@ -112,11 +119,38 @@
           "**/*",
           "!**/*.test.ts"
         ]
+      },
+      {
+        "from": "../runtime/omp",
+        "to": "runtime/omp",
+        "filter": [
+          "omp.exe"
+        ]
+      },
+      {
+        "from": "../runtime/openspace",
+        "to": "runtime/openspace",
+        "filter": [
+          "python.exe",
+          "pythonw.exe",
+          "python3.dll",
+          "python312.dll",
+          "python312.zip",
+          "python312._pth",
+          "vcruntime140.dll",
+          "vcruntime140_1.dll",
+          "Lib/**",
+          "*.pyd",
+          "*.dll",
+          "**/*.pyd",
+          "**/*.dll"
+        ]
       }
     ],
     "directories": {
       "output": "release"
     },
+
     "linux": {
       "target": [
         "AppImage"
@@ -124,10 +158,10 @@
       "syncDesktopName": true,
       "category": "Development",
       "icon": "resources/icons",
-      "synopsis": "Desktop GUI for the Pi coding agent",
-      "description": "An Electron desktop application that provides a GUI frontend for the Pi coding agent.",
-      "maintainer": "Pi Desktop GUI Contributors",
-      "artifactName": "Pi-Desktop-${version}-${os}-${arch}.${ext}"
+      "synopsis": "Desktop GUI for private OMP",
+      "description": "VesPi is an Electron desktop client for a private Oh My Pi runtime.",
+      "maintainer": "VesPi",
+      "artifactName": "VesPi-${version}-${os}-${arch}.${ext}"
     },
     "mac": {
       "target": [
@@ -139,7 +173,7 @@
       "darkModeSupport": true,
       "hardenedRuntime": true,
       "gatekeeperAssess": false,
-      "artifactName": "Pi-Desktop-${version}-${os}-${arch}.${ext}"
+      "artifactName": "VesPi-${version}-${os}-${arch}.${ext}"
     },
     "win": {
       "target": [
@@ -147,17 +181,17 @@
         "portable"
       ],
       "icon": "resources/icons/icon.ico",
-      "artifactName": "Pi-Desktop-${version}-${os}-${arch}.${ext}"
+      "artifactName": "VesPi-${version}-${os}-${arch}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Pi Desktop",
+      "shortcutName": "VesPi",
       "installerIcon": "resources/icons/icon.ico",
       "uninstallerIcon": "resources/icons/icon.ico",
-      "artifactName": "Pi-Desktop-${version}-${os}-${arch}-setup.${ext}"
+      "artifactName": "VesPi-Setup-${os}-${arch}.${ext}"
     }
   }
 }

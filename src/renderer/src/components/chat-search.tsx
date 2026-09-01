@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { ChevronUp, ChevronDown, X } from 'lucide-react'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 // Named CSS custom highlights, styled via the ::highlight() rules injected by
 // ensureHighlightStyles() below.
@@ -57,6 +58,7 @@ export function ChatSearch({
   focusNonce: number
   onClose: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [query, setQuery] = useState('')
   const [count, setCount] = useState(0)
   const [current, setCurrent] = useState(0) // 0-based; displayed as current + 1
@@ -68,6 +70,7 @@ export function ChatSearch({
 
   // Recompute when the transcript changes while the bar is open.
   const messages = useAppStore((state) => state.messages)
+
 
   const clearHighlights = useCallback(() => {
     if (!highlightsSupported()) return
@@ -199,8 +202,7 @@ export function ChatSearch({
         ref={inputRef}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
-        onKeyDown={handleKeyDown}
-        placeholder="Find in page"
+        placeholder={t(language, 'findInPage')}
         className="w-48 bg-transparent px-1 py-0.5 text-base text-primary outline-none placeholder:text-faint"
       />
       <span className="min-w-[3rem] shrink-0 text-center text-xs tabular-nums text-dim">
@@ -209,16 +211,17 @@ export function ChatSearch({
       <SearchIconButton
         icon={<ChevronUp size={14} />}
         onClick={() => go(-1)}
-        title="Previous match (Shift+Enter)"
+        title={t(language, 'previousMatch')}
         disabled={count === 0}
       />
       <SearchIconButton
         icon={<ChevronDown size={14} />}
         onClick={() => go(1)}
-        title="Next match (Enter)"
+        title={t(language, 'nextMatch')}
         disabled={count === 0}
       />
-      <SearchIconButton icon={<X size={14} />} onClick={onClose} title="Close (Esc)" />
+      <SearchIconButton icon={<X size={14} />} onClick={onClose} title={t(language, 'closeEsc')} />
+
     </div>
   )
 }

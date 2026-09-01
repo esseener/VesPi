@@ -10,20 +10,25 @@ import { HomeScreen } from './components/home-screen'
 import { NotesPanel } from './components/notes-panel'
 import { SkillsPanel } from './components/skills-panel'
 import { DiagnosticsPanel } from './components/diagnostics-panel'
+import { AboutPanel } from './components/about-panel'
+import { ModelSetupScreen } from './components/model-setup-screen'
 import { MissionControl } from './components/mission-control'
 import { TaskLauncher } from './components/task-launcher'
 import { NotePicker } from './components/note-picker'
 import { CommandPalette } from './components/command-palette'
 import { ExtensionUiDialog, AppConfirmDialog } from './components/extension-ui-dialog'
-import { ReviewRail } from './components/review-rail'
 import { WorkspaceTabs } from './components/workspace-tabs'
 import { WorkflowNavigator } from './components/workflow-navigator'
+import { WindowControls } from './components/window-controls'
 import { useContextMenu, buildDefaultContextMenu } from './components/context-menu'
+import { ErrorBoundary } from './components/error-boundary'
 import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut } from './hooks'
 import { useFolderDrop } from './hooks/use-folder-drop'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
 import { ArrowUpCircle, FolderOpen, PanelLeft, X } from 'lucide-react'
+import { DEFAULT_LANGUAGE, t } from '../../shared/i18n'
+
 
 export function App(): React.JSX.Element {
   usePiEvents()
@@ -41,26 +46,25 @@ export function App(): React.JSX.Element {
   const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
   const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
   const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+
+  useEffect(() => {
+    document.documentElement.lang = language === 'en' ? 'en' : 'zh-CN'
+    document.title = 'VesPi'
+  }, [language])
+
 
   // Global context menu
   const { show, ContextMenuComponent } = useContextMenu()
 
-  // Override default right-click globally
+  // Custom menus for chrome (sessions, messages). Editable fields keep the
+  // native Electron edit menu — do not preventDefault on input/textarea.
   useEffect(() => {
     const handleContextMenu = (e: MouseEvent) => {
-      // Allow native context menu in input fields when no text is selected
-      const target = e.target as HTMLElement
-      const isInput = target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable
-
-      if (isInput && !window.getSelection()?.toString()) {
-        return // Let native context menu handle it
-      }
-
+      const target = e.target as HTMLElement | null
+      if (target?.closest('input, textarea, [contenteditable="true"], [role="textbox"]')) return
       e.preventDefault()
-
-      // Build context-specific items
-      const items = buildDefaultContextMenu()
-      show(e as unknown as React.MouseEvent, items)
+      show(e as unknown as React.MouseEvent, buildDefaultContextMenu())
     }
 
     document.addEventListener('contextmenu', handleContextMenu)
@@ -85,14 +89,19 @@ export function App(): React.JSX.Element {
 
   // Home is a full-screen splash (no sidebar/status). Chat keeps chrome; the
   // empty-chat center prompt is the "minimal" launch surface when not opening Home.
-  const isHome = currentView === 'home'
+  const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
   const showUpdateBanner = !!updateInfo?.updateAvailable && !updateDismissed
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
   return (
-    <div className="relative flex h-screen flex-col bg-app text-primary">
+    <div className="app-console relative flex h-screen flex-col bg-app text-primary">
+      <div className="app-console-mesh" aria-hidden="true" />
+      {isHome && <WindowControls overlay />}
+      {isHome && (
+        <div className="titlebar-drag-overlay titlebar-drag absolute inset-x-0 top-0 z-40 h-10" aria-hidden="true" />
+      )}
       {isDraggingFolder && (
         <div
           className="pointer-events-none absolute inset-0 z-[100] flex items-center justify-center bg-app/80 backdrop-blur-sm"
@@ -102,32 +111,32 @@ export function App(): React.JSX.Element {
             <FolderOpen size={36} className="text-accent" />
             <div className="text-center">
               <div className="text-base font-semibold text-primary">
-                Drop folder to open as project
+                {t(language, 'dropFolderTitle')}
               </div>
               <div className="mt-1 text-sm text-dim">
-                Opens that folder as a workspace (creates one if needed)
+                {t(language, 'dropFolderHint')}
               </div>
             </div>
           </div>
         </div>
       )}
       {showUpdateBanner && updateInfo && (
-        <div className="flex shrink-0 items-center justify-center gap-3 bg-accent px-4 py-1.5 text-xs text-white">
+        <div className="titlebar-no-drag flex shrink-0 items-center justify-center gap-3 border-b border-border bg-transparent px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
           <span>
-            Pi Desktop <strong>v{updateInfo.latestVersion}</strong> is available — you&apos;re on v{updateInfo.currentVersion}.
+            {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
           </span>
           <button
             onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-            className="rounded bg-white/20 px-2 py-0.5 font-medium hover:bg-white/30 transition-colors"
+            className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-primary hover:border-accent-fg transition-colors"
           >
-            Download
+            {t(language, 'download')}
           </button>
           <button
             onClick={dismissUpdate}
-            className="rounded p-0.5 text-white/80 hover:bg-white/20 hover:text-white transition-colors"
-            aria-label="Dismiss update notification"
-            title="Dismiss"
+            className="rounded-sm p-0.5 text-muted hover:text-primary transition-colors"
+            aria-label={t(language, 'dismissUpdate')}
+            title={t(language, 'dismiss')}
           >
             <X size={13} />
           </button>
@@ -137,13 +146,14 @@ export function App(): React.JSX.Element {
         <button
           type="button"
           onClick={toggleSidebar}
-          className="absolute left-3 top-3 z-30 animate-fade-in rounded-md border border-border-strong bg-surface/95 p-1.5 text-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-          title="Show sidebar"
-          aria-label="Show sidebar"
+          className="titlebar-no-drag absolute left-3 top-3 z-50 animate-fade-in rounded-md border border-border-strong bg-surface/95 p-1.5 text-muted shadow-sm backdrop-blur-sm transition-colors hover:bg-surface-hover hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
+          title={t(language, 'showSidebar')}
+          aria-label={t(language, 'showSidebar')}
         >
           <PanelLeft size={16} />
         </button>
       )}
+
       <div className="flex flex-1 overflow-hidden">
         {sidebarOpen && showChrome && <Sidebar />}
 
@@ -153,24 +163,25 @@ export function App(): React.JSX.Element {
             <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
               <div className={globalWorkflowOpen ? 'hidden' : 'contents'}>
                 {currentView === 'home' && <HomeScreen />}
+                {currentView === 'model-setup' && <ModelSetupScreen />}
                 {currentView === 'mission-control' && <MissionControl />}
-                {/* Kept mounted (just hidden) so chat drafts and scroll state survive
-                    navigating to another view or opening global workflows. */}
                 <div className={currentView === 'chat' ? 'flex min-w-0 flex-1 flex-col overflow-hidden' : 'hidden'}>
-                  <ChatPanel />
+                  <ErrorBoundary>
+                    <ChatPanel />
+                  </ErrorBoundary>
                 </div>
                 {currentView === 'settings' && <SettingsPanel />}
                 {currentView === 'sessions' && <SessionPanel />}
                 {currentView === 'timeline' && <Timeline />}
                 {currentView === 'packages' && <PackageBrowser />}
+                {currentView === 'skills' && <PackageBrowser />}
                 {currentView === 'diff' && <DiffViewer />}
                 {currentView === 'notes' && <NotesPanel />}
-                {currentView === 'skills' && <SkillsPanel />}
                 {currentView === 'diagnostics' && <DiagnosticsPanel />}
+                {currentView === 'about' && <AboutPanel />}
               </div>
               {globalWorkflowOpen && <WorkflowNavigator embedded />}
             </main>
-            {currentView === 'chat' && !globalWorkflowOpen && <ReviewRail />}
           </div>
         </div>
       </div>

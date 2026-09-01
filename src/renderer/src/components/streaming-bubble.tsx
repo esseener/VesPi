@@ -1,9 +1,11 @@
 import { useEffect, useRef } from 'react'
 import { MarkdownRenderer } from './markdown-renderer'
 import { toolLabel } from '../message-grouping'
+import { localizeToolName } from '../tool-status-i18n'
 import { toolCallIconFor } from './tool-call-icon'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { Brain, Bot, Loader2 } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -25,6 +27,7 @@ interface StreamingBubbleProps {
 }
 
 export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbleProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const thinkingEnabled = useAppStore(
     (state) => state.settingsDraft.showThinking ?? state.settings?.showThinking ?? DEFAULT_SETTINGS.showThinking
   )
@@ -51,10 +54,10 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
         <div className="min-w-0 flex-1">
           {thinking && thinkingEnabled && (
             <div className="thinking-hover mb-2 min-w-0">
-              <div className="flex h-7 items-center gap-1.5 text-sm text-dim">
-                <Brain size={12} className="shrink-0" />
-                <Loader2 size={12} className="shrink-0 animate-spin text-special" />
-                <span>Thinking</span>
+              <div className="flex h-7 items-center gap-1.5 text-sm">
+                <Brain size={12} className="shrink-0 text-[#c8c8c8]" />
+                <Loader2 size={12} className="shrink-0 animate-spin text-[#c8c8c8]" />
+                <span className="status-shimmer">{t(language, 'thinkingStatus')}</span>
               </div>
               <div
                 ref={thinkingScrollRef}
@@ -88,16 +91,16 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
                     ) : (
                       <Icon size={12} className="shrink-0" />
                     )}
-                    <span className="min-w-0 truncate font-jetbrains">{toolLabel(tc.name)}</span>
+                    <span className="min-w-0 truncate font-jetbrains">{localizeToolName(language, tc.name)}</span>
                     <span
                       className={clsx(
-                        'ml-auto shrink-0 text-xs capitalize',
+                        'ml-auto shrink-0 text-xs',
                         tc.isExecuting && 'text-warning animate-pulse',
                         !tc.isExecuting && tc.isError && 'text-error',
                         !tc.isExecuting && !tc.isError && 'text-success'
                       )}
                     >
-                      {tc.isExecuting ? 'running' : tc.isError ? 'error' : 'done'}
+                      {tc.isExecuting ? <span className="status-shimmer">{t(language, 'toolRunning')}</span> : tc.isError ? t(language, 'toolError') : t(language, 'toolDone')}
                     </span>
                   </div>
                 )
@@ -114,9 +117,9 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
           )}
 
           {!content && !thinking && toolCalls.size === 0 && (
-            <div className="flex h-7 items-center gap-2 text-sm text-dim">
-              <Loader2 size={12} className="animate-spin" />
-              Waiting for response...
+            <div className="flex h-7 items-center gap-2 text-sm">
+              <Loader2 size={12} className="animate-spin text-[#c8c8c8]" />
+              <span className="status-shimmer">{t(language, 'workingStatus')}</span>
             </div>
           )}
         </div>

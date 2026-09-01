@@ -17,6 +17,8 @@ import type { ThemeFile } from '../../../shared/theme/theme-file'
 import { Settings, Save, RotateCcw, FolderOpen, RefreshCw, Check, ChevronDown } from 'lucide-react'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
+
 import { PermissionRulesEditor } from './permission-rules-editor'
 import { validateRuleList, shouldPersistScope } from './permission-rules-editor-helpers'
 import { applyTheme, getRegisteredThemes, registerThemes, setUserThemes } from '../utils/theme'
@@ -76,7 +78,9 @@ export function SettingsPanel(): React.JSX.Element {
   const [detectedAgentInstalls, setDetectedAgentInstalls] = useState<AgentInstallation[]>([])
   const [scanningAgentInstalls, setScanningAgentInstalls] = useState(false)
   const [theme, setTheme] = useState(draft0.theme ?? settings?.theme ?? DEFAULT_SETTINGS.theme)
+  const [language, setLanguage] = useState<AppLanguage>(draft0.language ?? settings?.language ?? DEFAULT_LANGUAGE)
   const [themeActionError, setThemeActionError] = useState<string | null>(null)
+
   const [themeEditorState, setThemeEditorState] = useState<{
     baseTheme: ThemeFile
     baseId: string
@@ -510,9 +514,10 @@ export function SettingsPanel(): React.JSX.Element {
     }
 
     const updated: Partial<AppSettings> = {
-      piExecutablePath: piPath,
-      piEngine,
+      piExecutablePath: DEFAULT_SETTINGS.piExecutablePath,
+      piEngine: 'omp',
       theme,
+      language,
       fontSize,
       terminalFontSize,
       codeEditorFontSize,
@@ -571,6 +576,7 @@ export function SettingsPanel(): React.JSX.Element {
       piExecutablePath: DEFAULT_SETTINGS.piExecutablePath,
       piEngine: DEFAULT_SETTINGS.piEngine,
       theme: DEFAULT_SETTINGS.theme,
+      language: DEFAULT_SETTINGS.language,
       fontSize: DEFAULT_SETTINGS.fontSize,
       terminalFontSize: DEFAULT_SETTINGS.terminalFontSize,
       codeEditorFontSize: DEFAULT_SETTINGS.codeEditorFontSize,
@@ -588,12 +594,14 @@ export function SettingsPanel(): React.JSX.Element {
     setPiEngine(defaults.piEngine!)
     setCustomAgentPathMode(false)
     setTheme(defaults.theme!)
+    setLanguage(defaults.language!)
     setFontSize(defaults.fontSize!)
     setTerminalFontSize(defaults.terminalFontSize!)
     setCodeEditorFontSize(defaults.codeEditorFontSize!)
     setShowThinking(defaults.showThinking!)
     setAutoScroll(defaults.autoScroll!)
     setDesktopNotifications(defaults.desktopNotifications!)
+
     setResumeLastSession(defaults.resumeLastSession!)
     setOpenToHomeOnLaunch(defaults.openToHomeOnLaunch!)
     setRunOnStartup(defaults.runOnStartup!)
@@ -623,86 +631,26 @@ export function SettingsPanel(): React.JSX.Element {
         <div className="mb-8 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Settings size={20} className="text-muted" />
-            <h1 className="text-lg font-semibold text-primary">Settings</h1>
+            <h1 className="text-lg font-semibold text-primary">{t(language, 'settings')}</h1>
           </div>
         </div>
 
-        {/* Agent Configuration */}
-        <SettingsSection title="Agent Configuration">
-          <SettingsRow
-            label="Agent Installation"
-            description="Auto-detect Pi and OMP, choose an installed engine, or use a custom executable/path."
-            stack
-          >
-            <div className="flex flex-col gap-2">
-              <div className="flex gap-2">
-                <select
-                  value={agentSelection}
-                  onChange={(e) => handleAgentSelection(e.target.value)}
-                  className="min-w-0 flex-1 appearance-none rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary hover:border-border-strong-hover focus:border-focus focus:outline-none"
-                >
-                  <option value="__auto__">Auto-detect (Pi first, then OMP)</option>
-                  {detectedAgentInstalls.map((installation) => (
-                    <option key={`${installation.kind}:${installation.path}`} value={installation.path}>
-                      {installation.kind === 'omp' ? 'OMP' : 'Pi'} — {installation.path}
-                    </option>
-                  ))}
-                  {agentSelection === 'omp' && <option value="omp">OMP (not found)</option>}
-                  <option value="__custom__">Custom path…</option>
-                </select>
-                <button
-                  onClick={handleSelectPath}
-                  title="Choose executable or install directory"
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
-                >
-                  <FolderOpen size={14} />
-                </button>
-                <button
-                  // Forced: the user clicks this right after installing an
-                  // engine, so the cached detection result would be stale.
-                  onClick={() => void scanAgentInstallations({ force: true })}
-                  disabled={scanningAgentInstalls}
-                  title="Rescan installed agents"
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors disabled:opacity-50"
-                >
-                  <RefreshCw size={14} className={scanningAgentInstalls ? 'animate-spin' : undefined} />
-                </button>
-              </div>
-              {showCustomAgentPath && (
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    value={piPath}
-                    onChange={(e) => setAgentPath(e.target.value)}
-                    placeholder="Path to executable, cli.js, or install directory"
-                    className="min-w-0 flex-1 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary focus:border-focus focus:outline-none"
-                  />
-                  <select
-                    value={piEngine}
-                    onChange={(e) => setAgentEngine(e.target.value as AgentEngine)}
-                    aria-label="Agent engine"
-                    className="rounded-md border border-border-strong bg-surface px-2 py-1.5 text-sm text-primary focus:border-focus focus:outline-none"
-                  >
-                    <option value="auto">Auto</option>
-                    <option value="pi">Pi</option>
-                    <option value="omp">OMP</option>
-                  </select>
-                </div>
-              )}
-              <div className="text-xs text-dim">
-                {scanningAgentInstalls
-                  ? 'Scanning common install locations and PATH…'
-                  : detectedAgentInstalls.length > 0
-                    ? `${detectedAgentInstalls.length} installed engine${detectedAgentInstalls.length === 1 ? '' : 's'} detected`
-                    : 'No Pi or OMP installation detected yet'}
-              </div>
-            </div>
+        <SettingsSection title={t(language, 'appearance')}>
+          <SettingsRow label={t(language, 'language')} description={t(language, 'languageDescription')}>
+            <select
+              value={language}
+              onChange={(e) => {
+                const next = e.target.value as AppLanguage
+                setLanguage(next)
+                setSettingsDraft({ language: next })
+              }}
+              className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
+            >
+              <option value="zh">{t(language, 'languageZh')}</option>
+              <option value="en">{t(language, 'languageEn')}</option>
+            </select>
           </SettingsRow>
-        </SettingsSection>
-
-        {/* Appearance */}
-        <SettingsSection title="Appearance">
-          <SettingsRow label="Theme" description="Application color scheme">
+          <SettingsRow label={t(language, 'theme')} description={t(language, 'themeHint')}>
             <div className="relative">
               <select
                 value={theme}
@@ -712,9 +660,9 @@ export function SettingsPanel(): React.JSX.Element {
                   applyTheme(newTheme)
                   setSettingsDraft({ theme: newTheme })
                 }}
-                className="w-full appearance-none rounded-md border border-border-strong bg-surface py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-focus focus:outline-none"
+                className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
               >
-                <option value="system">System</option>
+                <option value="system">{t(language, 'themeSystem')}</option>
                 {getRegisteredThemes().map((registeredTheme) => (
                   <option key={registeredTheme.id} value={registeredTheme.id}>
                     {registeredTheme.file.name}
@@ -728,52 +676,53 @@ export function SettingsPanel(): React.JSX.Element {
             </div>
           </SettingsRow>
 
-          <SettingsRow label="Custom Theme" description="Fork the current theme or edit one you created">
+
+          <SettingsRow label={t(language, 'customTheme')} description={t(language, 'customThemeHint')}>
             <div className="flex gap-2">
               <button
                 onClick={openCreateThemeEditor}
-                className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
-                Create theme
+                {t(language, 'createTheme')}
               </button>
               {isEditableUserTheme && (
                 <button
                   onClick={openEditThemeEditor}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                  className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
-                  Edit theme
+                  {t(language, 'editTheme')}
                 </button>
               )}
             </div>
           </SettingsRow>
 
-          <SettingsRow label="Theme Actions" description="Import, export, or install a theme from a URL" stack>
+          <SettingsRow label={t(language, 'themeActions')} description={t(language, 'themeActionsHint')} stack>
             <div className="flex flex-col gap-2">
               <div className="flex gap-2">
                 <button
                   onClick={handleImportTheme}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                  className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
-                  Import
+                  {t(language, 'import')}
                 </button>
                 <button
                   onClick={handleExportTheme}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                  className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
-                  Export
+                  {t(language, 'export')}
                 </button>
                 <button
                   onClick={() => setGalleryOpen(true)}
-                  className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                  className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
-                  Browse gallery
+                  {t(language, 'browseGallery')}
                 </button>
                 {!isBuiltinTheme(theme) && (
                   <button
                     onClick={handleDeleteTheme}
-                    className="rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                    className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                   >
-                    Delete
+                    {t(language, 'delete')}
                   </button>
                 )}
               </div>
@@ -783,20 +732,20 @@ export function SettingsPanel(): React.JSX.Element {
                   value={installUrl}
                   onChange={(e) => setInstallUrl(e.target.value)}
                   placeholder="https://example.com/theme.json"
-                  className="flex-1 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary focus:border-focus focus:outline-none"
+                  className="flex-1 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-primary focus:border-accent-fg focus:outline-none"
                 />
                 <button
                   onClick={handleInstallFromUrl}
-                  className="shrink-0 rounded-md border border-border-strong px-3 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
+                  className="shrink-0 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
-                  Install
+                  {t(language, 'install')}
                 </button>
               </div>
               {themeActionError && <p className="text-xs text-error">{themeActionError}</p>}
             </div>
           </SettingsRow>
 
-          <SettingsRow label="UI Font Size" description="Chat, panels, and sidebar — not the terminal or code editor">
+          <SettingsRow label={t(language, 'uiFontSize')} description={t(language, 'uiFontSizeHint')}>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -815,7 +764,7 @@ export function SettingsPanel(): React.JSX.Element {
             </div>
           </SettingsRow>
 
-          <SettingsRow label="Terminal Font Size" description="Font size for the terminal panel">
+          <SettingsRow label={t(language, 'terminalFontSize')} description={t(language, 'terminalFontSizeHint')}>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -833,7 +782,7 @@ export function SettingsPanel(): React.JSX.Element {
             </div>
           </SettingsRow>
 
-          <SettingsRow label="Code Editor Font Size" description="Font size for the code editor / file viewer">
+          <SettingsRow label={t(language, 'codeEditorFontSize')} description={t(language, 'codeEditorFontSizeHint')}>
             <div className="flex items-center gap-3">
               <input
                 type="range"
@@ -852,9 +801,8 @@ export function SettingsPanel(): React.JSX.Element {
           </SettingsRow>
         </SettingsSection>
 
-        {/* Behavior */}
-        <SettingsSection title="Behavior">
-          <SettingsRow label="Permission Mode" description="Default safety mode for Pi actions">
+        <SettingsSection title={t(language, 'behavior')}>
+          <SettingsRow label={t(language, 'permissionMode')} description={t(language, 'permissionModeHint')}>
             <PermissionSelector
               value={permissionMode}
               onChange={(mode) => {
@@ -865,8 +813,8 @@ export function SettingsPanel(): React.JSX.Element {
             />
           </SettingsRow>
 
-          <SettingsRow label="Permission Rules" description="Fine-grained per-tool overrides for the mode above" stack>
-            <div className="mb-2 flex gap-1" role="tablist" aria-label="Permission rules scope">
+          <SettingsRow label={t(language, 'permissionRules')} description={t(language, 'permissionRulesHint')} stack>
+            <div className="mb-2 flex gap-1" role="tablist" aria-label={t(language, 'permissionRulesScope')}>
               {(['global', 'workspace'] as const).map((scope) => (
                 <button
                   key={scope}
@@ -875,13 +823,13 @@ export function SettingsPanel(): React.JSX.Element {
                   aria-selected={rulesScope === scope}
                   onClick={() => handleRulesScopeChange(scope)}
                   className={clsx(
-                    'rounded-md px-2 py-1 text-xs transition-colors',
+                    'rounded-md border bg-transparent px-2 py-1 text-xs transition-colors',
                     rulesScope === scope
-                      ? 'bg-surface border border-border-strong text-primary'
-                      : 'text-dim hover:text-primary'
+                      ? 'border-accent-fg text-primary'
+                      : 'border-border-strong text-dim hover:border-border-strong-hover hover:text-primary'
                   )}
                 >
-                  {scope === 'global' ? 'Global' : 'This workspace'}
+                  {scope === 'global' ? t(language, 'global') : t(language, 'thisWorkspace')}
                 </button>
               ))}
             </div>
@@ -904,55 +852,54 @@ export function SettingsPanel(): React.JSX.Element {
             />
           </SettingsRow>
 
-          <SettingsRow label="Show Thinking" description="Display model thinking blocks in responses">
+          <SettingsRow label={t(language, 'showThinking')} description={t(language, 'showThinkingHint')}>
             <Toggle checked={showThinking} onChange={(v) => { setShowThinking(v); setSettingsDraft({ showThinking: v }) }} />
           </SettingsRow>
 
-          <SettingsRow label="Auto Scroll" description="Automatically scroll to new messages">
+          <SettingsRow label={t(language, 'autoScroll')} description={t(language, 'autoScrollHint')}>
             <Toggle checked={autoScroll} onChange={(v) => { setAutoScroll(v); setSettingsDraft({ autoScroll: v }) }} />
           </SettingsRow>
 
           <SettingsRow
-            label="Desktop Notifications"
-            description="Notify when Pi finishes, fails, or waits for approval in a workspace you are not looking at"
+            label={t(language, 'desktopNotifications')}
+            description={t(language, 'desktopNotificationsHint')}
           >
             <Toggle checked={desktopNotifications} onChange={(v) => { setDesktopNotifications(v); setSettingsDraft({ desktopNotifications: v }) }} />
           </SettingsRow>
 
           <SettingsRow
-            label="Open to Home Screen on Launch"
-            description="On: full Home launcher (stats, recents, open folder). Off: open Chat with the empty-session center prompt and project picker."
+            label={t(language, 'openToHomeOnLaunch')}
+            description={t(language, 'openToHomeOnLaunchHint')}
           >
             <Toggle checked={openToHomeOnLaunch} onChange={(v) => { setOpenToHomeOnLaunch(v); setSettingsDraft({ openToHomeOnLaunch: v }) }} />
           </SettingsRow>
 
           <SettingsRow
-            label="Resume Last Session"
-            description="When opening a workspace, continue its most recent session instead of starting a new one"
+            label={t(language, 'resumeLastSession')}
+            description={t(language, 'resumeLastSessionHint')}
           >
             <Toggle checked={resumeLastSession} onChange={(v) => { setResumeLastSession(v); setSettingsDraft({ resumeLastSession: v }) }} />
           </SettingsRow>
 
           <SettingsRow
-            label="Run on Startup"
-            description="Automatically start Pi Desktop when you log in to your computer (takes effect in installed builds)"
+            label={t(language, 'runOnStartup')}
+            description={t(language, 'runOnStartupHint')}
           >
             <Toggle checked={runOnStartup} onChange={(v) => { setRunOnStartup(v); void applyImmediate({ runOnStartup: v }) }} />
           </SettingsRow>
 
           <SettingsRow
-            label="Minimize to Tray on Close"
-            description="Keep Pi Desktop running in the system tray when you close the window instead of quitting (Windows and Linux)"
+            label={t(language, 'minimizeToTrayOnClose')}
+            description={t(language, 'minimizeToTrayOnCloseHint')}
           >
             <Toggle checked={minimizeToTrayOnClose} onChange={(v) => { setMinimizeToTrayOnClose(v); void applyImmediate({ minimizeToTrayOnClose: v }) }} />
           </SettingsRow>
         </SettingsSection>
 
-        {/* Multi-Agent Council Planning */}
-        <SettingsSection title="Multi-Agent Council Planning">
+        <SettingsSection title={t(language, 'councilPlanning')}>
           <SettingsRow
-            label="Enable council planning"
-            description="Spawns Claude/Codex alongside Pi to plan tasks. Increases token usage and credit/API costs."
+            label={t(language, 'enableCouncil')}
+            description={t(language, 'enableCouncilHint')}
           >
             <Toggle
               checked={settings?.council.enabled ?? false}
@@ -968,7 +915,7 @@ export function SettingsPanel(): React.JSX.Element {
 
           {settings?.council.enabled && (
             <>
-              <SettingsRow label="Members" description="Which agents participate in council planning">
+              <SettingsRow label={t(language, 'councilMembers')} description={t(language, 'councilMembersHint')}>
                 <div className="flex flex-col gap-2">
                   {(['pi', 'claude', 'codex'] as const).map((id) => {
                     const detected = detectedAgents[id]
@@ -993,7 +940,7 @@ export function SettingsPanel(): React.JSX.Element {
                         />
                         <span>
                           {label}
-                          {!detected && <span className="text-faint"> (not detected)</span>}
+                          {!detected && <span className="text-faint"> {t(language, 'notDetected')}</span>}
                         </span>
                       </label>
                     )
@@ -1002,8 +949,8 @@ export function SettingsPanel(): React.JSX.Element {
               </SettingsRow>
 
               <SettingsRow
-                label="Consensus mode"
-                description="How council members reach agreement"
+                label={t(language, 'consensusMode')}
+                description={t(language, 'consensusModeHint')}
               >
                 <div className="relative">
                   <select
@@ -1013,10 +960,10 @@ export function SettingsPanel(): React.JSX.Element {
                         consensusMode: e.target.value as CouncilConfig['consensusMode'],
                       })
                     }
-                    className="w-full appearance-none rounded-md border border-border-strong bg-surface py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-focus focus:outline-none"
+                    className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
                   >
-                    <option value="arbiter">Arbiter merge (fast)</option>
-                    <option value="debate">One debate round (slower, ~2x cost)</option>
+                    <option value="arbiter">{t(language, 'consensusArbiter')}</option>
+                    <option value="debate">{t(language, 'consensusDebate')}</option>
                   </select>
                   <ChevronDown
                     size={14}
@@ -1045,33 +992,34 @@ export function SettingsPanel(): React.JSX.Element {
                   onKeyDown={(e) => {
                     if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
                   }}
-                  className="w-full rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary focus:border-focus focus:outline-none"
+                  className="w-full rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-primary focus:border-accent-fg focus:outline-none"
                 />
               </SettingsRow>
             </>
           )}
         </SettingsSection>
 
-        {/* Custom Models */}
-        <SettingsSection title="Custom Models">
+        <SettingsSection title={t(language, 'customModels')}>
           <CustomModelsEditor />
         </SettingsSection>
 
-        {/* Actions */}
         <div className="mt-8 flex gap-3">
           <button
             onClick={handleSave}
-            className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
+            className={clsx(
+              'flex items-center gap-2 rounded-md border bg-transparent px-4 py-2 text-sm transition-colors',
+              saved ? 'border-accent-fg text-primary' : 'border-border-strong text-muted hover:border-accent-fg hover:text-primary'
+            )}
           >
             {saved ? <Check size={14} /> : <Save size={14} />}
-            {saved ? 'Saved!' : 'Save Settings'}
+            {saved ? t(language, 'saved') : t(language, 'saveSettings')}
           </button>
           <button
             onClick={handleReset}
-            className="flex items-center gap-2 rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
+            className="flex items-center gap-2 rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
             <RotateCcw size={14} />
-            Reset to Defaults
+            {t(language, 'resetDefaults')}
           </button>
         </div>
       </div>
@@ -1093,34 +1041,32 @@ export function SettingsPanel(): React.JSX.Element {
         />
       )}
 
-      {/* Council enable confirmation dialog */}
       {showCouncilWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
           <div className="w-full max-w-md rounded-lg border border-border-strong bg-surface p-6 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-primary">
-              Enable council planning?
+              {t(language, 'enableCouncilTitle')}
             </h3>
             <p className="mb-6 text-sm text-muted">
-              Each run spawns Claude and Codex in addition to {runningEngineLabel}. This can significantly increase
-              token usage and credit/API costs. Only enable this if you are comfortable with the
-              extra spend.
+              {t(language, 'enableCouncilBody', { engine: runningEngineLabel })}
             </p>
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => setShowCouncilWarning(false)}
-                className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
+                className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
-                Cancel
+                {t(language, 'cancel')}
               </button>
               <button
                 onClick={() => {
                   setShowCouncilWarning(false)
                   void saveCouncil({ enabled: true })
                 }}
-                className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
+                className="rounded-md border border-accent-fg bg-transparent px-4 py-2 text-sm text-primary transition-colors hover:border-focus"
               >
-                Enable
+                {t(language, 'enable')}
               </button>
+
             </div>
           </div>
         </div>
@@ -1141,7 +1087,7 @@ function SettingsSection({
   return (
     <div className="mb-8">
       <h2 className="mb-4 text-sm font-medium text-secondary">{title}</h2>
-      <div className="space-y-4 rounded-lg border border-border bg-surface/50 p-4">
+      <div className="space-y-4 rounded-lg border border-border bg-transparent p-4">
         {children}
       </div>
     </div>
@@ -1193,14 +1139,19 @@ function Toggle({
 }): React.JSX.Element {
   return (
     <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
       onClick={() => onChange(!checked)}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
-        checked ? 'bg-accent' : 'bg-elevated'
+      className={`relative inline-flex h-5 w-9 items-center rounded-full border bg-transparent transition-colors ${
+        checked ? 'border-accent-fg' : 'border-border-strong'
       }`}
     >
       <span
-        className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
-          checked ? 'translate-x-4' : 'translate-x-1'
+        className={`inline-block h-3 w-3 rounded-full transition-all ${
+          checked
+            ? 'translate-x-4 bg-white shadow-[0_0_8px_rgba(255,255,255,0.85)]'
+            : 'translate-x-1 border border-border-strong-hover bg-transparent'
         }`}
       />
     </button>

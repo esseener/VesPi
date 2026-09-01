@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from 'react'
 import { GitBranch, Layers, Play, X } from 'lucide-react'
 import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 export function TaskLauncher(): React.JSX.Element | null {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const open = useAppStore((state) => state.taskLauncherOpen)
   const setOpen = useAppStore((state) => state.setTaskLauncherOpen)
   const workspaces = useAppStore((state) => state.workspaces)
@@ -65,16 +67,16 @@ export function TaskLauncher(): React.JSX.Element | null {
           <div>
             <div className="flex items-center gap-2">
               <Play size={16} className="text-accent-fg" />
-              <h2 id="task-launcher-title" className="text-sm font-semibold text-primary">New task</h2>
+              <h2 id="task-launcher-title" className="text-sm font-semibold text-primary">{t(language, 'taskLauncherTitle')}</h2>
             </div>
-            <p className="mt-1 text-xs text-dim">Start a fresh Pi session and send the task immediately.</p>
+            <p className="mt-1 text-xs text-dim">{t(language, 'taskLauncherSubtitle')}</p>
           </div>
           <button
             type="button"
             onClick={close}
             disabled={busy}
             className="rounded p-1 text-faint transition-colors hover:bg-surface-hover hover:text-primary disabled:opacity-50"
-            aria-label="Close task launcher"
+            aria-label={t(language, 'taskLauncherClose')}
           >
             <X size={15} />
           </button>
@@ -82,7 +84,7 @@ export function TaskLauncher(): React.JSX.Element | null {
 
         <div className="space-y-4 px-5 py-4">
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-secondary">Project</span>
+            <span className="mb-1.5 block text-xs font-medium text-secondary">{t(language, 'taskLauncherProject')}</span>
             <span className="flex items-center gap-2 rounded-md border border-border bg-app px-3 py-2">
               <Layers size={14} className="shrink-0 text-muted" />
               <select
@@ -92,7 +94,7 @@ export function TaskLauncher(): React.JSX.Element | null {
                 data-themed-select="true"
                 className="task-launcher-select min-w-0 flex-1 bg-transparent text-sm text-primary outline-none"
               >
-                {workspaces.length === 0 && <option value="">Open a project first</option>}
+                {workspaces.length === 0 && <option value="">{t(language, 'taskLauncherOpenProjectFirst')}</option>}
                 {workspaces.map((workspace) => (
                   <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
                 ))}
@@ -101,7 +103,7 @@ export function TaskLauncher(): React.JSX.Element | null {
           </label>
 
           <label className="block">
-            <span className="mb-1.5 block text-xs font-medium text-secondary">Task</span>
+            <span className="mb-1.5 block text-xs font-medium text-secondary">{t(language, 'taskLauncherTask')}</span>
             <textarea
               ref={inputRef}
               value={prompt}
@@ -112,7 +114,7 @@ export function TaskLauncher(): React.JSX.Element | null {
                   void submit()
                 }
               }}
-              placeholder="Fix the failing tests, explain the root cause, and prepare the changes for review…"
+              placeholder={t(language, 'taskLauncherPlaceholder')}
               rows={6}
               disabled={busy}
               className="w-full resize-y rounded-md border border-border bg-app px-3 py-2 text-sm leading-relaxed text-primary outline-none placeholder:text-faint focus:border-focus"
@@ -130,14 +132,14 @@ export function TaskLauncher(): React.JSX.Element | null {
             <span className="flex min-w-0 items-start gap-2">
               <GitBranch size={14} className="mt-0.5 shrink-0 text-special" />
               <span>
-                <span className="block text-xs font-medium text-secondary">Use an isolated Git worktree</span>
-                <span className="mt-0.5 block text-[11px] text-faint">Reuses a matching local PR/task worktree; otherwise creates one. The source project stays untouched.</span>
+                <span className="block text-xs font-medium text-secondary">{t(language, 'taskLauncherIsolated')}</span>
+                <span className="mt-0.5 block text-[11px] text-faint">{t(language, 'taskLauncherIsolatedHint')}</span>
               </span>
             </span>
           </label>
 
           <p className="text-[11px] text-faint">
-            The task runs in a new session and continues in the background if you switch away. Existing matching PR/task worktrees are reused. Ctrl/Cmd+Enter starts it.
+            {t(language, 'taskLauncherHint')}
           </p>
         </div>
 
@@ -148,7 +150,7 @@ export function TaskLauncher(): React.JSX.Element | null {
             disabled={busy}
             className="rounded-md px-3 py-1.5 text-xs text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:opacity-50"
           >
-            Cancel
+            {t(language, 'taskLauncherCancel')}
           </button>
           <button
             type="button"
@@ -157,7 +159,7 @@ export function TaskLauncher(): React.JSX.Element | null {
             className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play size={12} />
-            {busy ? 'Starting…' : 'Start task'}
+            {busy ? t(language, 'taskLauncherStarting') : t(language, 'taskLauncherStart')}
           </button>
         </div>
       </section>

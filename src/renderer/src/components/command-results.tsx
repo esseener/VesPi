@@ -1,11 +1,28 @@
 import { clsx } from 'clsx'
 import { BUILTIN_SOURCE, type CommandGroup, type PiCommand } from '../../../shared/pi-command'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
+import { useAppStore } from '../store'
 
 const SOURCE_BADGE: Record<string, string> = {
   skill: 'bg-special-bg text-special',
   prompt: 'bg-accent-bg text-accent-fg',
   [BUILTIN_SOURCE]: 'bg-warning-bg text-warning',
   extension: 'bg-success-bg text-success',
+}
+
+function groupHeading(language: AppLanguage, source: string): string {
+  switch (source) {
+    case 'skill':
+      return t(language, 'cmdGroupSkills')
+    case 'prompt':
+      return t(language, 'cmdGroupPrompts')
+    case 'builtin':
+      return t(language, 'cmdGroupCommands')
+    case 'extension':
+      return t(language, 'cmdGroupExtensions')
+    default:
+      return t(language, 'cmdGroupOther')
+  }
 }
 
 interface CommandResultsProps {
@@ -16,11 +33,6 @@ interface CommandResultsProps {
   onHover: (index: number) => void
 }
 
-/**
- * Grouped command rows shared by the Ctrl+K palette and the composer's inline
- * slash popup. mousedown is prevented so clicking a row never blurs whichever
- * input is driving the list (a blur would close the popup before onClick).
- */
 export function CommandResults({
   grouped,
   flat,
@@ -28,13 +40,15 @@ export function CommandResults({
   onSelect,
   onHover,
 }: CommandResultsProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
     <>
       {grouped.map((group) => (
-        <div key={group.label}>
+        <div key={group.source}>
           <div className="px-3 py-1 text-[10px] uppercase tracking-wide text-faint">
-            {group.label}
+            {groupHeading(language, group.source)}
           </div>
+
           {group.items.map((cmd) => {
             const index = flat.indexOf(cmd)
             return (
