@@ -14,7 +14,7 @@ import type {
   PermissionRulesWorkspaceStatus,
 } from '../../../shared/ipc-contracts'
 import type { ThemeFile } from '../../../shared/theme/theme-file'
-import { Settings, Save, RotateCcw, FolderOpen, RefreshCw, Check, ChevronDown } from 'lucide-react'
+import { Settings, RotateCcw, ChevronDown } from 'lucide-react'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
@@ -108,7 +108,6 @@ export function SettingsPanel(): React.JSX.Element {
   })
   const [rulesActionError, setRulesActionError] = useState<string | null>(null)
   const [workspaceRulesStatus, setWorkspaceRulesStatus] = useState<PermissionRulesWorkspaceStatus | null>(null)
-  const [saved, setSaved] = useState(false)
 
   const [showCouncilWarning, setShowCouncilWarning] = useState(false)
   const [detectedAgents, setDetectedAgents] = useState<Record<'pi' | 'claude' | 'codex', boolean>>({
@@ -241,20 +240,27 @@ export function SettingsPanel(): React.JSX.Element {
     await loadSettings()
   }
 
-  // Persist and apply a setting immediately, for toggles with an OS-level side
-  // effect (tray behavior, login item). These must take effect the instant they
-  // are flipped — staging them behind the Save button makes a toggle look "on"
-  // while the behavior is still off, which is surprising and easy to miss.
-  const applyImmediate = async (patch: Partial<AppSettings>): Promise<void> => {
-    await window.piDesktop.settings.save(patch)
+  // Persist a setting immediately. Toggles, selects, and theme picks write
+  // through here — there is no staged Save button.
+  const persistSetting = async (patch: Partial<AppSettings>): Promise<AppSettings | null> => {
+    const result = await window.piDesktop.settings.save(patch)
     await loadSettings()
+    return result
+  }
+
+  const persistSettingPatch = (patch: Partial<AppSettings>): void => {
+    setSettingsDraft(patch)
+    void persistSetting(patch)
+  }
+
+  const previewSettingPatch = (patch: Partial<AppSettings>): void => {
+    setSettingsDraft(patch)
   }
 
   // Populate the form once, when settings first load. We deliberately do NOT
   // re-sync on every settings change: the UI font previews live and the
   // terminal/editor sizes are staged in store state, so re-syncing would
-  // clobber other unsaved edits. Save/Reset set local state directly, so the
-  // form stays correct without a re-sync.
+  // clobber in-progress slider drags. Reset sets local state directly.
   const didInitRef = useRef(false)
   useEffect(() => {
     if (!settings || didInitRef.current) return
@@ -284,12 +290,12 @@ export function SettingsPanel(): React.JSX.Element {
   const setAgentPath = (path: string, custom = true): void => {
     setPiPath(path)
     setCustomAgentPathMode(custom)
-    setSettingsDraft({ piExecutablePath: path })
+    persistSettingPatch({ piExecutablePath: path })
   }
 
   const setAgentEngine = (engine: AgentEngine): void => {
     setPiEngine(engine)
-    setSettingsDraft({ piEngine: engine })
+    persistSettingPatch({ piEngine: engine })
   }
 
   const handleAgentSelection = (value: string): void => {
@@ -363,6 +369,7 @@ export function SettingsPanel(): React.JSX.Element {
     // owned here survives long enough to render.
     setThemeActionError(warning ?? null)
     setThemeEditorState(null)
+    persistSettingPatch({ theme: id })
     // Reconcile the registry against disk so a rename drops the old id from
     // the dropdown (the editor already registered + applied the new one).
     const { themes, warnings } = await window.piDesktop.themes.list()
@@ -376,7 +383,7 @@ export function SettingsPanel(): React.JSX.Element {
       registerThemes([result.theme])
       applyTheme(result.theme.id)
       setTheme(result.theme.id)
-      setSettingsDraft({ theme: result.theme.id })
+      persistSettingPatch({ theme: result.theme.id })
       setThemeActionError(null)
     } else if (!('canceled' in result)) {
       setThemeActionError(result.error)
@@ -405,7 +412,7 @@ export function SettingsPanel(): React.JSX.Element {
       registerThemes([result.theme])
       applyTheme(result.theme.id)
       setTheme(result.theme.id)
-      setSettingsDraft({ theme: result.theme.id })
+      persistSettingPatch({ theme: result.theme.id })
       setThemeActionError(null)
       setInstallUrl('')
     } else if (!('canceled' in result)) {
@@ -416,7 +423,7 @@ export function SettingsPanel(): React.JSX.Element {
     registerThemes([installed])
     applyTheme(installed.id)
     setTheme(installed.id)
-    setSettingsDraft({ theme: installed.id })
+    persistSettingPatch({ theme: installed.id })
     setThemeActionError(null)
   }
 
@@ -440,7 +447,7 @@ export function SettingsPanel(): React.JSX.Element {
     setUserThemes(themes)
     setTheme('dark')
     applyTheme('dark')
-    setSettingsDraft({ theme: 'dark' })
+    persistSettingPatch({ theme: 'dark' })
     setThemeActionError(null)
   }
 
@@ -450,9 +457,8 @@ export function SettingsPanel(): React.JSX.Element {
       [rulesScope]: { ...prev[rulesScope], rules, loaded: true },
     }))
     setRulesActionError(null)
-    // The user edited or imported rules in this panel — Save is now allowed
-    // to persist the list even if the on-disk file failed to load.
     useAppStore.getState().setPermissionRulesDraft(rulesScope, rules)
+    void persistPermissionRules(rulesScope, rules)
   }
 
   const handleRulesImport = async (): Promise<void> => {
@@ -495,77 +501,27 @@ export function SettingsPanel(): React.JSX.Element {
     setScopeRules((prev) => ({ ...prev, workspace: { ...EMPTY_SCOPE_RULES, loaded: true } }))
   }
 
-  const handleSave = async () => {
-    // Validate rules before anything persists, so invalid rules abort the
-    // whole save cleanly. Only scopes shouldPersistScope would actually
-    // write are validated — never validate an empty list caused by a failed
-    // load as if the user cleared the rules.
-    const drafts = useAppStore.getState().permissionRulesDrafts
-    const scopesToPersist = (['global', 'workspace'] as const).filter((scope) =>
-      shouldPersistScope(drafts[scope], scopeRules[scope].loaded, scopeRules[scope].exists)
-    )
-    for (const scope of scopesToPersist) {
-      const rulesError = validateRuleList(scopeRules[scope].rules)
-      if (rulesError) {
-        setRulesScope(scope)
-        setRulesActionError(rulesError)
-        return
-      }
+  const persistPermissionRules = async (scope: PermissionRulesScope, rules: PermissionRule[]): Promise<void> => {
+    const loaded = scopeRules[scope].loaded
+    const exists = scopeRules[scope].exists
+    if (!shouldPersistScope(rules, loaded, exists)) return
+    const rulesError = validateRuleList(rules)
+    if (rulesError) {
+      setRulesScope(scope)
+      setRulesActionError(rulesError)
+      return
     }
-
-    const updated: Partial<AppSettings> = {
-      piExecutablePath: DEFAULT_SETTINGS.piExecutablePath,
-      piEngine: 'omp',
-      theme,
-      language,
-      fontSize,
-      terminalFontSize,
-      codeEditorFontSize,
-      showThinking,
-      autoScroll,
-      desktopNotifications,
-      resumeLastSession,
-      openToHomeOnLaunch,
-      runOnStartup,
-      minimizeToTrayOnClose,
-      permissionMode,
+    const rulesResult = await window.piDesktop.permissionRules.set(scope, normalizedRules(rules))
+    if (!rulesResult.ok) {
+      setRulesScope(scope)
+      setRulesActionError(`${scope} permission rules were not saved: ${rulesResult.error}`)
+      return
     }
-
-    const result = await window.piDesktop.settings.save(updated)
-
-    // Apply theme and font size immediately
-    applyTheme(result.theme)
-    document.documentElement.style.fontSize = `${result.fontSize}px`
-
-    // Reload settings in store
-    await loadSettings()
-
-    // Persist permission rules too (only the scopes shouldPersistScope
-    // allowed — never overwrite a scope's file with an empty list because
-    // loading failed and the user never touched it).
-    for (const scope of scopesToPersist) {
-      const rulesResult = await window.piDesktop.permissionRules.set(scope, normalizedRules(scopeRules[scope].rules))
-      if (!rulesResult.ok) {
-        // Settings already saved above; do not report overall success and
-        // do not clear either draft, so the user's rules edits survive and
-        // can be retried.
-        setRulesScope(scope)
-        setRulesActionError(`Settings saved, but ${scope} permission rules were not saved: ${rulesResult.error}`)
-        return
-      }
-      setScopeRules((prev) => ({
-        ...prev,
-        [scope]: { ...prev[scope], loadError: null, exists: true },
-      }))
-    }
-
-    // Persisted now — drop the unsaved draft so the form and terminal/editor
-    // read the saved settings (just refreshed).
-    clearSettingsDraft()
-
-    // Show saved indicator
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+    useAppStore.getState().setPermissionRulesDraft(scope, null)
+    setScopeRules((prev) => ({
+      ...prev,
+      [scope]: { ...prev[scope], loadError: null, exists: true },
+    }))
   }
 
   const handleReset = async () => {
@@ -619,9 +575,6 @@ export function SettingsPanel(): React.JSX.Element {
     document.documentElement.style.fontSize = `${result.fontSize}px`
     await loadSettings()
     clearSettingsDraft()
-
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
   }
 
   return (
@@ -642,7 +595,7 @@ export function SettingsPanel(): React.JSX.Element {
               onChange={(e) => {
                 const next = e.target.value as AppLanguage
                 setLanguage(next)
-                setSettingsDraft({ language: next })
+                persistSettingPatch({ language: next })
               }}
               className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
             >
@@ -658,7 +611,7 @@ export function SettingsPanel(): React.JSX.Element {
                   const newTheme = e.target.value
                   setTheme(newTheme)
                   applyTheme(newTheme)
-                  setSettingsDraft({ theme: newTheme })
+                  persistSettingPatch({ theme: newTheme })
                 }}
                 className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
               >
@@ -756,8 +709,10 @@ export function SettingsPanel(): React.JSX.Element {
                   const size = Number(e.target.value)
                   setFontSize(size)
                   document.documentElement.style.fontSize = `${size}px`
-                  setSettingsDraft({ fontSize: size })
+                  previewSettingPatch({ fontSize: size })
                 }}
+                onPointerUp={(e) => persistSettingPatch({ fontSize: Number((e.target as HTMLInputElement).value) })}
+                onKeyUp={(e) => persistSettingPatch({ fontSize: Number((e.target as HTMLInputElement).value) })}
                 className="flex-1 accent-accent"
               />
               <span className="w-8 text-right text-sm text-muted">{fontSize}</span>
@@ -774,8 +729,10 @@ export function SettingsPanel(): React.JSX.Element {
                 onChange={(e) => {
                   const size = Number(e.target.value)
                   setTerminalFontSize(size)
-                  setSettingsDraft({ terminalFontSize: size })
+                  previewSettingPatch({ terminalFontSize: size })
                 }}
+                onPointerUp={(e) => persistSettingPatch({ terminalFontSize: Number((e.target as HTMLInputElement).value) })}
+                onKeyUp={(e) => persistSettingPatch({ terminalFontSize: Number((e.target as HTMLInputElement).value) })}
                 className="flex-1 accent-accent"
               />
               <span className="w-8 text-right text-sm text-muted">{terminalFontSize}</span>
@@ -792,8 +749,10 @@ export function SettingsPanel(): React.JSX.Element {
                 onChange={(e) => {
                   const size = Number(e.target.value)
                   setCodeEditorFontSize(size)
-                  setSettingsDraft({ codeEditorFontSize: size })
+                  previewSettingPatch({ codeEditorFontSize: size })
                 }}
+                onPointerUp={(e) => persistSettingPatch({ codeEditorFontSize: Number((e.target as HTMLInputElement).value) })}
+                onKeyUp={(e) => persistSettingPatch({ codeEditorFontSize: Number((e.target as HTMLInputElement).value) })}
                 className="flex-1 accent-accent"
               />
               <span className="w-8 text-right text-sm text-muted">{codeEditorFontSize}</span>
@@ -807,7 +766,7 @@ export function SettingsPanel(): React.JSX.Element {
               value={permissionMode}
               onChange={(mode) => {
                 setPermissionMode(mode)
-                setSettingsDraft({ permissionMode: mode })
+                persistSettingPatch({ permissionMode: mode })
               }}
               compact
             />
@@ -853,46 +812,46 @@ export function SettingsPanel(): React.JSX.Element {
           </SettingsRow>
 
           <SettingsRow label={t(language, 'showThinking')} description={t(language, 'showThinkingHint')}>
-            <Toggle checked={showThinking} onChange={(v) => { setShowThinking(v); setSettingsDraft({ showThinking: v }) }} />
+            <Toggle checked={showThinking} onChange={(v) => { setShowThinking(v); persistSettingPatch({ showThinking: v }) }} />
           </SettingsRow>
 
           <SettingsRow label={t(language, 'autoScroll')} description={t(language, 'autoScrollHint')}>
-            <Toggle checked={autoScroll} onChange={(v) => { setAutoScroll(v); setSettingsDraft({ autoScroll: v }) }} />
+            <Toggle checked={autoScroll} onChange={(v) => { setAutoScroll(v); persistSettingPatch({ autoScroll: v }) }} />
           </SettingsRow>
 
           <SettingsRow
             label={t(language, 'desktopNotifications')}
             description={t(language, 'desktopNotificationsHint')}
           >
-            <Toggle checked={desktopNotifications} onChange={(v) => { setDesktopNotifications(v); setSettingsDraft({ desktopNotifications: v }) }} />
+            <Toggle checked={desktopNotifications} onChange={(v) => { setDesktopNotifications(v); persistSettingPatch({ desktopNotifications: v }) }} />
           </SettingsRow>
 
           <SettingsRow
             label={t(language, 'openToHomeOnLaunch')}
             description={t(language, 'openToHomeOnLaunchHint')}
           >
-            <Toggle checked={openToHomeOnLaunch} onChange={(v) => { setOpenToHomeOnLaunch(v); setSettingsDraft({ openToHomeOnLaunch: v }) }} />
+            <Toggle checked={openToHomeOnLaunch} onChange={(v) => { setOpenToHomeOnLaunch(v); persistSettingPatch({ openToHomeOnLaunch: v }) }} />
           </SettingsRow>
 
           <SettingsRow
             label={t(language, 'resumeLastSession')}
             description={t(language, 'resumeLastSessionHint')}
           >
-            <Toggle checked={resumeLastSession} onChange={(v) => { setResumeLastSession(v); setSettingsDraft({ resumeLastSession: v }) }} />
+            <Toggle checked={resumeLastSession} onChange={(v) => { setResumeLastSession(v); persistSettingPatch({ resumeLastSession: v }) }} />
           </SettingsRow>
 
           <SettingsRow
             label={t(language, 'runOnStartup')}
             description={t(language, 'runOnStartupHint')}
           >
-            <Toggle checked={runOnStartup} onChange={(v) => { setRunOnStartup(v); void applyImmediate({ runOnStartup: v }) }} />
+            <Toggle checked={runOnStartup} onChange={(v) => { setRunOnStartup(v); persistSettingPatch({ runOnStartup: v }) }} />
           </SettingsRow>
 
           <SettingsRow
             label={t(language, 'minimizeToTrayOnClose')}
             description={t(language, 'minimizeToTrayOnCloseHint')}
           >
-            <Toggle checked={minimizeToTrayOnClose} onChange={(v) => { setMinimizeToTrayOnClose(v); void applyImmediate({ minimizeToTrayOnClose: v }) }} />
+            <Toggle checked={minimizeToTrayOnClose} onChange={(v) => { setMinimizeToTrayOnClose(v); persistSettingPatch({ minimizeToTrayOnClose: v }) }} />
           </SettingsRow>
         </SettingsSection>
 
@@ -1004,16 +963,6 @@ export function SettingsPanel(): React.JSX.Element {
         </SettingsSection>
 
         <div className="mt-8 flex gap-3">
-          <button
-            onClick={handleSave}
-            className={clsx(
-              'flex items-center gap-2 rounded-md border bg-transparent px-4 py-2 text-sm transition-colors',
-              saved ? 'border-accent-fg text-primary' : 'border-border-strong text-muted hover:border-accent-fg hover:text-primary'
-            )}
-          >
-            {saved ? <Check size={14} /> : <Save size={14} />}
-            {saved ? t(language, 'saved') : t(language, 'saveSettings')}
-          </button>
           <button
             onClick={handleReset}
             className="flex items-center gap-2 rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"

@@ -89,6 +89,7 @@ export const IPC_CHANNELS = {
   SYSTEM_WINDOW_IS_MAXIMIZED: 'system:window-is-maximized',
   EVENT_WINDOW_MAXIMIZED: 'event:window-maximized',
   UPDATE_CHECK: 'update:check',
+  UPDATE_INSTALL_KERNEL: 'update:install-kernel',
 
   // Activity
   ACTIVITY_GET_STATS: 'activity:get-stats',
@@ -1137,7 +1138,15 @@ export interface AppSettings {
 
 // ─── Update Check Types ─────────────────────────────────────────────────────
 
-/** Result of checking GitHub releases for a newer version. */
+export interface KernelUpdateInfo {
+  updateAvailable: boolean
+  currentVersion: string
+  latestVersion: string
+  url: string
+  downloadUrl: string
+}
+
+/** Result of checking GitHub releases for VesPi and the bundled OMP kernel. */
 export interface UpdateCheckResult {
   updateAvailable: boolean
   currentVersion: string
@@ -1146,6 +1155,7 @@ export interface UpdateCheckResult {
   url: string
   // Release name/title, when available.
   name?: string
+  kernel: KernelUpdateInfo
 }
 
 // ─── Workspace Types ────────────────────────────────────────────────────────

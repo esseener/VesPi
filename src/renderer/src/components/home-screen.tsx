@@ -283,7 +283,7 @@ function ModelSetupBanner(): React.JSX.Element | null {
       </div>
       <button
         onClick={() => setCurrentView('model-setup')}
-        className="flex shrink-0 items-center gap-1.5 rounded-md bg-accent px-2.5 py-1 text-xs text-white"
+        className="flex shrink-0 items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
       >
         {t(language, 'modelSetupHomeAction')}
       </button>

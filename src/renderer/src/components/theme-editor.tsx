@@ -254,7 +254,7 @@ export function ThemeEditor({
                     className={clsx(
                       'px-3 py-1.5 text-sm capitalize transition-colors',
                       draft.kind === kind
-                        ? 'bg-accent text-white'
+                        ? 'border-accent-fg text-primary'
                         : 'text-muted hover:bg-surface-hover'
                     )}
                   >
@@ -379,7 +379,7 @@ export function ThemeEditor({
               type="button"
               onClick={save}
               disabled={nameEmpty || saving}
-              className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors disabled:opacity-50"
+              className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
             >
               {saving ? 'Saving…' : 'Save'}
             </button>

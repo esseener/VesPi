@@ -110,7 +110,7 @@ export function MissionControl(): React.JSX.Element {
             <button
               type="button"
               onClick={() => setTaskLauncherOpen(true)}
-              className="flex items-center gap-1.5 rounded-md bg-accent px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover"
+              className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-2.5 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary"
             >
               <Play size={12} />
               {t(language, 'newTask')}

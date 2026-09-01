@@ -174,7 +174,7 @@ function ConfirmDialog({
           </button>
           <button
             onClick={onConfirm}
-            className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
+            className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
             Confirm
           </button>
@@ -220,7 +220,7 @@ function InputDialog({
           </button>
           <button
             onClick={() => onSubmit(value)}
-            className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
+            className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
             Submit
           </button>
@@ -262,7 +262,7 @@ function EditorDialog({
           </button>
           <button
             onClick={() => onSubmit(value)}
-            className="rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
+            className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
             Save
           </button>
@@ -311,8 +311,10 @@ export function AppConfirmDialog(): React.JSX.Element | null {
             onClick={() => resolveConfirm(true)}
             autoFocus={!request.danger}
             className={clsx(
-              'rounded-md px-4 py-2 text-sm text-white transition-colors',
-              request.danger ? 'bg-error hover:bg-error-hover' : 'bg-accent hover:bg-accent-hover'
+              'rounded-md border bg-transparent px-4 py-2 text-sm transition-colors',
+              request.danger
+                ? 'border-error text-error hover:border-error-hover hover:text-error'
+                : 'border-border-strong text-muted hover:border-accent-fg hover:text-primary'
             )}
           >
             {request.confirmLabel ?? 'Confirm'}

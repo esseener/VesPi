@@ -117,7 +117,7 @@ export function PackageBrowser(): React.JSX.Element {
             type="button"
             onClick={clearPackageNotification}
             className="shrink-0 rounded p-0.5 opacity-60 hover:opacity-100 transition-opacity"
-            aria-label="Dismiss"
+            aria-label={t(language, 'dismiss')}
           >
             <X size={13} />
           </button>
@@ -154,6 +154,7 @@ export function PackageBrowser(): React.JSX.Element {
 // Isolated so typing a package spec only re-renders this small component — it
 // never touches the Installed/Catalog/Skills lists. Install runs only on click.
 function InstallBar(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const installPackage = useAppStore((state) => state.installPackage)
   const [installInput, setInstallInput] = useState('')
   const [installing, setInstalling] = useState(false)
@@ -174,7 +175,7 @@ function InstallBar(): React.JSX.Element {
           type="text"
           value={installInput}
           onChange={(e) => setInstallInput(e.target.value)}
-          placeholder="npm:package-name or git:github.com/user/repo"
+          placeholder={t(language, 'installPackagePlaceholder')}
           className="flex-1 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
           onKeyDown={(e) => {
             if (e.key === 'Enter') handleInstall()
@@ -184,10 +185,10 @@ function InstallBar(): React.JSX.Element {
           type="button"
           onClick={handleInstall}
           disabled={installing || !installInput.trim()}
-          className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
         >
           {installing ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-          Install
+          {t(language, 'install')}
         </button>
       </div>
     </div>
@@ -240,6 +241,7 @@ const InstalledTab = memo(function InstalledTab({
   loading: boolean
   onRemove: (spec: string) => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   if (loading) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -252,8 +254,8 @@ const InstalledTab = memo(function InstalledTab({
     return (
       <div className="flex flex-col items-center justify-center py-12 text-dim">
         <Package size={32} className="mb-3 text-faint" />
-        <p className="text-sm">No packages installed</p>
-        <p className="mt-1 text-xs text-faint">Browse the catalog or use the install bar above</p>
+        <p className="text-sm">{t(language, 'noPackagesInstalled')}</p>
+        <p className="mt-1 text-xs text-faint">{t(language, 'browseCatalogOrInstall')}</p>
       </div>
     )
   }
@@ -284,7 +286,7 @@ const InstalledTab = memo(function InstalledTab({
               type="button"
               onClick={() => window.piDesktop.system.openExternal(`https://www.npmjs.com/package/${pkg.name}`)}
               className="rounded p-1.5 text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
-              title="View on npm"
+              title={t(language, 'viewOnNpm')}
             >
               <ExternalLink size={14} />
             </button>
@@ -292,7 +294,7 @@ const InstalledTab = memo(function InstalledTab({
               type="button"
               onClick={() => onRemove(pkg.source)}
               className="rounded p-1.5 text-dim hover:bg-error-bg hover:text-error transition-colors"
-              title="Remove package"
+              title={t(language, 'removePackage')}
             >
               <Trash2 size={14} />
             </button>
@@ -320,6 +322,7 @@ const CatalogTab = memo(function CatalogTab({
   onInstall: (spec: string) => void
   installedNames: Set<string>
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   // Search is local state and filtering runs in-renderer against the already
   // loaded catalog — no per-keystroke IPC or loading toggle.
   const [query, setQuery] = useState('')
@@ -336,7 +339,7 @@ const CatalogTab = memo(function CatalogTab({
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search packages..."
+            placeholder={t(language, 'searchPackages')}
             className="w-full rounded-lg border border-border-strong bg-surface py-2 pl-9 pr-4 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
           />
         </div>
@@ -349,17 +352,17 @@ const CatalogTab = memo(function CatalogTab({
       ) : filtered.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-dim">
           <Store size={32} className="mb-3 text-faint" />
-          <p className="text-sm">No packages found</p>
+          <p className="text-sm">{t(language, 'noPackagesFound')}</p>
           <p className="mt-1 text-xs text-faint">
-            Visit{' '}
             <button
               type="button"
               onClick={() => window.piDesktop.system.openExternal('https://pi.dev/packages')}
               className="text-accent-fg hover:underline"
             >
               pi.dev/packages
-            </button>{' '}
-            to browse
+            </button>
+            {' '}
+            {t(language, 'browsePackagesSite')}
           </p>
         </div>
       ) : (
@@ -396,7 +399,7 @@ const CatalogTab = memo(function CatalogTab({
                       type="button"
                       onClick={() => window.piDesktop.system.openExternal(pkg.npmUrl!)}
                       className="rounded p-1.5 text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
-                      title="View on npm"
+                      title={t(language, 'viewOnNpm')}
                     >
                       <ExternalLink size={13} />
                     </button>
@@ -406,7 +409,7 @@ const CatalogTab = memo(function CatalogTab({
                       type="button"
                       onClick={() => window.piDesktop.system.openExternal(pkg.repoUrl!)}
                       className="rounded p-1.5 text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
-                      title="View repo"
+                      title={t(language, 'viewRepo')}
                     >
                       <ExternalLink size={13} />
                     </button>
@@ -414,16 +417,16 @@ const CatalogTab = memo(function CatalogTab({
                   {installedNames.has(pkg.name) ? (
                     <span className="flex items-center gap-1 rounded bg-success-bg px-2.5 py-1 text-xs text-success">
                       <CheckCircle2 size={12} />
-                      Installed
+                      {t(language, 'installed')}
                     </span>
                   ) : (
                     <button
                       type="button"
                       onClick={() => onInstall(pkg.installCommand)}
-                      className="flex items-center gap-1 rounded bg-accent px-2.5 py-1 text-xs text-white hover:bg-accent-hover transition-colors"
+                      className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
                     >
                       <Download size={12} />
-                      Install
+                      {t(language, 'install')}
                     </button>
                   )}
                 </div>
@@ -432,7 +435,7 @@ const CatalogTab = memo(function CatalogTab({
           ))}
           {filtered.length > shown.length && (
             <div className="py-3 text-center text-xs text-faint">
-              Showing {shown.length} of {filtered.length} — refine your search to narrow results.
+              {t(language, 'catalogShowingCount', { shown: String(shown.length), total: String(filtered.length) })}
             </div>
           )}
         </div>
@@ -448,13 +451,14 @@ const SkillsTab = memo(function SkillsTab({
 }: {
   skills: Array<{ name: string; description: string; path: string; source: string; enabled: boolean }>
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   if (skills.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-dim">
         <Puzzle size={32} className="mb-3 text-faint" />
-        <p className="text-sm">No skills found</p>
+        <p className="text-sm">{t(language, 'noSkillsFound')}</p>
         <p className="mt-1 text-xs text-faint">
-          Install skill packages or create skills in .pi/skills/
+          {t(language, 'installSkillsEmptyHint')}
         </p>
       </div>
     )

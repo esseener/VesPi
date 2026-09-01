@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "VesPi desktop client for private OMP",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",

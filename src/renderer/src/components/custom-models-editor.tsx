@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
 import { ChevronDown, Plus, Trash2, Save, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useAppStore } from '../store'
@@ -93,17 +93,20 @@ export function CustomModelsEditor(): React.JSX.Element {
   const [rows, setRows] = useState<ProviderRow[]>([])
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
   const [errors, setErrors] = useState<string[]>([])
-  const [saved, setSaved] = useState(false)
+  const [savedIndex, setSavedIndex] = useState<number | null>(null)
+  const [savingIndex, setSavingIndex] = useState<number | null>(null)
   const [probing, setProbing] = useState<number | null>(null)
   const [probeMessage, setProbeMessage] = useState<{ index: number; text: string; ok: boolean } | null>(null)
-
   useEffect(() => {
     loadCustomModels()
   }, [loadCustomModels])
 
+  const didOpenIncomplete = useRef(false)
   useEffect(() => {
     const next = configToRows(customModels)
     setRows(next)
+    if (didOpenIncomplete.current || !customModels) return
+    didOpenIncomplete.current = true
     setOpenIds(new Set(
       next
         .map((row, index) => ({ row, id: row.key.trim() || `custom-${index}` }))
@@ -114,7 +117,7 @@ export function CustomModelsEditor(): React.JSX.Element {
 
   const update = (next: ProviderRow[]): void => {
     setRows(next)
-    setSaved(false)
+    setSavedIndex(null)
   }
 
   const addProvider = (): void => {
@@ -133,10 +136,13 @@ export function CustomModelsEditor(): React.JSX.Element {
   }
 
   const rowId = (row: ProviderRow, index: number): string => row.key.trim() || `custom-${index}`
-
   const removeProvider = (i: number): void => {
     if (isBuiltinProviderKey(rows[i]?.key)) return
-    update(rows.filter((_, idx) => idx !== i))
+    const next = rows.filter((_, idx) => idx !== i)
+    update(next)
+    void saveCustomModels(rowsToConfig(next)).then((result) => {
+      if (!result.ok) setErrors(result.errors ?? [t(language, 'saveFailed')])
+    })
   }
 
   const patchProvider = (i: number, patch: Partial<ProviderRow>): void =>
@@ -207,24 +213,33 @@ export function CustomModelsEditor(): React.JSX.Element {
     }
   }
 
-  const handleSave = async (): Promise<void> => {
-    const keys = rows
-      .filter((row) => row.apiKey.trim() || row.models.length > 0)
-      .map((row) => row.key.trim())
+  const handleSaveProvider = async (i: number): Promise<void> => {
+    const row = rows[i]
+    const key = row.key.trim()
     const localErrors: string[] = []
-    if (keys.some((k) => k.length === 0)) localErrors.push(t(language, 'providerKeyRequired'))
-    if (new Set(keys).size !== keys.length) localErrors.push(t(language, 'providerKeyUnique'))
+    if (row.apiKey.trim() || row.models.length > 0) {
+      if (key.length === 0) localErrors.push(t(language, 'providerKeyRequired'))
+      const otherKeys = rows
+        .filter((_, idx) => idx !== i)
+        .filter((r) => r.apiKey.trim() || r.models.length > 0)
+        .map((r) => r.key.trim())
+      if (key.length > 0 && otherKeys.includes(key)) localErrors.push(t(language, 'providerKeyUnique'))
+    }
     if (localErrors.length > 0) {
       setErrors(localErrors)
       return
     }
-    const result = await saveCustomModels(rowsToConfig(rows))
-    if (result.ok) {
-      setErrors([])
-      setSaved(true)
-      setOpenIds(new Set())
-    } else {
-      setErrors(result.errors ?? [t(language, 'saveFailed')])
+    setSavingIndex(i)
+    try {
+      const result = await saveCustomModels(rowsToConfig(rows))
+      if (result.ok) {
+        setErrors([])
+        setSavedIndex(i)
+      } else {
+        setErrors(result.errors ?? [t(language, 'saveFailed')])
+      }
+    } finally {
+      setSavingIndex(null)
     }
   }
 
@@ -270,16 +285,35 @@ export function CustomModelsEditor(): React.JSX.Element {
         placeholder={t(language, 'providerApiKey')}
         className="w-full rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
       />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
           onClick={() => void probeProvider(pi)}
           disabled={probing === pi}
-          className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-1 text-xs text-secondary hover:bg-surface-hover disabled:opacity-50"
+          className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
         >
           <RefreshCw size={12} className={probing === pi ? 'animate-spin' : undefined} />
           {probing === pi ? t(language, 'testingProvider') : t(language, 'testFetchModels')}
         </button>
+        <button
+          type="button"
+          onClick={() => void handleSaveProvider(pi)}
+          disabled={savingIndex === pi}
+          className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+        >
+          <Save size={12} />
+          {savingIndex === pi ? t(language, 'savingProvider') : t(language, 'saveModels')}
+        </button>
+        {savedIndex === pi && (
+          <button
+            type="button"
+            onClick={() => restartPi()}
+            className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
+          >
+            <RefreshCw size={12} />
+            {t(language, 'savedRestart')}
+          </button>
+        )}
         {probeMessage?.index === pi && (
           <span className={clsx('text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
             {probeMessage.text}
@@ -476,24 +510,6 @@ export function CustomModelsEditor(): React.JSX.Element {
           ))}
         </ul>
       )}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={() => void handleSave()}
-          className="flex items-center gap-2 rounded-md bg-accent px-4 py-2 text-sm text-white hover:bg-accent-hover transition-colors"
-        >
-          <Save size={14} />
-          {t(language, 'saveModels')}
-        </button>
-        {saved && (
-          <button
-            onClick={() => restartPi()}
-            className="flex items-center gap-2 rounded-md border border-border-strong px-3 py-2 text-sm text-secondary hover:bg-surface-hover transition-colors"
-          >
-            <RefreshCw size={14} />
-            {t(language, 'savedRestart')}
-          </button>
-        )}
-      </div>
     </div>
   )
 }

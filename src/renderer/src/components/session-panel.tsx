@@ -138,7 +138,7 @@ export function SessionPanel(): React.JSX.Element {
             </button>
             <button
               onClick={createNewSession}
-              className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-sm text-white hover:bg-accent-hover transition-colors"
+              className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
             >
               <Plus size={14} />
               {t(language, 'newSession')}
@@ -635,7 +635,7 @@ function SessionEntry({
           </button>
           <button
             onClick={handleDelete}
-            className="rounded bg-error px-2 py-0.5 text-white hover:bg-error-hover"
+            className="rounded-md border border-error bg-transparent px-2 py-0.5 text-error transition-colors hover:border-error-hover"
           >
             Delete
           </button>
@@ -661,7 +661,7 @@ function SessionEntry({
               />
               <button
                 onClick={handleAddTag}
-                className="rounded bg-accent px-1.5 py-0.5 text-[10px] text-white"
+                className="rounded-md border border-border-strong bg-transparent px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
                 Add
               </button>

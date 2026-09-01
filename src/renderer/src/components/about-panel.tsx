@@ -28,10 +28,14 @@ export function AboutPanel(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const updateInfo = useAppStore((state) => state.updateInfo)
   const checkForUpdates = useAppStore((state) => state.checkForUpdates)
+  const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
   const [report, setReport] = useState<DiagnosticsReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
   const [checked, setChecked] = useState(false)
+  const [installing, setInstalling] = useState(false)
+  const [kernelMessage, setKernelMessage] = useState<string | null>(null)
+  const [kernelError, setKernelError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -49,15 +53,34 @@ export function AboutPanel(): React.JSX.Element {
   }, [load])
 
   const uiVersion = report?.app.version ?? '—'
-  const ompVersion = report?.piVersion?.trim() || '—'
+  const ompVersion = updateInfo?.kernel.currentVersion || report?.piVersion?.trim() || '—'
 
   const handleCheck = async (): Promise<void> => {
     setChecking(true)
+    setKernelMessage(null)
+    setKernelError(null)
     try {
       await checkForUpdates()
       setChecked(true)
     } finally {
       setChecking(false)
+    }
+  }
+
+  const handleInstallKernel = async (): Promise<void> => {
+    setInstalling(true)
+    setKernelMessage(null)
+    setKernelError(null)
+    try {
+      const result = await installKernelUpdate()
+      if (result.ok) {
+        setKernelMessage(t(language, 'kernelUpdated', { version: result.version }))
+        await load()
+      } else {
+        setKernelError(t(language, 'kernelUpdateFailed', { error: result.error }))
+      }
+    } finally {
+      setInstalling(false)
     }
   }
   return (
@@ -81,7 +104,6 @@ export function AboutPanel(): React.JSX.Element {
             <div className="space-y-px border border-border">
               <AboutRow label={t(language, 'aboutUi')} value={`VesPi ${uiVersion}`} />
               <AboutRow label={t(language, 'aboutKernel')} value={kernelLabel(report?.piVersion)} />
-              <AboutRow label={t(language, 'aboutDeveloper')} value="MINTSOLD" />
               <AboutRow label={t(language, 'aboutPlatform')} value={platformLabel(report?.app.platform, report?.app.arch)} />
             </div>
           )}
@@ -90,8 +112,8 @@ export function AboutPanel(): React.JSX.Element {
             <button
               type="button"
               onClick={() => void handleCheck()}
-              disabled={checking}
-              className="flex w-full items-center justify-center gap-2 border border-border-strong px-3 py-2 text-sm text-primary hover:border-accent-fg disabled:opacity-60"
+              disabled={checking || installing}
+              className="flex w-full items-center justify-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-60"
             >
               {checking ? <Loader2 size={14} className="animate-spin" /> : <ArrowUpCircle size={14} />}
               {checking ? t(language, 'checkingUpdates') : t(language, 'checkUpdates')}
@@ -101,7 +123,7 @@ export function AboutPanel(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-                className="flex w-full items-center gap-2 border border-border-strong px-3 py-2 text-left text-sm text-primary hover:border-accent-fg"
+                className="flex w-full items-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-left text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
                 <ArrowUpCircle size={14} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">
@@ -110,15 +132,34 @@ export function AboutPanel(): React.JSX.Element {
                 <span className="shrink-0 text-xs text-dim">{t(language, 'updateOpenRelease')}</span>
               </button>
             )}
-            {checked && updateInfo && !updateInfo.updateAvailable && (
+            {updateInfo?.kernel.updateAvailable && (
+              <button
+                type="button"
+                onClick={() => void handleInstallKernel()}
+                disabled={installing || !updateInfo.kernel.downloadUrl}
+                className="flex w-full items-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-left text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-60"
+              >
+                {installing ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <ArrowUpCircle size={14} className="shrink-0" />}
+                <span className="min-w-0 flex-1 truncate">
+                  {installing
+                    ? t(language, 'updatingKernel')
+                    : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion || ompVersion}` })}
+                </span>
+                <span className="shrink-0 text-xs text-dim">{t(language, 'updateKernel')}</span>
+              </button>
+            )}
+            {kernelMessage && <p className="text-xs text-success">{kernelMessage}</p>}
+            {kernelError && <p className="text-xs text-error">{kernelError}</p>}
+            {checked && updateInfo && !updateInfo.updateAvailable && !updateInfo.kernel.updateAvailable && (
               <p className="text-xs text-dim">
-                {t(language, 'updateCurrent', { vespi: updateInfo.currentVersion || uiVersion, omp: ompVersion })}
+                {t(language, 'updateCurrent', { vespi: updateInfo.currentVersion || uiVersion, omp: updateInfo.kernel.currentVersion || ompVersion })}
               </p>
             )}
             {checked && !updateInfo && (
               <p className="text-xs text-error">{t(language, 'updateCheckFailed')}</p>
             )}
           </div>
+          <p className="text-center text-[11px] tracking-wide text-faint">{t(language, 'poweredBy')}</p>
         </div>
       </div>
     </div>

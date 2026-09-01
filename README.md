@@ -1,10 +1,10 @@
-# Pi Desktop
+# VesPi
 
-A desktop GUI for the [Pi](https://pi.dev) and [oh-my-pi](https://github.com/can1357/oh-my-pi) coding agents. Chat, manage projects, browse files, run commands, and install packages in one window.
+Desktop GUI for a private [oh-my-pi](https://github.com/can1357/oh-my-pi) (OMP) runtime. Chat, manage projects, browse files, run commands, and install plugins in one window.
 
-![Pi Desktop — Home launcher screen](docs/screenshots/Screenshot_20260824_181929.png)
+Current release: **1.0.0**.
 
-Still in alpha, so expect rough edges.
+![VesPi — Home launcher screen](docs/screenshots/Screenshot_20260824_181929.png)
 
 ## What it does
 
@@ -139,42 +139,43 @@ To use it, type your request with the feature enabled and click **Plan with Coun
 
 ## Getting started
 
-You need Pi installed first:
+VesPi 1.0.0 ships a private OMP kernel (`runtime/omp/omp.exe`). You do not need a separate Pi/OMP install for the default Windows build.
+
+### Windows
+
+Download from [Releases](https://github.com/FaqFirebase/pi-desktop/releases/tag/v1.0.0):
+
+- **Installer (recommended):** `VesPi-Setup-win-x64.exe` — choose the install folder, desktop shortcut, and Start Menu entry. Running it again upgrades an existing install.
+- **Portable:** `VesPi-1.0.0-win-x64.exe` — no installer.
+
+Builds are unsigned, so SmartScreen may warn; choose **More info → Run anyway**. If file edits or saves fail, see the [Controlled Folder Access](#controlled-folder-access-ransomware-protection) note below.
+
+About → Check for updates also checks the bundled OMP kernel and can replace `runtime/omp/omp.exe` when a newer oh-my-pi release exists.
+
+### Linux
+
+Grab the AppImage from [Releases](https://github.com/FaqFirebase/pi-desktop/releases):
 
 ```bash
-npm install -g @earendil-works/pi-coding-agent
-```
-
-On Linux, grab the AppImage from [Releases](https://github.com/FaqFirebase/pi-desktop/releases):
-
-```bash
-chmod +x Pi-Desktop-linux-x64.AppImage
-./Pi-Desktop-linux-x64.AppImage
+chmod +x VesPi-*-linux-x64.AppImage
+./VesPi-*-linux-x64.AppImage
 ```
 
 ### macOS
 
-Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/FaqFirebase/pi-desktop/releases), open it, and drag **Pi Desktop** to Applications.
+Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/FaqFirebase/pi-desktop/releases), open it, and drag **VesPi** to Applications.
 
 Builds are **not yet signed or notarized**. Because the download is unsigned, macOS quarantines it, and on first launch Gatekeeper shows this dialog (this is macOS's message, not our advice):
 
-> Pi Desktop is damaged and can't be opened. You should move it to the Trash.
+> VesPi is damaged and can't be opened. You should move it to the Trash.
 
 **Do not move it to the Trash.** The app is not damaged; this is just how Gatekeeper phrases its block on any unsigned app. macOS offers no "Open Anyway" button for this particular dialog, so clear the quarantine flag in Terminal instead:
 
 ```bash
-xattr -dr com.apple.quarantine "/Applications/Pi Desktop.app"
+xattr -dr com.apple.quarantine "/Applications/VesPi.app"
 ```
 
 Then open the app normally. You only need to do this once.
-
-> If macOS instead says the app **"cannot be opened because Apple cannot check it for malicious software,"** you can allow it without Terminal: open **System Settings → Privacy & Security**, scroll to the **Security** section, and click **Open Anyway** next to the Pi Desktop notice, then confirm with Touch ID / your password.
-
-> If you'd rather skip the unsigned-app warnings entirely, build from source. A build you compile yourself runs locally without Gatekeeper blocking it, so there is no signing prompt and no quarantine flag to clear. See [Build it yourself → Linux / macOS](#linux--macos) below.
-
-### Windows
-
-Download from [Releases](https://github.com/FaqFirebase/pi-desktop/releases): the **installer** (`…-win-x64-setup.exe`, recommended) or the **portable** `…-win-x64.exe`. Builds are unsigned, so SmartScreen may warn; choose **More info → Run anyway**. If file edits or saves fail, see the [Controlled Folder Access](#controlled-folder-access-ransomware-protection) note below. Windows is community-tested; please [open a bug report](https://github.com/FaqFirebase/pi-desktop/issues) if you hit an issue.
 
 ## Keyboard shortcuts
 

@@ -43,6 +43,7 @@ export function App(): React.JSX.Element {
   const updateInfo = useAppStore((state) => state.updateInfo)
   const updateDismissed = useAppStore((state) => state.updateDismissed)
   const dismissUpdate = useAppStore((state) => state.dismissUpdate)
+  const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
   const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
   const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
   const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
@@ -91,7 +92,7 @@ export function App(): React.JSX.Element {
   // empty-chat center prompt is the "minimal" launch surface when not opening Home.
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
-  const showUpdateBanner = !!updateInfo?.updateAvailable && !updateDismissed
+  const showUpdateBanner = !!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
@@ -123,15 +124,33 @@ export function App(): React.JSX.Element {
       {showUpdateBanner && updateInfo && (
         <div className="titlebar-no-drag flex shrink-0 items-center justify-center gap-3 border-b border-border bg-transparent px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
-          <span>
-            {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
-          </span>
-          <button
-            onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-            className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-primary hover:border-accent-fg transition-colors"
-          >
-            {t(language, 'download')}
-          </button>
+          {updateInfo.updateAvailable && (
+            <>
+              <span>
+                {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
+              </span>
+              <button
+                onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
+                className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary"
+              >
+                {t(language, 'download')}
+              </button>
+            </>
+          )}
+          {updateInfo.kernel.updateAvailable && (
+            <>
+              <span>
+                {t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion}` })}
+              </span>
+              <button
+                onClick={() => void installKernelUpdate()}
+                disabled={!updateInfo.kernel.downloadUrl}
+                className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+              >
+                {t(language, 'updateKernel')}
+              </button>
+            </>
+          )}
           <button
             onClick={dismissUpdate}
             className="rounded-sm p-0.5 text-muted hover:text-primary transition-colors"

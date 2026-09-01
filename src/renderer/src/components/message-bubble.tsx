@@ -234,7 +234,7 @@ function UserMessage({
             </button>
             <button
               onClick={onSaveEdit}
-              className="flex items-center gap-1 rounded bg-accent px-2 py-1 text-xs text-white hover:bg-accent-hover transition-colors"
+              className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
             >
               <Send size={10} />
               {t(language, 'actionSend')}

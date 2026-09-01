@@ -143,10 +143,10 @@ export function WorkspaceTabs(): React.JSX.Element {
           <div
             aria-current="page"
             className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-[11px]"
-            title="Tools"
+            title={t(language, 'extensionsDock')}
           >
             <Settings size={12} className="shrink-0 text-accent-fg" />
-            <span className="truncate font-jetbrains">Tools</span>
+            <span className="truncate font-jetbrains">{t(language, 'extensionsDock')}</span>
           </div>
           <button
             type="button"
@@ -155,8 +155,8 @@ export function WorkspaceTabs(): React.JSX.Element {
               setCurrentView('chat')
             }}
             className="mr-1 rounded-sm p-0.5 text-faint opacity-0 transition-all hover:bg-highlight hover:text-primary group-hover:opacity-100"
-            title="Close tools"
-            aria-label="Close tools"
+            title={t(language, 'closeTools')}
+            aria-label={t(language, 'closeTools')}
           >
             <X size={11} />
           </button>

@@ -312,9 +312,10 @@ interface PiDesktopAPI {
     get(): Promise<DiagnosticsReport>
   }
 
-  // Update check (GitHub releases)
+  // Update check (GitHub releases for VesPi and the bundled OMP kernel)
   updates: {
     check(): Promise<UpdateCheckResult>
+    installKernel(): Promise<{ ok: true; version: string } | { ok: false; error: string }>
   }
 
   terminal: {
@@ -567,6 +568,7 @@ const api: PiDesktopAPI = {
 
   updates: {
     check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
+    installKernel: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_KERNEL),
   },
 
   terminal: {

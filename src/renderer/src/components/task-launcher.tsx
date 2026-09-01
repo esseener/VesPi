@@ -156,7 +156,7 @@ export function TaskLauncher(): React.JSX.Element | null {
             type="button"
             onClick={() => void submit()}
             disabled={busy || !workspaceId || !prompt.trim()}
-            className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs font-medium text-white transition-colors hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Play size={12} />
             {busy ? t(language, 'taskLauncherStarting') : t(language, 'taskLauncherStart')}

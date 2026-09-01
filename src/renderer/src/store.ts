@@ -578,6 +578,7 @@ interface AppActions {
 
   // Update check
   checkForUpdates: () => Promise<void>
+  installKernelUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   dismissUpdate: () => void
 
   // Lineage
@@ -3074,13 +3075,23 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   checkForUpdates: async () => {
     try {
       const info = await window.piDesktop.updates.check()
-      set({ updateInfo: info, updateDismissed: !info.updateAvailable })
+      set({
+        updateInfo: info,
+        updateDismissed: !info.updateAvailable && !info.kernel.updateAvailable,
+      })
     } catch {
       // Silent — update check is best-effort
     }
   },
 
-  dismissUpdate: () => set({ updateDismissed: true }),
+  installKernelUpdate: async () => {
+    const result = await window.piDesktop.updates.installKernel()
+    if (result.ok) {
+      await get().checkForUpdates()
+      if (get().piStatus === 'running') await get().restartPi()
+    }
+    return result
+  },
 
   // ─── Lineage ──────────────────────────────────────────────────────────
 

@@ -181,7 +181,7 @@ export function ModelSetupScreen(): React.JSX.Element {
               type="button"
               onClick={() => void save()}
               disabled={busy}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-50"
+              className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
             >
               {t(language, 'modelSetupSave')}
             </button>

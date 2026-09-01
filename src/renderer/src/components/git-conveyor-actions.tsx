@@ -229,7 +229,7 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
             )}
             <div className="mt-4 flex justify-end gap-2">
               <button type="button" onClick={() => setDialog(null)} className="rounded border border-border px-3 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-primary">Cancel</button>
-              <button type="submit" className="rounded bg-accent px-3 py-1.5 text-xs font-medium text-white hover:bg-accent/90">{dialog.kind === 'commit' ? 'Commit' : 'Create PR'}</button>
+              <button type="submit" className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary">{dialog.kind === 'commit' ? 'Commit' : 'Create PR'}</button>
             </div>
           </form>
         </div>

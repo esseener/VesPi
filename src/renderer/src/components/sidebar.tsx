@@ -593,7 +593,7 @@ export function Sidebar(): React.JSX.Element {
             label={t(language, 'settings')}
             active={toolViewShowing('settings')}
             onClick={() => openToolView('settings')}
-            badge={updateInfo?.updateAvailable && !updateDismissed}
+            badge={(updateInfo?.updateAvailable || updateInfo?.kernel.updateAvailable) && !updateDismissed}
           />
         </div>
       </div>

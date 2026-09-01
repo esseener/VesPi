@@ -190,7 +190,7 @@ export function SkillsPanel(): React.JSX.Element {
             <button
               onClick={() => void onCreate()}
               disabled={busy || !newName.trim()}
-              className="rounded-md bg-accent px-3 py-1.5 text-xs text-white disabled:opacity-50"
+              className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
             >
               {t(language, 'createSkill')}
             </button>
@@ -255,7 +255,7 @@ export function SkillsPanel(): React.JSX.Element {
                 ) : null}
                 <button
                   onClick={() => runSkill(selected)}
-                  className="flex items-center gap-1.5 rounded-md bg-accent px-3 py-1.5 text-xs text-white hover:bg-accent-hover transition-colors"
+                  className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
                 >
                   <Play size={12} />
                   {t(language, 'runSkill')}
