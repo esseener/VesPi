@@ -1,6 +1,8 @@
 # VesPi
 
-Desktop GUI for a private [oh-my-pi](https://github.com/can1357/oh-my-pi) (OMP) runtime. Chat, manage projects, browse files, run commands, and install plugins in one window.
+**VesPi** is a desktop GUI for [Pi](https://pi.dev) and [Oh My Pi](https://github.com/can1357/oh-my-pi) (OMP). It is based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) and ships a private OMP kernel.
+
+Search terms: VesPi, Pi, Pi Desktop, Oh My Pi, OMP, oh-my-pi, coding agent.
 
 Current release: **1.0.0**.
 
@@ -309,7 +311,9 @@ Apache 2.0
 
 ## Links
 
-- [pi-desktop.com](https://pi-desktop.com)
-- [pi.dev](https://pi.dev)
+- [VesPi releases](https://github.com/MINTSOLD/VesPi/releases)
+- [Pi agent](https://pi.dev)
+- [Oh My Pi / OMP](https://github.com/can1357/oh-my-pi)
+- [Pi Desktop (upstream GUI)](https://github.com/FaqFirebase/pi-desktop)
 - [Packages](https://pi.dev/packages)
 - [Issues](https://github.com/MINTSOLD/VesPi/issues)

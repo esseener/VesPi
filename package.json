@@ -1,7 +1,7 @@
 {
   "name": "vespi",
   "version": "1.0.0",
-  "description": "VesPi desktop client for private OMP",
+  "description": "VesPi — Pi Desktop GUI for Oh My Pi (OMP) and the Pi coding agent",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
   "author": "VesPi",
@@ -13,8 +13,11 @@
   },
   "keywords": [
     "vespi",
-    "omp",
+    "pi",
+    "pi-desktop",
     "oh-my-pi",
+    "omp",
+    "oh my pi",
     "coding-agent",
     "electron",
     "desktop"
