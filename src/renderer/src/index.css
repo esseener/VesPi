@@ -406,6 +406,22 @@
     animation: fleet-shimmer 1.4s linear infinite;
   }
 
+  @keyframes stop-breath {
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 1; }
+  }
+
+  .stop-breath-core {
+    animation: stop-breath 1.8s ease-in-out infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .stop-breath-core {
+      animation: none;
+      opacity: 0.85;
+    }
+  }
+
 }
 
 /* ─── Instrument chassis ─────────────────────────────────────────────────── */

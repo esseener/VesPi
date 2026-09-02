@@ -9,7 +9,7 @@ import { CommandResults } from './command-results'
 import { SubagentProgress } from './subagent-progress'
 import { ModelSelector } from './model-selector'
 import { ThinkingLevelSelector } from './thinking-level-selector'
-import { CornerDownLeft, Square, Paperclip, X, FileText, StickyNote, Users, Search } from 'lucide-react'
+import { CornerDownLeft, Paperclip, X, FileText, StickyNote, Users, Search } from 'lucide-react'
 import {
   SUPPORTED_IMAGE_EXTENSIONS,
   type PromptImage,
@@ -419,12 +419,13 @@ export function ChatInput(): React.JSX.Element {
         </div>
       )}
 
-      <div className="pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors">
+      <div id="vespi-composer" className="pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors">
         {/* Subagent strip sits on the top edge, inset ~5% each side so the pill
             width doesn't look like it grew with the fleet UI. */}
         <div className="pointer-events-auto absolute bottom-full left-[5%] right-[5%] z-20 mb-0">
           <SubagentProgress />
         </div>
+        <div id="vespi-composer-popup" className="pointer-events-auto absolute bottom-full left-0 right-0 z-[60] mb-2" />
 
         {slashOpen && (
           <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl">
@@ -702,11 +703,13 @@ export function ChatInput(): React.JSX.Element {
           {isStreaming ? (
             <button
               onClick={handleAbort}
-              className="hover:bg-highlight-strong flex items-center justify-center rounded-lg p-1.5 text-dim hover:text-secondary transition-colors"
+              className="hover:bg-highlight-strong flex h-7 w-7 items-center justify-center rounded-md p-1.5 text-secondary transition-colors"
               title={t(language, 'stopEsc')}
               aria-label={t(language, 'stopGenerating')}
             >
-              <Square size={16} />
+              <span className="relative flex h-4 w-4 items-center justify-center rounded-[3px] border border-secondary/80">
+                <span className="stop-breath-core block h-2 w-2 rounded-[1px] bg-secondary shadow-[0_0_6px_rgba(242,242,242,0.55)]" />
+              </span>
             </button>
           ) : (
             <button

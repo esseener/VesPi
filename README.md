@@ -4,7 +4,7 @@
 
 Search terms: VesPi, Pi, Pi Desktop, Oh My Pi, OMP, oh-my-pi, coding agent.
 
-Current release: **1.0.0**.
+Current release: **1.0.1**.
 
 ![VesPi — Home launcher screen](docs/screenshots/Screenshot_20260824_181929.png)
 
@@ -141,18 +141,26 @@ To use it, type your request with the feature enabled and click **Plan with Coun
 
 ## Getting started
 
-VesPi 1.0.0 ships a private OMP kernel (`runtime/omp/omp.exe`). You do not need a separate Pi/OMP install for the default Windows build.
+VesPi 1.0.1 ships a private OMP kernel (`runtime/omp/omp.exe`). You do not need a separate Pi/OMP install for the default Windows build.
 
 ### Windows
 
-Download from [Releases](https://github.com/esseener/VesPi/releases/tag/v1.0.0):
+Download the latest from [Releases](https://github.com/esseener/VesPi/releases/latest):
 
-- **Installer (recommended):** `VesPi-Setup-win-x64.exe` — choose the install folder, desktop shortcut, and Start Menu entry. Running it again upgrades an existing install.
-- **Portable:** `VesPi-1.0.0-win-x64.exe` — no installer.
+- **Installer (recommended):** `VesPi-Setup-1.0.1-win-x64.exe` — choose the install folder, desktop shortcut, and Start Menu entry. Running a newer installer upgrades an existing install.
+- **Portable:** `VesPi-1.0.1-win-x64.exe` — no installer.
 
 Builds are unsigned, so SmartScreen may warn; choose **More info → Run anyway**. If file edits or saves fail, see the [Controlled Folder Access](#controlled-folder-access-ransomware-protection) note below.
 
-About → Check for updates also checks the bundled OMP kernel and can replace `runtime/omp/omp.exe` when a newer oh-my-pi release exists.
+## Updates
+
+Each small UI change ships as a new version (`1.0.1`, `1.0.2`, …) on [GitHub Releases](https://github.com/esseener/VesPi/releases). The app checks that feed on launch:
+
+- **About** shows **有更新** when a newer VesPi build exists, and opens the release page.
+- A top banner and the About sidebar dot appear at the same time.
+- **About → Check for updates** also checks the bundled OMP kernel (`can1357/oh-my-pi`) and can replace `runtime/omp/omp.exe`.
+
+Install the versioned installer (or replace the portable exe) to pick up UI changes. Older `1.0.0` clients already point at `esseener/VesPi`, so they will see `1.0.1`.
 
 ### Linux
 

@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "VesPi — Pi Desktop GUI for Oh My Pi (OMP) and the Pi coding agent",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",

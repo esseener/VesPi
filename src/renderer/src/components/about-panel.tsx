@@ -52,6 +52,23 @@ export function AboutPanel(): React.JSX.Element {
     void load()
   }, [load])
 
+  useEffect(() => {
+    if (updateInfo) {
+      setChecked(true)
+      return
+    }
+    let cancelled = false
+    setChecking(true)
+    void checkForUpdates().finally(() => {
+      if (cancelled) return
+      setChecked(true)
+      setChecking(false)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [checkForUpdates, updateInfo])
+
   const uiVersion = report?.app.version ?? '—'
   const ompVersion = updateInfo?.kernel.currentVersion || report?.piVersion?.trim() || '—'
 
@@ -123,11 +140,11 @@ export function AboutPanel(): React.JSX.Element {
               <button
                 type="button"
                 onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-                className="flex w-full items-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-left text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
+                className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg"
               >
                 <ArrowUpCircle size={14} className="shrink-0" />
                 <span className="min-w-0 flex-1 truncate">
-                  {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
+                  {t(language, 'updateHasUpdate')} · {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
                 </span>
                 <span className="shrink-0 text-xs text-dim">{t(language, 'updateOpenRelease')}</span>
               </button>

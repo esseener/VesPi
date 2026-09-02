@@ -1,5 +1,6 @@
 import { useAppStore } from '../store'
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 import { X, AlertCircle, HelpCircle } from 'lucide-react'
 import { clsx } from 'clsx'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
@@ -129,8 +130,8 @@ function SelectDialog({
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
-    <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? t(language, 'select')} onCancel={onCancel}>
+    <DialogOverlay onCancel={onCancel} anchor="composer">
+      <DialogBox title={request.title ?? t(language, 'select')} onCancel={onCancel} fill>
         <div className="space-y-1">
           {(request.options ?? []).map((option) => (
             <button
@@ -163,8 +164,8 @@ function ConfirmDialog({
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
-    <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? t(language, 'confirmOk')} onCancel={onCancel}>
+    <DialogOverlay onCancel={onCancel} anchor="composer">
+      <DialogBox title={request.title ?? t(language, 'confirmOk')} onCancel={onCancel} fill>
         {request.message && (
           <p className="mb-4 whitespace-pre-line text-sm text-muted">{request.message}</p>
         )}
@@ -202,8 +203,8 @@ function InputDialog({
   const [value, setValue] = useState('')
 
   return (
-    <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? t(language, 'inputTitle')} onCancel={onCancel}>
+    <DialogOverlay onCancel={onCancel} anchor="composer">
+      <DialogBox title={request.title ?? t(language, 'inputTitle')} onCancel={onCancel} fill>
         <input
           type="text"
           placeholder={request.placeholder ?? ''}
@@ -331,13 +332,40 @@ export function AppConfirmDialog(): React.JSX.Element | null {
 
 // ─── Shared Dialog Components ────────────────────────────────────────────────
 
+function composerPopupHost(): HTMLElement | null {
+  return document.getElementById('vespi-composer-popup')
+}
+
 function DialogOverlay({
   children,
   onCancel,
+  anchor = 'center',
 }: {
   children: React.ReactNode
   onCancel: () => void
+  anchor?: 'center' | 'composer'
 }): React.JSX.Element {
+  const [host, setHost] = useState<HTMLElement | null>(() =>
+    anchor === 'composer' ? composerPopupHost() : null
+  )
+  useEffect(() => {
+    if (anchor !== 'composer') return
+    const sync = (): void => setHost(composerPopupHost())
+    sync()
+    const observer = new MutationObserver(sync)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [anchor])
+
+  if (anchor === 'composer' && host) {
+    return createPortal(
+      <div className="overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl animate-fade-in">
+        {children}
+      </div>,
+      host
+    )
+  }
+
   return (
     <div
       className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
@@ -356,29 +384,23 @@ function DialogBox({
   children,
   onCancel,
   wide,
+  fill,
 }: {
   title: string
   children: React.ReactNode
   onCancel: () => void
   wide?: boolean
+  fill?: boolean
 }): React.JSX.Element {
   return (
-    <div
-      className={clsx(
-        'mx-4 rounded-xl border border-border-strong bg-surface shadow-2xl',
-        wide ? 'w-full max-w-2xl' : 'w-full max-w-md'
-      )}
-    >
-      {/* Header */}
+    <div className={clsx('w-full', fill ? null : wide ? 'max-w-2xl' : 'max-w-md')}>
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <h3 className="text-sm font-medium text-primary">{title}</h3>
         <button onClick={onCancel} className="text-dim hover:text-secondary">
           <X size={14} />
         </button>
       </div>
-
-      {/* Content */}
-      <div className="p-4">{children}</div>
+      <div className="max-h-[min(50vh,22rem)] overflow-y-auto p-4">{children}</div>
     </div>
   )
 }

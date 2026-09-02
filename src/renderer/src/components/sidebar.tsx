@@ -586,6 +586,7 @@ export function Sidebar(): React.JSX.Element {
             label={t(language, 'about')}
             active={toolViewShowing('about')}
             onClick={() => openToolView('about')}
+            badge={(updateInfo?.updateAvailable || updateInfo?.kernel.updateAvailable) && !updateDismissed}
           />
           <SidebarItem
             compact
@@ -593,7 +594,6 @@ export function Sidebar(): React.JSX.Element {
             label={t(language, 'settings')}
             active={toolViewShowing('settings')}
             onClick={() => openToolView('settings')}
-            badge={(updateInfo?.updateAvailable || updateInfo?.kernel.updateAvailable) && !updateDismissed}
           />
         </div>
       </div>
