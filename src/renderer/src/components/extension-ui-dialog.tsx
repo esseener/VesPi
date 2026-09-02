@@ -2,6 +2,7 @@ import { useAppStore } from '../store'
 import { useState, useEffect } from 'react'
 import { X, AlertCircle, HelpCircle } from 'lucide-react'
 import { clsx } from 'clsx'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 // Stacking tiers for the two extension-UI surfaces, which can be on screen at
 // the same time. The toast MUST outrank the dialog's full-screen backdrop: at
@@ -126,9 +127,10 @@ function SelectDialog({
   onSelect: (value: string) => void
   onCancel: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
     <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? 'Select'} onCancel={onCancel}>
+      <DialogBox title={request.title ?? t(language, 'select')} onCancel={onCancel}>
         <div className="space-y-1">
           {(request.options ?? []).map((option) => (
             <button
@@ -159,24 +161,25 @@ function ConfirmDialog({
   onDeny: () => void
   onCancel: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
     <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? 'Confirm'} onCancel={onCancel}>
+      <DialogBox title={request.title ?? t(language, 'confirmOk')} onCancel={onCancel}>
         {request.message && (
-          <p className="mb-4 text-sm text-muted">{request.message}</p>
+          <p className="mb-4 whitespace-pre-line text-sm text-muted">{request.message}</p>
         )}
         <div className="flex justify-end gap-2">
           <button
             onClick={onDeny}
             className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
           >
-            Cancel
+            {t(language, 'cancel')}
           </button>
           <button
             onClick={onConfirm}
             className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
-            Confirm
+            {t(language, 'confirmOk')}
           </button>
         </div>
       </DialogBox>
@@ -195,11 +198,12 @@ function InputDialog({
   onSubmit: (value: string) => void
   onCancel: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [value, setValue] = useState('')
 
   return (
     <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? 'Input'} onCancel={onCancel}>
+      <DialogBox title={request.title ?? t(language, 'inputTitle')} onCancel={onCancel}>
         <input
           type="text"
           placeholder={request.placeholder ?? ''}
@@ -216,13 +220,13 @@ function InputDialog({
             onClick={onCancel}
             className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
           >
-            Cancel
+            {t(language, 'cancel')}
           </button>
           <button
             onClick={() => onSubmit(value)}
             className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
-            Submit
+            {t(language, 'submit')}
           </button>
         </div>
       </DialogBox>
@@ -241,11 +245,12 @@ function EditorDialog({
   onSubmit: (value: string) => void
   onCancel: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [value, setValue] = useState(request.prefill ?? '')
 
   return (
     <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? 'Edit'} onCancel={onCancel} wide>
+      <DialogBox title={request.title ?? t(language, 'edit')} onCancel={onCancel} wide>
         <textarea
           value={value}
           onChange={(e) => setValue(e.target.value)}
@@ -258,13 +263,13 @@ function EditorDialog({
             onClick={onCancel}
             className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
           >
-            Cancel
+            {t(language, 'cancel')}
           </button>
           <button
             onClick={() => onSubmit(value)}
             className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
           >
-            Save
+            {t(language, 'noteSave')}
           </button>
         </div>
       </DialogBox>
@@ -275,11 +280,10 @@ function EditorDialog({
 // ─── App Confirmation Dialog ─────────────────────────────────────────────────
 
 // Themed replacement for window.confirm(), driven by store.requestConfirm().
-// Using a real in-app modal (instead of the native dialog) also avoids an
-// Electron quirk where window.confirm leaves the window without keyboard focus.
 export function AppConfirmDialog(): React.JSX.Element | null {
   const request = useAppStore((state) => state.confirmRequest)
   const resolveConfirm = useAppStore((state) => state.resolveConfirm)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   useEffect(() => {
     if (!request) return
@@ -297,7 +301,7 @@ export function AppConfirmDialog(): React.JSX.Element | null {
 
   return (
     <DialogOverlay onCancel={() => resolveConfirm(false)}>
-      <DialogBox title={request.title ?? 'Confirm'} onCancel={() => resolveConfirm(false)}>
+      <DialogBox title={request.title ?? t(language, 'confirmOk')} onCancel={() => resolveConfirm(false)}>
         <p className="mb-4 whitespace-pre-line text-sm text-muted">{request.message}</p>
         <div className="flex justify-end gap-2">
           <button
@@ -305,7 +309,7 @@ export function AppConfirmDialog(): React.JSX.Element | null {
             autoFocus={request.danger}
             className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
           >
-            {request.cancelLabel ?? 'Cancel'}
+            {request.cancelLabel ?? t(language, 'cancel')}
           </button>
           <button
             onClick={() => resolveConfirm(true)}
@@ -317,7 +321,7 @@ export function AppConfirmDialog(): React.JSX.Element | null {
                 : 'border-border-strong text-muted hover:border-accent-fg hover:text-primary'
             )}
           >
-            {request.confirmLabel ?? 'Confirm'}
+            {request.confirmLabel ?? t(language, 'confirmOk')}
           </button>
         </div>
       </DialogBox>

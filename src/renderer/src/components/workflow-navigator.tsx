@@ -843,9 +843,9 @@ export function WorkflowNavigator({ embedded = false }: { embedded?: boolean }):
           : 'fixed z-50 shadow-2xl shadow-black/30 backdrop-blur-md',
         !embedded && (maximized
           ? 'inset-4 rounded-xl'
-          : 'right-6 bottom-10 h-[28rem] w-[30rem] max-h-[calc(100vh-6rem)] max-w-[calc(100vw-3rem)] rounded-xl')
+          : 'bottom-10 left-1/2 h-[28rem] w-[30rem] max-h-[calc(100vh-6rem)] max-w-[calc(100vw-3rem)] -translate-x-1/2 rounded-xl')
       )}
-      style={!embedded && !maximized ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : undefined}
+      style={!embedded && !maximized ? { transform: `translate(calc(-50% + ${offset.x}px), ${offset.y}px)` } : undefined}
       aria-label={t(language, 'wfRunsTitle')}
     >
       <header

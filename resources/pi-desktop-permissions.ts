@@ -19,8 +19,8 @@ function summarizeInput(input: unknown): string {
   const path = typeof data.path === 'string' ? data.path : undefined
   const command = typeof data.command === 'string' ? data.command : undefined
 
-  if (path) return `Target: ${path}`
-  if (command) return `Command:\n${command}`
+  if (path) return `目标：${path}`
+  if (command) return `命令：\n${command}`
 
   return JSON.stringify(data, null, 2).slice(0, MAX_INPUT_SUMMARY_LENGTH)
 }
@@ -39,9 +39,9 @@ export default function piDesktopPermissions(pi: ExtensionAPI): void {
 
     const summary = summarizeInput(event.input)
     const confirmed = await ctx.ui.confirm(
-      `Allow ${event.toolName}?`,
+      `允许 ${event.toolName}？`,
       [
-        `${agentLabel} wants to run the ${event.toolName} tool.`,
+        `${agentLabel} 想要运行 ${event.toolName} 工具。`,
         summary,
       ].filter(Boolean).join('\n\n')
     )
@@ -49,7 +49,7 @@ export default function piDesktopPermissions(pi: ExtensionAPI): void {
     if (!confirmed) {
       return {
         block: true,
-        reason: `User denied ${event.toolName} permission in Pi Desktop.`,
+        reason: `用户在 VesPi 中拒绝了 ${event.toolName} 权限。`,
       }
     }
   })

@@ -145,7 +145,7 @@ VesPi 1.0.0 ships a private OMP kernel (`runtime/omp/omp.exe`). You do not need 
 
 ### Windows
 
-Download from [Releases](https://github.com/MINTSOLD/VesPi/releases/tag/v1.0.0):
+Download from [Releases](https://github.com/esseener/VesPi/releases/tag/v1.0.0):
 
 - **Installer (recommended):** `VesPi-Setup-win-x64.exe` — choose the install folder, desktop shortcut, and Start Menu entry. Running it again upgrades an existing install.
 - **Portable:** `VesPi-1.0.0-win-x64.exe` — no installer.
@@ -156,7 +156,7 @@ About → Check for updates also checks the bundled OMP kernel and can replace `
 
 ### Linux
 
-Grab the AppImage from [Releases](https://github.com/MINTSOLD/VesPi/releases):
+Grab the AppImage from [Releases](https://github.com/esseener/VesPi/releases):
 
 ```bash
 chmod +x VesPi-*-linux-x64.AppImage
@@ -165,7 +165,7 @@ chmod +x VesPi-*-linux-x64.AppImage
 
 ### macOS
 
-Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/MINTSOLD/VesPi/releases), open it, and drag **VesPi** to Applications.
+Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/esseener/VesPi/releases), open it, and drag **VesPi** to Applications.
 
 Builds are **not yet signed or notarized**. Because the download is unsigned, macOS quarantines it, and on first launch Gatekeeper shows this dialog (this is macOS's message, not our advice):
 
@@ -203,7 +203,7 @@ Then open the app normally. You only need to do this once.
 ### Linux / macOS
 
 ```bash
-git clone https://github.com/MINTSOLD/VesPi.git
+git clone https://github.com/esseener/VesPi.git
 cd VesPi
 npm install
 npm run dev
@@ -234,7 +234,7 @@ Settings → Privacy & Security → Windows Security → Virus & threat protecti
 #### 3. Clone and install
 
 ```powershell
-git clone https://github.com/MINTSOLD/VesPi.git
+git clone https://github.com/esseener/VesPi.git
 cd VesPi
 npm install
 ```
@@ -275,7 +275,7 @@ The reliable fix is to keep code out of protected folders. Clone the repo and pu
 
 ```powershell
 # Not C:\Users\<you>\Documents\... — use an unprotected path:
-git clone https://github.com/MINTSOLD/VesPi.git C:\dev\VesPi
+git clone https://github.com/esseener/VesPi.git C:\dev\VesPi
 ```
 
 If you must keep code under Documents/Desktop, allow the app instead:
@@ -303,7 +303,7 @@ Expand-Archive -Path $zip -DestinationPath node_modules\electron\dist -Force
 
 After this, `npm run dev` should work normally.
 
-> **Note:** Windows builds are community-tested. If you hit an issue not listed above, please [open a bug report](https://github.com/MINTSOLD/VesPi/issues).
+> **Note:** Windows builds are community-tested. If you hit an issue not listed above, please [open a bug report](https://github.com/esseener/VesPi/issues).
 
 ## License
 
@@ -311,9 +311,9 @@ Apache 2.0
 
 ## Links
 
-- [VesPi releases](https://github.com/MINTSOLD/VesPi/releases)
+- [VesPi releases](https://github.com/esseener/VesPi/releases)
 - [Pi agent](https://pi.dev)
 - [Oh My Pi / OMP](https://github.com/can1357/oh-my-pi)
 - [Pi Desktop (upstream GUI)](https://github.com/FaqFirebase/pi-desktop)
 - [Packages](https://pi.dev/packages)
-- [Issues](https://github.com/MINTSOLD/VesPi/issues)
+- [Issues](https://github.com/esseener/VesPi/issues)

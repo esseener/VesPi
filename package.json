@@ -6,10 +6,10 @@
   "desktopName": "vespi.desktop",
   "author": "VesPi",
   "license": "Apache-2.0",
-  "homepage": "https://github.com/MINTSOLD/VesPi",
+  "homepage": "https://github.com/esseener/VesPi",
   "repository": {
     "type": "git",
-    "url": "https://github.com/MINTSOLD/VesPi"
+    "url": "https://github.com/esseener/VesPi"
   },
   "keywords": [
     "vespi",

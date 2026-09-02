@@ -11,7 +11,7 @@ import { extractVersionLine } from '../diagnostics-report'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'
 
-const UPDATE_REPO = 'FaqFirebase/pi-desktop'
+const UPDATE_REPO = 'esseener/VesPi'
 const KERNEL_REPO = 'can1357/oh-my-pi'
 const UPDATE_CHECK_TIMEOUT_MS = 8000
 const KERNEL_DOWNLOAD_TIMEOUT_MS = 120_000
