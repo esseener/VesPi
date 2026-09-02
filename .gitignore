@@ -89,8 +89,7 @@ builder-effective-config.yaml
 .pi-desktop/
 .pi-subagents/
 
-# Agent context — local-only memory and architecture notes
-MEMORY.md
+# Agent scratch files — keep TEST.md local; MEMORY.md is shared product log
 TEST.md
 
 # Local agent / tool config (per-developer, never committed)

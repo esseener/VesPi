@@ -1,13 +1,14 @@
-# Pi Desktop
+# VesPi
 
-An Electron desktop application that acts as a GUI frontend for the Pi coding agent. Currently in alpha; see the Version section below.
+VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.1**.
 
 ## Version
 
-Project is currently in **Alpha**. APIs, IPC contracts, on-disk config formats, and packaged-app behavior may all change without notice. Do not rely on anything as stable.
+VesPi is past 1.0.0. Small UI or kernel-packaging changes still bump the patch (`1.0.1`, `1.0.2`, …). Do not leave tested local work unpublished.
 
-- Never refer to alpha releases as production-ready
-- Breaking changes are acceptable before 1.0.0
+- UI updates come from GitHub Releases on `esseener/VesPi`
+- OMP kernel updates come from GitHub Releases on `can1357/oh-my-pi`
+- Both channels are checked on launch and when About opens; both must show **有更新** / Update available together if either is newer
 - Preserve forward migration paths whenever practical
 
 ## Architecture
@@ -355,55 +356,65 @@ data-dir migration the GUI's files live under the OS app-data dir
 
 ## Distribution
 
-Pi Desktop is shipped as pre-built binaries — not via npm. Agents must not attempt `npm publish`.
+VesPi ships as pre-built binaries — never `npm publish`.
 
 | Platform | Format | Notes |
 |----------|--------|-------|
-| Linux | AppImage | Primary supported target |
-| Windows | Installer (`-setup.exe`) + portable `.exe` | Community-tested |
-| macOS | `.dmg` + `.zip` (arm64) | Built via `package:mac`; unsigned/un-notarized |
+| Windows | `VesPi-Setup-{version}-win-x64.exe` + portable `VesPi-{version}-win-x64.exe` | Primary shipped target |
+| Linux | AppImage | Optional |
+| macOS | `.dmg` + `.zip` (arm64) | Unsigned / un-notarized |
 
-Artifacts are built with `electron-builder` and published to GitHub Releases. Artifact naming: `Pi-Desktop-{version}-{os}-{arch}.{ext}`.
+Artifact naming must include the version. NSIS installer: `VesPi-Setup-${version}-${os}-${arch}.${ext}`. Portable: `VesPi-${version}-${os}-${arch}.${ext}`.
 
-Cross-builds from Linux require Wine (Windows portable only). macOS builds require a Mac.
-
-Distribution is via pre-built binaries only — never `npm publish`. The `bin/pi-desktop.js` entry and `install.sh` are launch/install helpers, not an npm package surface.
+Publish to `https://github.com/esseener/VesPi/releases`. The in-app updater reads that feed (`UPDATE_REPO = esseener/VesPi` in `src/main/ipc/update-handlers.ts`). OMP kernel assets are downloaded from `can1357/oh-my-pi` and can replace `runtime/omp/omp.exe`.
 
 ## Development
 
 ```bash
 npm install           # Install dependencies
 npm run dev           # Build and launch (reliable)
-npm run dev:hot       # Dev mode with hot reload (may have race condition)
+npm run dev:hot       # Dev mode with hot reload
 npm run build         # Build only
 npm run preview       # Launch built app
-npm run package       # Create installer
+npm run package:win   # Windows installer + portable
 ```
 
-## Pi Integration
+## Pi / OMP Integration
 
-The agent runs in RPC mode as a subprocess; one `PiRpcManager` is retained for each live session runtime. The binary is `pi` or `omp` depending on the session's engine (see Engines above):
+The agent runs in RPC mode as a subprocess; one `PiRpcManager` is retained for each live session runtime. The binary is `pi` or `omp` depending on the session's engine:
 
 ```
-pi --mode rpc [--session <session-file>] [--provider <name>] [--model <id>] [--no-session]
+omp --profile vespi --mode rpc-ui --provider <name> --model <id>
 ```
 
-No `--session-dir` is injected; each engine uses its own default store. A caller-supplied `--session-dir` in extra args still wins.
-
-Communication via JSONL over stdin/stdout:
-- Commands sent to stdin (one JSON object per line)
-- Events streamed from stdout (one JSON object per line)
-- Request/response correlation via `id` field
-- Extension UI protocol for interactive dialogs
+Communication via JSONL over stdin/stdout. Extension UI protocol (`select` / `confirm` / `input` / `editor`) is rendered in the composer: select/confirm/input sit above the input box, not at the bottom of the window.
 
 ## Versioning
 
-Starting at `0.0.1-alpha`. Follow semantic versioning with prerelease tags:
-- `0.0.x-alpha` — Alpha (current). Expect breakage in any release.
-- `0.0.x-beta` — Beta. Feature-complete for the release scope; bugs expected.
-- `0.0.x` — Stable patch on the 0.x track.
-- `0.x.0` — Feature additions.
-- `x.0.0` — Stable major release.
+Follow semver on the 1.x line:
+
+- `1.0.x` — UI / packaging patches. Every tested local change that should reach users is a new patch and a GitHub Release.
+- `1.x.0` — Feature additions.
+- `x.0.0` — Breaking major.
+
+Never ship a user-visible change only as a local preview. After the change is tested:
+
+1. Bump `package.json` version
+2. Commit and push `master` to `vespi` (`esseener/VesPi`)
+3. `npm run package:win`
+4. Tag `vX.Y.Z` and create a GitHub Release with both versioned artifacts
+5. Confirm About / the top banner can see the new tag from an older client
+
+## Dual update reminders
+
+`checkForUpdates()` queries **both** feeds on launch and on About:
+
+| Channel | Source | User action |
+|---------|--------|-------------|
+| VesPi UI | `esseener/VesPi` Releases | Open the release page / download the new installer |
+| OMP kernel | `can1357/oh-my-pi` Releases | In-app **更新内核**, replaces `runtime/omp/omp.exe` |
+
+If either is newer, show all three surfaces together: top banner, About **有更新**, sidebar About dot. Do not hide a kernel update behind a UI-only notice, or a UI update behind a kernel-only notice.
 
 ## Final Delivery Checklist
 
@@ -412,8 +423,9 @@ Before delivering a change:
 1. Read the relevant existing code first
 2. Reuse existing patterns and utilities
 3. Implement the full solution (no placeholders or partial work)
-4. Add or update tests (`npx tsx --test`)
+4. Add or update tests (`npx tsx --test`) when the contract changed
 5. Remove dead code
 6. Ensure consistency (naming, API shape, structure)
-7. Run `npm run typecheck`, `npm run lint`, and `npm run build`
-8. Update `MEMORY.md` when the work introduces decisions or known issues worth recording (it is a long-lived log, not a per-change requirement)
+7. Verify on the actual UI (`npm run preview` or the versioned portable)
+8. After local testing succeeds, bump the version, push `esseener/VesPi`, rebuild the versioned installer, and publish a GitHub Release so other machines and other agents can sync
+9. Update `MEMORY.md` with the ship decision (version, what changed, update channels)

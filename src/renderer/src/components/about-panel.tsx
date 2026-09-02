@@ -154,13 +154,13 @@ export function AboutPanel(): React.JSX.Element {
                 type="button"
                 onClick={() => void handleInstallKernel()}
                 disabled={installing || !updateInfo.kernel.downloadUrl}
-                className="flex w-full items-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-left text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-60"
+                className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg disabled:opacity-60"
               >
                 {installing ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <ArrowUpCircle size={14} className="shrink-0" />}
                 <span className="min-w-0 flex-1 truncate">
                   {installing
                     ? t(language, 'updatingKernel')
-                    : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion || ompVersion}` })}
+                    : `${t(language, 'updateHasUpdate')} · ${t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion || ompVersion}` })}`}
                 </span>
                 <span className="shrink-0 text-xs text-dim">{t(language, 'updateKernel')}</span>
               </button>
