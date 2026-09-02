@@ -194,7 +194,7 @@
       "shortcutName": "VesPi",
       "installerIcon": "resources/icons/icon.ico",
       "uninstallerIcon": "resources/icons/icon.ico",
-      "artifactName": "VesPi-Setup-${os}-${arch}.${ext}"
+      "artifactName": "VesPi-Setup-${version}-${os}-${arch}.${ext}"
     }
   }
 }
