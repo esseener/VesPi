@@ -7,6 +7,7 @@ import { existsSync } from 'fs'
 import { getPiCli } from '../pi-rpc-manager'
 import { getOmpSessionsRoot } from '../pi-paths'
 import { ensureVespiOpenspaceMcp } from '../vespi-runtime'
+import { buildModelsYml } from '../../shared/models-yml'
 
 
 export function modelsConfigPaths(): { dir: string; file: string } {
@@ -15,6 +16,11 @@ export function modelsConfigPaths(): { dir: string; file: string } {
     ? dirname(getOmpSessionsRoot())
     : join(homeDir, '.pi', 'agent')
   return { dir: root, file: join(root, 'models.json') }
+}
+
+/** models.yml — OMP's authoritative provider list; written only for the OMP engine. */
+function modelsYmlPath(dir: string): string {
+  return join(dir, 'models.yml')
 }
 
 function resolveApiKey(apiKey: string): { ok: true; value: string } | { ok: false; error: string } {
@@ -151,6 +157,12 @@ export function registerModelsConfigHandlers(): void {
     try {
       if (!existsSync(dir)) await mkdir(dir, { recursive: true })
       await writeFile(file, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+      // OMP ignores models.json whenever models.yml exists, so a stale yml
+      // hides everything the user saves. Mirror the config into OMP's native
+      // format; the Pi engine keeps reading models.json.
+      if (getPiCli().kind === 'omp') {
+        await writeFile(modelsYmlPath(dir), buildModelsYml(config as ModelsConfig), 'utf-8')
+      }
       ensureVespiOpenspaceMcp()
       return { success: true }
     } catch (err) {

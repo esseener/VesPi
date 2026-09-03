@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.12** (2026-09-03).
+- Current shipped version: **1.0.13** (2026-09-03).
 - Windows artifact: **installer only** — `VesPi-Setup-{version}-win-x64.exe`. The self-extracting portable exe was dropped in 1.0.10: it re-extracted ~400 MB (Electron + OMP + OpenSpace runtime) to %TEMP% on every launch, so double-click looked dead for minutes. A fast "portable" would have to be an extract-once ZIP instead.
 - After every ship, copy the current installer into `desktop/release/` (the user's local keep folder). Replace older versioned exes there. Do not treat `release/` as git; it holds the local latest installer.
 
@@ -37,6 +37,10 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.13 notes
+
+- Root cause of "saved provider never shows in the model selector": OMP treats `models.yml` as the authoritative provider list whenever it exists — `models.json` is ignored entirely (verified on the 18.1.x kernel with isolated profiles). The real vespi profile had a stale models.yml with only a6api/s3ai, so nothing saved to models.json ever showed up. `MODELS_WRITE` now mirrors the config into `models.yml` (Pi keeps reading models.json). After saving once, the yml regenerates and all providers appear on the next kernel start.
 
 ## 1.0.12 notes
 

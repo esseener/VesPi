@@ -519,7 +519,7 @@ const ZH = {
   modelNamePlaceholder: '显示名称',
   saveModels: '保存模型',
   savedRestart: '已保存 — 重启内核后生效',
-  modelsPathHint: '供应商、接口地址和 API Key 写在 {path}。重启内核后生效。',
+  modelsPathHint: '供应商、接口地址和 API Key 写在 {path}（OMP 另同步写 models.yml）。重启内核后生效。',
   modelsCapabilityHint: '如果模型支持思考，勾选「推理」；如果接受图片，勾选「视觉」。',
   supportsReasoningEffort: '支持 reasoning effort',
   reasoning: '推理',
