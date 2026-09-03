@@ -1,7 +1,8 @@
-import { ipcMain, app, BrowserWindow, net, session } from 'electron'
+import { ipcMain, app, BrowserWindow, net, session, shell } from 'electron'
 import { createWriteStream } from 'fs'
 import { chmod, copyFile, mkdir, rename, unlink } from 'fs/promises'
-import { dirname } from 'path'
+import { dirname, join } from 'path'
+import { tmpdir } from 'os'
 import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
@@ -54,6 +55,12 @@ export function isNewerVersion(latest: string, current: string): boolean {
   if (!a.pre) return true
   if (!b.pre) return false
   return a.pre > b.pre
+}
+
+export function vespiInstallerAssetName(version: string, platform = process.platform, arch = process.arch): string | null {
+  if (platform !== 'win32' || arch === 'arm64') return null
+  const clean = version.replace(/^v/, '')
+  return `VesPi-Setup-${clean}-win-x64.exe`
 }
 
 export function ompAssetName(platform = process.platform, arch = process.arch): string {
@@ -187,11 +194,16 @@ async function checkVespiUpdate(): Promise<Omit<UpdateCheckResult, 'kernel'>> {
     const latest = pickLatestRelease(releases)
     if (!latest) return none
     const latestVersion = latest.tag_name.replace(/^v/, '')
+    const installerName = vespiInstallerAssetName(latestVersion)
+    const installer = installerName
+      ? latest.assets?.find((item) => item.name === installerName)
+      : undefined
     return {
       updateAvailable: isNewerVersion(latestVersion, currentVersion),
       currentVersion,
       latestVersion,
       url: latest.html_url,
+      installerUrl: installer?.browser_download_url ?? '',
       name: latest.name ?? latest.tag_name,
     }
   } catch (err) {
@@ -343,6 +355,45 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
   }
 }
 
+function broadcastUiProgress(progress: KernelUpdateProgress): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    window.webContents.send(IPC_CHANNELS.EVENT_UI_UPDATE_PROGRESS, progress)
+  }
+}
+
+export async function installUiUpdate(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
+  const vespi = await checkVespiUpdate()
+  if (!vespi.updateAvailable) return { ok: false, error: 'VesPi is already up to date' }
+  if (!vespi.installerUrl) {
+    return { ok: false, error: '没有找到 Windows 安装包。请打开 GitHub Release 手动下载。' }
+  }
+  const fileName = vespiInstallerAssetName(vespi.latestVersion) ?? `VesPi-Setup-${vespi.latestVersion}-win-x64.exe`
+  const dest = join(tmpdir(), fileName)
+  try {
+    broadcastUiProgress({ phase: 'downloading', percent: 0, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
+    await downloadToFile(vespi.installerUrl, dest, (received, total) => {
+      const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
+      broadcastUiProgress({
+        phase: 'downloading',
+        percent,
+        receivedBytes: received,
+        totalBytes: total,
+        version: vespi.latestVersion,
+      })
+    })
+    broadcastUiProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
+    const opened = await shell.openPath(dest)
+    if (opened) throw new Error(opened)
+    broadcastUiProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
+    return { ok: true, version: vespi.latestVersion }
+  } catch (err) {
+    appLog.warn('updates', 'VesPi UI installer download failed', err)
+    broadcastUiProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: friendlyNetworkError(err) })
+    return { ok: false, error: friendlyNetworkError(err) }
+  }
+}
+
 export function registerUpdateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.UPDATE_CHECK, async (): Promise<UpdateCheckResult> => {
     return checkForUpdate()
@@ -350,5 +401,9 @@ export function registerUpdateHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL_KERNEL, async () => {
     broadcastKernelProgress({ phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 })
     return installKernelUpdate()
+  })
+  ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL_UI, async () => {
+    broadcastUiProgress({ phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 })
+    return installUiUpdate()
   })
 }

@@ -91,7 +91,9 @@ export const IPC_CHANNELS = {
   EVENT_WINDOW_MAXIMIZED: 'event:window-maximized',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL_KERNEL: 'update:install-kernel',
+  UPDATE_INSTALL_UI: 'update:install-ui',
   EVENT_KERNEL_UPDATE_PROGRESS: 'event:kernel-update-progress',
+  EVENT_UI_UPDATE_PROGRESS: 'event:ui-update-progress',
 
   // Activity
   ACTIVITY_GET_STATS: 'activity:get-stats',
@@ -1166,8 +1168,10 @@ export interface UpdateCheckResult {
   updateAvailable: boolean
   currentVersion: string
   latestVersion: string
-  // Release page URL to open for downloading; empty when the check failed.
+  // Release page URL; used as a fallback if the installer asset is missing.
   url: string
+  /** Direct Windows installer download, when GitHub published VesPi-Setup-*-win-x64.exe. */
+  installerUrl?: string
   // Release name/title, when available.
   name?: string
   /** Set when the VesPi GitHub check itself failed (network / proxy). */

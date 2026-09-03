@@ -15,13 +15,19 @@ export function kernelUpdateBusy(progress: KernelUpdateProgress | null): boolean
 export function kernelUpdateLabel(
   language: AppLanguage,
   progress: KernelUpdateProgress | null,
+  kind: 'kernel' | 'ui' = 'kernel',
 ): string {
-  if (!progress) return t(language, 'updatingKernel')
-  if (progress.phase === 'checking') return t(language, 'kernelUpdateChecking')
-  if (progress.phase === 'installing') return t(language, 'kernelUpdateInstalling')
+  const checking = kind === 'ui' ? 'uiUpdateChecking' : 'kernelUpdateChecking'
+  const installing = kind === 'ui' ? 'uiUpdateInstalling' : 'kernelUpdateInstalling'
+  const failed = kind === 'ui' ? 'uiUpdateFailed' : 'kernelUpdateFailed'
+  const done = kind === 'ui' ? 'uiUpdated' : 'kernelUpdated'
+  const idle = kind === 'ui' ? 'updatingUi' : 'updatingKernel'
+  if (!progress) return t(language, idle)
+  if (progress.phase === 'checking') return t(language, checking)
+  if (progress.phase === 'installing') return t(language, installing)
   if (progress.phase === 'restarting') return t(language, 'kernelUpdateRestarting')
-  if (progress.phase === 'error') return t(language, 'kernelUpdateFailed', { error: progress.error ?? '' })
-  if (progress.phase === 'done') return t(language, 'kernelUpdated', { version: progress.version ?? '' })
+  if (progress.phase === 'error') return t(language, failed, { error: progress.error ?? '' })
+  if (progress.phase === 'done') return t(language, done, { version: progress.version ?? '' })
   const percent = String(progress.percent)
   if (progress.totalBytes > 0) {
     return t(language, 'kernelUpdateDownloadingBytes', {

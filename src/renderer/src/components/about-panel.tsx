@@ -30,10 +30,15 @@ export function AboutPanel(): React.JSX.Element {
   const updateInfo = useAppStore((state) => state.updateInfo)
   const checkForUpdates = useAppStore((state) => state.checkForUpdates)
   const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
+  const installUiUpdate = useAppStore((state) => state.installUiUpdate)
   const kernelUpdateProgress = useAppStore((state) => state.kernelUpdateProgress)
+  const uiUpdateProgress = useAppStore((state) => state.uiUpdateProgress)
   const kernelBusy = kernelUpdateBusy(kernelUpdateProgress)
   const kernelDone = kernelUpdateProgress?.phase === 'done'
   const kernelFailed = kernelUpdateProgress?.phase === 'error'
+  const uiBusy = kernelUpdateBusy(uiUpdateProgress)
+  const uiDone = uiUpdateProgress?.phase === 'done'
+  const uiFailed = uiUpdateProgress?.phase === 'error'
   const [report, setReport] = useState<DiagnosticsReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
@@ -149,18 +154,39 @@ export function AboutPanel(): React.JSX.Element {
               {checking ? t(language, 'checkingUpdates') : t(language, 'checkUpdates')}
             </button>
             <p className="text-[11px] text-faint">{t(language, 'updateOmpHint')}</p>
-            {updateInfo?.updateAvailable && (
-              <button
-                type="button"
-                onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-                className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg"
-              >
-                <ArrowUpCircle size={14} className="shrink-0" />
-                <span className="min-w-0 flex-1 truncate">
-                  {t(language, 'updateHasUpdate')} · {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
-                </span>
-                <span className="shrink-0 text-xs text-dim">{t(language, 'updateOpenRelease')}</span>
-              </button>
+            {(updateInfo?.updateAvailable || uiBusy || uiDone || uiFailed) && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (uiDone) {
+                      useAppStore.getState().dismissUiUpdateProgress()
+                      return
+                    }
+                    void installUiUpdate()
+                  }}
+                  disabled={uiBusy}
+                  className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg disabled:opacity-60"
+                >
+                  {uiBusy ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <ArrowUpCircle size={14} className="shrink-0" />}
+                  <span className={`min-w-0 flex-1 truncate ${uiDone ? 'text-success' : uiFailed ? 'text-error' : ''}`}>
+                    {uiBusy || uiDone || uiFailed
+                      ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
+                      : `${t(language, 'updateHasUpdate')} · ${t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}`}
+                  </span>
+                  <span className="shrink-0 text-xs text-dim">
+                    {uiBusy ? `${kernelUpdateBarPercent(uiUpdateProgress)}%` : t(language, 'download')}
+                  </span>
+                </button>
+                {uiBusy && (
+                  <div className="h-1.5 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                    <div
+                      className="h-full bg-accent-fg transition-[width] duration-200"
+                      style={{ width: `${kernelUpdateBarPercent(uiUpdateProgress)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
             {(updateInfo?.kernel.updateAvailable || kernelBusy || kernelDone || kernelFailed) && (
               <div className="space-y-2">

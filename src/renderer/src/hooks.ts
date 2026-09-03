@@ -36,6 +36,9 @@ export function usePiEvents(): void {
     const unsubscribeKernelProgress = window.piDesktop.updates.onKernelProgress(
       useAppStore.getState().handleKernelUpdateProgress,
     )
+    const unsubscribeUiProgress = window.piDesktop.updates.onUiProgress(
+      useAppStore.getState().handleUiUpdateProgress,
+    )
 
     // A desktop-notification click hands the renderer the switch intent so the
     // usual streaming/dirty-editor confirms still run; landing on chat shows
@@ -95,6 +98,7 @@ export function usePiEvents(): void {
       unsubscribeActivity()
       unsubscribeSessionRuntime()
       unsubscribeKernelProgress()
+      unsubscribeUiProgress()
       unsubscribeActivate()
     }
   }, [handlePiEvent, handlePendingPromptCounts, handleWorkspaceActivity, handleSessionRuntime, recoverPendingPrompts])

@@ -46,10 +46,15 @@ export function App(): React.JSX.Element {
   const updateDismissed = useAppStore((state) => state.updateDismissed)
   const dismissUpdate = useAppStore((state) => state.dismissUpdate)
   const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
+  const installUiUpdate = useAppStore((state) => state.installUiUpdate)
   const kernelUpdateProgress = useAppStore((state) => state.kernelUpdateProgress)
+  const uiUpdateProgress = useAppStore((state) => state.uiUpdateProgress)
   const kernelBusy = kernelUpdateBusy(kernelUpdateProgress)
   const kernelDone = kernelUpdateProgress?.phase === 'done'
   const kernelFailed = kernelUpdateProgress?.phase === 'error'
+  const uiBusy = kernelUpdateBusy(uiUpdateProgress)
+  const uiDone = uiUpdateProgress?.phase === 'done'
+  const uiFailed = uiUpdateProgress?.phase === 'error'
   const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
   const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
   const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
@@ -99,7 +104,7 @@ export function App(): React.JSX.Element {
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
   const updateCheckFailed = Boolean(updateInfo?.checkError || updateInfo?.kernel.checkError)
-  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || updateCheckFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
+  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || uiBusy || uiDone || uiFailed || updateCheckFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
@@ -136,18 +141,38 @@ export function App(): React.JSX.Element {
               {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
             </span>
           )}
-          {updateInfo?.updateAvailable && !kernelBusy && !kernelDone && !kernelFailed && (
+          {(updateInfo?.updateAvailable || uiBusy || uiDone || uiFailed) && !kernelBusy && (
             <>
-              <span>
-                {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
+              <span className={clsx('min-w-0 truncate', uiDone && 'text-success', uiFailed && 'text-error')}>
+                {uiBusy || uiDone || uiFailed
+                  ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
+                  : t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}
               </span>
-              <button
-                type="button"
-                onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-                className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary"
-              >
-                {t(language, 'download')}
-              </button>
+              {uiBusy ? (
+                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                  <div
+                    className="h-full bg-accent-fg transition-[width] duration-200"
+                    style={{ width: `${kernelUpdateBarPercent(uiUpdateProgress)}%` }}
+                  />
+                </div>
+              ) : uiFailed ? (
+                <button
+                  type="button"
+                  onClick={() => void installUiUpdate()}
+                  className="titlebar-no-drag rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
+                >
+                  {t(language, 'download')}
+                </button>
+              ) : uiDone ? null : (
+                <button
+                  type="button"
+                  onClick={() => void installUiUpdate()}
+                  disabled={!updateInfo?.installerUrl && !updateInfo?.url}
+                  className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                >
+                  {t(language, 'download')}
+                </button>
+              )}
             </>
           )}
           {(updateInfo?.kernel.updateAvailable || kernelBusy || kernelDone || kernelFailed) && (

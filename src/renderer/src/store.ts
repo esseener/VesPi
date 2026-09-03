@@ -385,6 +385,7 @@ interface AppState {
   updateInfo: UpdateCheckResult | null
   updateDismissed: boolean
   kernelUpdateProgress: KernelUpdateProgress | null
+  uiUpdateProgress: KernelUpdateProgress | null
 
   // Cross-session lineage tree
   lineage: LineageNode[]
@@ -581,8 +582,11 @@ interface AppActions {
   // Update check
   checkForUpdates: () => Promise<void>
   installKernelUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
+  installUiUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   handleKernelUpdateProgress: (progress: KernelUpdateProgress) => void
+  handleUiUpdateProgress: (progress: KernelUpdateProgress) => void
   dismissKernelUpdateProgress: () => void
+  dismissUiUpdateProgress: () => void
   dismissUpdate: () => void
 
   // Lineage
@@ -952,6 +956,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   updateInfo: null,
   updateDismissed: false,
   kernelUpdateProgress: null,
+  uiUpdateProgress: null,
 
   lineage: [],
 
@@ -3087,7 +3092,47 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ kernelUpdateProgress: progress })
   },
 
+  handleUiUpdateProgress: (progress) => {
+    set({ uiUpdateProgress: progress })
+  },
+
   dismissKernelUpdateProgress: () => set({ kernelUpdateProgress: null }),
+
+  dismissUiUpdateProgress: () => set({ uiUpdateProgress: null }),
+
+  installUiUpdate: async () => {
+    const info = get().updateInfo
+    if (info && !info.installerUrl && info.url) {
+      await window.piDesktop.system.openExternal(info.url)
+      return { ok: false, error: '没有安装包直链，已打开发布页。' }
+    }
+    set({
+      uiUpdateProgress: { phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 },
+    })
+    const result = await window.piDesktop.updates.installUi()
+    if (result.ok) {
+      set({
+        uiUpdateProgress: {
+          phase: 'done',
+          percent: 100,
+          receivedBytes: 0,
+          totalBytes: 0,
+          version: result.version,
+        },
+      })
+    } else {
+      set({
+        uiUpdateProgress: {
+          phase: 'error',
+          percent: 0,
+          receivedBytes: 0,
+          totalBytes: 0,
+          error: result.error,
+        },
+      })
+    }
+    return result
+  },
 
   installKernelUpdate: async () => {
     set({

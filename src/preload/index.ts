@@ -319,7 +319,9 @@ interface PiDesktopAPI {
   updates: {
     check(): Promise<UpdateCheckResult>
     installKernel(): Promise<{ ok: true; version: string } | { ok: false; error: string }>
+    installUi(): Promise<{ ok: true; version: string } | { ok: false; error: string }>
     onKernelProgress(callback: (progress: KernelUpdateProgress) => void): () => void
+    onUiProgress(callback: (progress: KernelUpdateProgress) => void): () => void
   }
 
   terminal: {
@@ -574,10 +576,16 @@ const api: PiDesktopAPI = {
   updates: {
     check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
     installKernel: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_KERNEL),
+    installUi: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_UI),
     onKernelProgress: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, progress: KernelUpdateProgress) => callback(progress)
       ipcRenderer.on(IPC_CHANNELS.EVENT_KERNEL_UPDATE_PROGRESS, handler)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_KERNEL_UPDATE_PROGRESS, handler)
+    },
+    onUiProgress: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: KernelUpdateProgress) => callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.EVENT_UI_UPDATE_PROGRESS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_UI_UPDATE_PROGRESS, handler)
     },
   },
 
