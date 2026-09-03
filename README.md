@@ -1,122 +1,131 @@
-# VesPi
+<p align="center">
+  <img src="docs/screenshots/Screenshot_20260824_181929.png" alt="VesPi 首页" width="880">
+</p>
 
-**VesPi** is a Windows desktop client for **[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi)** and the **[Pi](https://pi.dev)** coding agent. Chat, tools, Diff, terminal, permissions, models, and kernel updates live in one window.
+<h1 align="center">VesPi</h1>
 
-It is based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). The shipped Windows build runs a **private `omp.exe`** — you do not need a global `pi` or `omp` on PATH.
+<p align="center">
+  <b>Windows 上的 Oh My Pi（OMP）/ Pi 桌面客户端</b><br>
+  一把会自我磨利的桌面智能快刀
+</p>
 
-**Search:** VesPi · Pi · Pi Desktop · Oh My Pi · OMP · oh-my-pi · coding agent · desktop agent · Windows AI IDE
+<p align="center">
+  <a href="#中文">中文</a> ·
+  <a href="#english">English</a> ·
+  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.1</a>
+</p>
 
-**Current release: [1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**
+<p align="center">
+  <img alt="release" src="https://img.shields.io/github/v/release/esseener/VesPi">
+  <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D6">
+  <img alt="engine" src="https://img.shields.io/badge/engine-Oh%20My%20Pi%20%7C%20OMP%20%7C%20Pi-111">
+  <img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue">
+</p>
 
-[Download Windows installer](https://github.com/esseener/VesPi/releases/latest) · [Oh My Pi kernel](https://github.com/can1357/oh-my-pi) · [Pi docs](https://pi.dev)
+搜索词 / Search: **VesPi** · **Pi** · **Pi Desktop** · **Oh My Pi** · **OMP** · **oh-my-pi** · **coding agent** · **桌面 Agent** · **AI 编程助手**
 
-![VesPi home](docs/screenshots/Screenshot_20260824_181929.png)
+---
 
-## Why VesPi
+# 中文
 
-- **Install and run.** Bundled OMP kernel (`runtime/omp/omp.exe`) with `--profile vespi --mode rpc-ui`.
-- **Supervise the agent.** Streaming reply, thinking, tool cards, approvals, Diff, file tree, terminal.
-- **Do not fork the kernel.** VesPi is the shell. OMP/Pi remain the agent. Sessions, models, and tools stay in the engine.
-- **Two update channels.** UI from this repo. Kernel from `can1357/oh-my-pi`, with in-app **更新内核** and a visible download progress bar.
+VesPi 把 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 和 **[Pi](https://pi.dev)** 收进一个 Windows 窗口：对话、工具卡片、审批、Diff、文件树、终端、模型和内核更新。
 
-## Screenshots
+默认跑仓库/安装包里的私有 `omp.exe`（`--profile vespi --mode rpc-ui`）。不需要你自己配 PATH 上的 `omp` 或 `pi`。
 
-| Home | Chat |
+当前版本 **[1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**。
+
+## 界面
+
+| 首页启动器 | 对话 / Agent |
 |---|---|
-| ![Home](docs/screenshots/Screenshot_20260824_181929.png) | ![Chat](docs/screenshots/Screenshot_20260824_182005.png) |
+| <img src="docs/screenshots/Screenshot_20260824_181929.png" alt="首页"> | <img src="docs/screenshots/Screenshot_20260824_182005.png" alt="对话"> |
 
-| Sessions / files | Settings |
+| 会话与文件 | 设置 |
 |---|---|
-| ![Files](docs/screenshots/Screenshot_20260824_182039.png) | ![Settings](docs/screenshots/Screenshot_20260824_182117.png) |
+| <img src="docs/screenshots/Screenshot_20260824_182039.png" alt="文件"> | <img src="docs/screenshots/Screenshot_20260824_182117.png" alt="设置"> |
 
-## Highlights in 1.0.1
+| 终端 | Diff / 审查 |
+|---|---|
+| <img src="docs/screenshots/Screenshot_20260824_182225.png" alt="终端"> | <img src="docs/screenshots/Screenshot_20260824_182248.png" alt="Diff"> |
 
-- **Session delete** confirms **on that session row** (name included), not a bottom-of-window dialog.
-- **Windows Recycle Bin.** Deleted session files go to the system recycle bin. **打开回收站** is on the confirm row and on **关于**.
-- **Tool tabs** show the page you opened (设置 / 关于 / 速记 / 拓展), not a generic “拓展坞”.
-- **Kernel update progress.** Checking → download % and size → replace files → restart, then a success or error message.
-- **Mid-turn extra text.** While OMP is writing, Enter does not send immediately. Choose:
-  - **介入引导 (steer)** — OMP native queue. Does **not** abort the current reply or its tools. Injected after current tools finish, before the next model call (same idea as typing in the OMP TUI).
-  - **排队等候 (follow_up)** — also does **not** abort. Sent when the agent is idle (no leftover tools or steering).
+界面默认中文，设置里可切 English。
 
-## What you get
+## Agent 能做什么
 
-- Streaming chat, thinking blocks, tool cards, markdown, SVG preview, clickable file links
-- Composer `@` file mentions, prompt history with Up/Down, `#tags`
-- Home dashboard: tokens, streaks, per-model usage
-- Quick switcher `Ctrl+K` (commands, workspaces, sessions, files)
-- Independent OMP/Pi process **per live session**; switching tabs does not kill the previous turn
-- Mission Control, sidebar activity dots, optional desktop notifications
-- Diff review with explicit Commit → Push → PR
-- File tree, CodeMirror editor, image/HTML preview, ANSI terminal
-- Permission modes + glob allow/deny rules (workspace trust gate)
-- Package / skill browser, diagnostics, themes
-- Dual engine: **OMP** (default, VesPi profile) and **Pi CLI** if you point Settings at one
+VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、跑命令、调工具、流式思考。壳负责监督。
 
-## Engines: Oh My Pi (OMP) and Pi
+- 流式回答、Thinking、工具卡片、权限审批
+- 侧栏会话（按项目分组）、标签、归档、行内重命名
+- 删除会话：**确认条贴在该会话上**，文件进 **Windows 回收站**（关于页可「打开回收站」）
+- 输出过程中再打字：先选 **介入引导（steer）** 或 **排队等候（follow_up）**，都是 OMP 自带队列，**都不会掐断当前这句话**
+- 每个活动会话一个内核进程，切走不会杀掉上一轮
+- 任务中心、后台活动点、桌面通知
+- Diff：显式 提交 → 推送 → PR
+- 文件树、CodeMirror 编辑器、图片/HTML 预览、ANSI 终端
+- 权限模式 + 规则；工作区信任门闩
+- 插件 / 技能浏览、诊断、主题
+- 双通道更新：界面看本仓库；**更新内核** 从 `can1357/oh-my-pi` 下载，带进度和成功/失败提示
 
-| | OMP (default) | Pi |
+## 1.0.1 这一版
+
+- 会话删除贴行确认 + 回收站
+- 顶栏标签：点设置/关于/速记/拓展，显示对应名字
+- 内核更新：检查 → 下载百分比 → 替换 → 重启会话 → 绿/红结果
+- 输出中补充：介入引导 = 等工具跑完、下次叫模型前插入（和 OMP 终端打字一样）；排队等候 = 整轮空闲后再发
+
+## 下载（Windows x64）
+
+[Releases](https://github.com/esseener/VesPi/releases/latest)
+
+- 安装包：`VesPi-Setup-1.0.1-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
+- 便携包：`VesPi-1.0.1-win-x64.exe`
+
+未签名时 SmartScreen 选「更多信息 → 仍要运行」。
+
+## 内核：Oh My Pi 与 Pi
+
+| | OMP（默认） | Pi |
 |---|---|---|
-| Binary | Bundled `omp.exe` | Optional `pi` |
-| Profile | `--profile vespi` | standard Pi |
-| Sessions | `~/.omp/profiles/vespi/agent/sessions` | `~/.pi/agent/sessions` |
-| Protocol | JSONL RPC UI mode | same family |
+| 程序 | 安装包内 `omp.exe` | 可选外部 `pi` |
+| 参数 | `--profile vespi --mode rpc-ui` | 标准 Pi RPC |
+| 会话 | `~/.omp/profiles/vespi/agent/sessions` | `~/.pi/agent/sessions` |
 
-Opening a session starts the engine that **wrote** that file, not whichever default is in Settings.
+打开某条会话时，启动的是**写下这条会话的引擎**。
 
-## Download (Windows x64)
-
-From [Releases](https://github.com/esseener/VesPi/releases/latest):
-
-- **Installer:** `VesPi-Setup-1.0.1-win-x64.exe` — recommended. Installs under `%LOCALAPPDATA%\Programs\VesPi\`.
-- **Portable:** `VesPi-1.0.1-win-x64.exe`
-
-Builds may be unsigned. SmartScreen: **More info → Run anyway**.
-
-### Linux / macOS
-
-Optional AppImage / unsigned `.dmg` may appear on Releases. Windows is the supported product path.
-
-## Updates
-
-On launch and when **关于** opens, VesPi checks **both**:
-
-| Channel | Source | Action |
-|---|---|---|
-| VesPi UI | `esseener/VesPi` Releases | Banner + 有更新 → open the release |
-| OMP kernel | `can1357/oh-my-pi` Releases | Banner + **更新内核** (progress, then success/error) |
-
-## Develop
-
-Needs Node.js. Private kernel is already in the repo as `runtime/omp/omp.exe` (packaged from the parent tree).
+## 开发
 
 ```bash
 cd desktop
 npm install
 npm run dev
-```
-
-Windows installer:
-
-```bash
 npm run package:win:nsis
 ```
 
-## Keyboard
+公开仓库：[esseener/VesPi](https://github.com/esseener/VesPi)。不要把产品更新推到 `FaqFirebase/pi-desktop`。
 
-| Shortcut | Action |
-|---|---|
-| Enter | Send (or open steer / follow-up chooser while streaming) |
-| Shift+Enter | New line |
-| Escape | Stop generation (`abort`) |
-| Ctrl+K | Command palette |
-| Ctrl+P | Cycle models |
-| @ | Mention a workspace file |
+---
+
+# English
+
+**VesPi** is the Windows desktop GUI for **[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi)** and the **[Pi](https://pi.dev)** coding agent: chat, tool cards, approvals, Diff, file tree, terminal, models, and kernel updates in one window.
+
+Shipped builds run a private `omp.exe` (`--profile vespi --mode rpc-ui`). You do not need a global `omp` / `pi` on PATH.
+
+Current release: **[1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**.
+
+Based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). VesPi is the shell; OMP/Pi stay the agent.
+
+## Agent surface
+
+Streaming replies, thinking, tool cards, per-session processes, Mission Control, Diff Commit → Push → PR, editor, terminal, permission rules, package/skill browser, dual updates (UI from this repo, kernel from `can1357/oh-my-pi` with a progress bar).
+
+While the model is writing, extra text is not sent immediately. **Steer** and **follow_up** are native OMP queues and **do not abort** the current reply. Steer injects after current tools, before the next model call (same idea as typing in the OMP TUI). Follow-up waits until the agent is idle.
+
+## Download
+
+- Installer: `VesPi-Setup-1.0.1-win-x64.exe`
+- Portable: `VesPi-1.0.1-win-x64.exe`
 
 ## License
 
-- VesPi changes: Apache-2.0
-- Desktop shell originates from Pi Desktop GUI Contributors — keep NOTICE / copyright
-- OMP remains upstream MIT; do not rebrand it as VesPi
-
-Public repo: **[esseener/VesPi](https://github.com/esseener/VesPi)**. Do not publish product updates to `FaqFirebase/pi-desktop`.
+VesPi changes: Apache-2.0. Keep Pi Desktop NOTICE. OMP remains upstream MIT.
