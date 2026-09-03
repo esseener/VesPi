@@ -1,6 +1,6 @@
 # VesPi
 
-VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.9**.
+VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.10**.
 
 ## Version
 
@@ -404,8 +404,8 @@ After the user confirms:
 1. Bump `package.json` version (if not already bumped for that install)
 2. Commit and push `master` to `vespi` (`esseener/VesPi`)
 3. `npm run package:win` if artifacts still need a final rebuild — it first refreshes the bundled OMP kernel to the newest `can1357/oh-my-pi` release (`scripts/update-omp.mjs`)
-4. Tag `vX.Y.Z` and create a GitHub Release with both versioned artifacts
-5. Copy both artifacts into `desktop/release/` (latest installer + portable only; delete older versioned exes there)
+4. Tag `vX.Y.Z` and create a GitHub Release with the installer (`VesPi-Setup-{version}-win-x64.exe`; the portable exe is dropped since 1.0.10)
+5. Copy the installer into `desktop/release/` (delete older versioned exes there)
 6. Confirm About / the top banner can see the new tag from an older client
 
 ## Dual update reminders
@@ -432,5 +432,5 @@ Before delivering a change:
 7. Verify on the actual UI (`npm run preview` during development)
 8. Rebuild the versioned installer, **install it over the local VesPi**, and stop. The user tests that installed app.
 9. Only after the user confirms: bump version if needed, push `esseener/VesPi`, tag, and publish a GitHub Release
-10. Copy `VesPi-Setup-{version}-win-x64.exe` and `VesPi-{version}-win-x64.exe` into `desktop/release/` and drop older versioned exes from that folder
+10. Copy `VesPi-Setup-{version}-win-x64.exe` into `desktop/release/` and drop older versioned exes from that folder
 11. Update `MEMORY.md` with the ship decision (version, what changed, update channels)
