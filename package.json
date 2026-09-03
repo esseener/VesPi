@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP) and the Pi coding agent",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
@@ -43,9 +43,9 @@
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:mac:dmg": "electron-vite build && electron-builder --mac dmg",
     "package:mac:zip": "electron-vite build && electron-builder --mac zip",
-    "package:win": "electron-vite build && electron-builder --win",
-    "package:win:nsis": "electron-vite build && electron-builder --win nsis",
-    "package:win:portable": "electron-vite build && electron-builder --win portable",
+    "package:win": "node scripts/update-omp.mjs && electron-vite build && electron-builder --win",
+    "package:win:nsis": "node scripts/update-omp.mjs && electron-vite build && electron-builder --win nsis",
+    "package:win:portable": "node scripts/update-omp.mjs && electron-vite build && electron-builder --win portable",
     "package:all": "electron-vite build && electron-builder --linux --mac --win",
     "postinstall": "node scripts/postinstall.js"
   },

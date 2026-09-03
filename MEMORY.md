@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.6** (2026-09-03).
+- Current shipped version: **1.0.7** (2026-09-03).
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
@@ -39,6 +39,11 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.7 notes
+
+- Empty-chat project picker mirrors the real workspace (was stuck on its mount-time "No project").
+- `package:win*` now runs `scripts/update-omp.mjs` first: pulls the newest OMP from `can1357/oh-my-pi` into `runtime/omp/` (tag marker `.version`; network failure keeps the existing kernel and still packages).
 
 ## 1.0.6 notes
 

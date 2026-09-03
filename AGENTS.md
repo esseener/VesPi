@@ -1,6 +1,6 @@
 # VesPi
 
-VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.6**.
+VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.7**.
 
 ## Version
 
@@ -403,7 +403,7 @@ After the user confirms:
 
 1. Bump `package.json` version (if not already bumped for that install)
 2. Commit and push `master` to `vespi` (`esseener/VesPi`)
-3. `npm run package:win` if artifacts still need a final rebuild
+3. `npm run package:win` if artifacts still need a final rebuild — it first refreshes the bundled OMP kernel to the newest `can1357/oh-my-pi` release (`scripts/update-omp.mjs`)
 4. Tag `vX.Y.Z` and create a GitHub Release with both versioned artifacts
 5. Copy both artifacts into `desktop/release/` (latest installer + portable only; delete older versioned exes there)
 6. Confirm About / the top banner can see the new tag from an older client

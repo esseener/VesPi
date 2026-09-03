@@ -8,7 +8,8 @@ import { pathsEqual } from '../../../shared/path-compare'
 
 /**
  * Compact project picker for the empty-chat center prompt.
- * Defaults to the active workspace; supports No project → home directory.
+ * Follows the active workspace (or the most recent one before boot finishes);
+ * supports No project → home directory.
  */
 export function ChatProjectPicker(): React.JSX.Element {
   const workspaces = useAppStore((s) => s.workspaces)
@@ -22,10 +23,12 @@ export function ChatProjectPicker(): React.JSX.Element {
     [workspaces]
   )
 
-  // null = no project (home dir); string = workspace id
-  const [selectedId, setSelectedId] = useState<string | null>(
-    () => activeWorkspace?.id ?? sorted[0]?.id ?? null
-  )
+  // The picker mirrors the app's real project. Before workspaces hydrate
+  // (activeWorkspace still null on boot) fall back to the most recent entry so
+  // the row never lies with a stale "No project".
+  const selected: Workspace | null =
+    activeWorkspace ?? sorted[0] ?? null
+
   const [pickerOpen, setPickerOpen] = useState(false)
   const [homePath, setHomePath] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -42,12 +45,6 @@ export function ChatProjectPicker(): React.JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (selectedId === null) return
-    if (workspaces.some((w) => w.id === selectedId)) return
-    setSelectedId(activeWorkspace?.id ?? sorted[0]?.id ?? null)
-  }, [activeWorkspace?.id, selectedId, sorted, workspaces])
-
-  useEffect(() => {
     if (!pickerOpen) return
     const onDoc = (e: MouseEvent): void => {
       if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
@@ -57,9 +54,6 @@ export function ChatProjectPicker(): React.JSX.Element {
     document.addEventListener('mousedown', onDoc)
     return () => document.removeEventListener('mousedown', onDoc)
   }, [pickerOpen])
-
-  const selected: Workspace | null =
-    selectedId === null ? null : (workspaces.find((w) => w.id === selectedId) ?? null)
 
   const ensureHomeWorkspace = async (): Promise<Workspace | null> => {
     const home = homePath ?? (await window.piDesktop.system.getPath('home'))
@@ -71,30 +65,20 @@ export function ChatProjectPicker(): React.JSX.Element {
   }
 
   const applySelection = async (id: string | null): Promise<void> => {
-    const previousId = selectedId
-    setSelectedId(id)
     setPickerOpen(false)
     setBusy(true)
     try {
-      if (id) {
-        if (!(await activateWorkspace(id))) {
-          setSelectedId(previousId)
-          return
-        }
-      } else {
+      let targetId = id
+      if (!targetId) {
         const homeWs = await ensureHomeWorkspace()
-        if (homeWs) {
-          if (!(await activateWorkspace(homeWs.id))) {
-            setSelectedId(previousId)
-            return
-          }
-        }
+        targetId = homeWs?.id ?? null
       }
+      if (targetId && !(await activateWorkspace(targetId))) return
       if (useAppStore.getState().piStatus !== 'running') {
         await startPi()
       }
     } catch {
-      setSelectedId(previousId)
+      // Activation failed; the picker keeps mirroring the real workspace.
     } finally {
       setBusy(false)
     }
@@ -149,7 +133,7 @@ export function ChatProjectPicker(): React.JSX.Element {
             onClick={() => void applySelection(null)}
             className={clsx(
               'flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-surface-hover transition-colors',
-              selectedId === null && 'bg-card'
+              !!homePath && !!activeWorkspace && pathsEqual(activeWorkspace.path, homePath) && 'bg-card'
             )}
           >
             <Layers size={13} className="shrink-0 text-faint" />
@@ -157,7 +141,9 @@ export function ChatProjectPicker(): React.JSX.Element {
               <div className="truncate text-sm text-primary">No project</div>
               <div className="truncate text-[11px] text-faint">{homePath ?? 'Your home directory'}</div>
             </div>
-            {selectedId === null && <Check size={12} className="shrink-0 text-success" />}
+            {!!homePath && !!activeWorkspace && pathsEqual(activeWorkspace.path, homePath) && (
+              <Check size={12} className="shrink-0 text-success" />
+            )}
           </button>
           {sorted.length > 0 && <div className="my-1 border-t border-border" />}
           {sorted.map((ws) => (
