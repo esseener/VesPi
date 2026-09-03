@@ -517,7 +517,7 @@ interface AppActions {
     workspaceId: string,
     options?: { skipSessionLoad?: boolean }
   ) => Promise<boolean>
-  removeWorkspace: (workspaceId: string) => Promise<void>
+  removeWorkspace: (workspaceId: string, options?: { skipConfirm?: boolean }) => Promise<void>
   renameWorkspace: (workspaceId: string, name: string) => Promise<void>
   changeWorkspaceFolder: (workspaceId: string, newPath: string) => Promise<void>
 
@@ -2654,26 +2654,28 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
-  removeWorkspace: async (workspaceId) => {
+  removeWorkspace: async (workspaceId, options) => {
     const workspace = get().workspaces.find((w) => w.id === workspaceId)
     const isWorktree = workspace?.kind === 'worktree'
     const isManagedWorktree = isWorktree && workspace?.managed !== false
     const lang = currentLanguage(get)
     const name = workspace?.name ?? workspaceId
-    const confirmed = await get().requestConfirm({
-      title: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemoveWorkspace'),
-      message: t(
-        lang,
-        isWorktree
-          ? (isManagedWorktree ? 'confirmCloseManagedWorktree' : 'confirmCloseExistingWorktree')
-          : 'confirmRemoveWorkspaceMessage',
-        { name },
-      ),
-      confirmLabel: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemove'),
-      cancelLabel: t(lang, 'confirmCancel'),
-      danger: true,
-    })
-    if (!confirmed) return
+    if (!options?.skipConfirm) {
+      const confirmed = await get().requestConfirm({
+        title: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemoveWorkspace'),
+        message: t(
+          lang,
+          isWorktree
+            ? (isManagedWorktree ? 'confirmCloseManagedWorktree' : 'confirmCloseExistingWorktree')
+            : 'confirmRemoveWorkspaceMessage',
+          { name },
+        ),
+        confirmLabel: t(lang, isWorktree ? 'confirmCloseTab' : 'confirmRemove'),
+        cancelLabel: t(lang, 'confirmCancel'),
+        danger: true,
+      })
+      if (!confirmed) return
+    }
     // Removing the active workspace closes its preview via the adoption
     // below — a dirty editor gets the same ask a workspace switch gives it.
     if (workspaceId === get().activeWorkspace?.id) {

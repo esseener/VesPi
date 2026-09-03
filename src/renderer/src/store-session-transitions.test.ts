@@ -1291,6 +1291,19 @@ test('removing a workspace asks first; declining leaves it registered', async ()
   )
 })
 
+test('skipConfirm still asks about dirty editor on the active workspace', async () => {
+  activeWorkspaceResult = WORKSPACE_ONE
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE, WORKSPACE_TWO],
+    previewTarget: CODE_FILE,
+    editorDirty: true,
+  })
+  answerConfirm(false)
+  await useAppStore.getState().removeWorkspace(WORKSPACE_ONE.id, { skipConfirm: true })
+  assert.equal(calls.some((c) => c.startsWith('removeWorkspace:')), false)
+})
+
 test('removing the active workspace with a dirty editor asks about the edits too', async () => {
   activeWorkspaceResult = WORKSPACE_ONE
   useAppStore.setState({
@@ -1321,10 +1334,7 @@ test('removing an inactive workspace never asks about the editor', async () => {
     previewTarget: CODE_FILE,
     editorDirty: true,
   })
-  // Only the removal dialog; an unexpected second dialog would hang the test.
-  answerConfirm(true)
-
-  await useAppStore.getState().removeWorkspace(WORKSPACE_TWO.id)
+  await useAppStore.getState().removeWorkspace(WORKSPACE_TWO.id, { skipConfirm: true })
 
   assert.equal(calls.includes(`removeWorkspace:${WORKSPACE_TWO.id}`), true)
   assert.equal(useAppStore.getState().previewTarget?.path, CODE_FILE.path)

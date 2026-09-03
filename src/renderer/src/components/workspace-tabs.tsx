@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
@@ -56,6 +56,7 @@ export function WorkspaceTabs(): React.JSX.Element {
   const createNewSession = useAppStore((state) => state.createNewSession)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null)
 
   const toolView = ['settings', 'packages', 'notes', 'skills', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
   const toolsActive =
@@ -108,10 +109,10 @@ export function WorkspaceTabs(): React.JSX.Element {
             onAuxClick={(event) => {
               if (event.button !== 1) return
               event.preventDefault()
-              void removeWorkspace(workspace.id)
+              setConfirmingRemoveId(workspace.id)
             }}
             className={clsx(
-              'titlebar-no-drag group flex h-7 min-w-[128px] max-w-[220px] shrink-0 items-center gap-1.5 border-b px-2 text-[11px] transition-colors',
+              'titlebar-no-drag group relative flex h-7 min-w-[128px] max-w-[220px] shrink-0 items-center gap-1.5 border-b px-2 text-[11px] transition-colors',
               active
                 ? 'border-accent-fg text-primary'
                 : 'border-transparent text-muted hover:text-secondary'
@@ -143,16 +144,42 @@ export function WorkspaceTabs(): React.JSX.Element {
               {completed && <CheckCircle2 size={11} className="shrink-0 text-success" />}
               {failed && <XCircle size={11} className="shrink-0 text-error" />}
             </button>
-            {tabs.length > 1 && (
+            {tabs.length > 1 && confirmingRemoveId !== workspace.id && (
               <button
                 type="button"
-                onClick={() => void removeWorkspace(workspace.id)}
+                onClick={() => setConfirmingRemoveId(workspace.id)}
                 className="shrink-0 rounded-sm p-0.5 text-faint opacity-0 transition-all hover:bg-highlight hover:text-primary group-hover:opacity-100"
                 title={isWorktree ? 'Close tab' : 'Remove workspace'}
                 aria-label={isWorktree ? `Close ${tabLabel(workspace)}` : `Remove ${tabLabel(workspace)}`}
               >
                 <X size={11} />
               </button>
+            )}
+            {confirmingRemoveId === workspace.id && (
+              <div className="absolute left-1 right-1 top-full z-30 mt-1 rounded-sm border border-error bg-app px-2 py-1.5 shadow-lg">
+                <div className="truncate text-[11px] text-error">
+                  {t(language, 'removeWorkspaceInline', { name: tabLabel(workspace) })}
+                </div>
+                <div className="mt-1 flex justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRemoveId(null)}
+                    className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
+                  >
+                    {t(language, 'cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void removeWorkspace(workspace.id, { skipConfirm: true })
+                      setConfirmingRemoveId(null)
+                    }}
+                    className="rounded-md border border-error px-1.5 py-0.5 text-[11px] text-error"
+                  >
+                    {t(language, 'confirmRemove')}
+                  </button>
+                </div>
+              </div>
             )}
           </div>
         )

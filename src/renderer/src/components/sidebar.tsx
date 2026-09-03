@@ -693,6 +693,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const [isOpen, setIsOpen] = useState(false)
   const [isRenaming, setIsRenaming] = useState(false)
   const [newName, setNewName] = useState('')
+  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null)
 
   const handleRename = async () => {
     if (!activeWorkspace || !newName.trim()) return
@@ -792,6 +793,36 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
       {isOpen && (
         <div className="mt-1 rounded-sm border border-border/80 bg-surface/90 py-1 animate-fade-in">
           {workspaces.map((ws) => (
+            confirmingRemoveId === ws.id ? (
+              <div
+                key={ws.id}
+                className="mx-1 rounded-sm border border-error bg-error-bg/40 px-2 py-1.5"
+              >
+                <div className="truncate text-[11px] font-medium text-primary">{ws.name}</div>
+                <div className="mt-0.5 text-[11px] leading-snug text-error">
+                  {t(language, 'removeWorkspaceInline', { name: ws.name })}
+                </div>
+                <div className="mt-1.5 flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmingRemoveId(null)}
+                    className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
+                  >
+                    {t(language, 'cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void removeWorkspace(ws.id, { skipConfirm: true })
+                      setConfirmingRemoveId(null)
+                    }}
+                    className="rounded-md border border-error bg-transparent px-1.5 py-0.5 text-[11px] text-error"
+                  >
+                    {t(language, 'confirmRemove')}
+                  </button>
+                </div>
+              </div>
+            ) : (
             <div
               key={ws.id}
               className="group flex items-center justify-between px-2 py-1 hover:bg-surface-hover"
@@ -835,7 +866,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
                 <button
                   onClick={(e) => {
                     e.stopPropagation()
-                    removeWorkspace(ws.id)
+                    setConfirmingRemoveId(ws.id)
                   }}
                   className="rounded-sm p-1 text-faint opacity-0 transition-all group-hover:opacity-100 hover:text-error"
                   title="Remove workspace"
@@ -845,6 +876,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
                 </button>
               )}
             </div>
+            )
           ))}
 
           <button
