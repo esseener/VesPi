@@ -16,6 +16,8 @@ const API_OPTIONS = [
 ]
 
 interface ProviderRow {
+  /** Stable identity for the fold state; never derived from editable text. */
+  uid: string
   key: string
   baseUrl: string
   api: string
@@ -26,6 +28,7 @@ interface ProviderRow {
 
 function emptyRow(partial?: Partial<ProviderRow>): ProviderRow {
   return {
+    uid: '',
     key: '',
     baseUrl: '',
     api: API_OPTIONS[0],
@@ -38,6 +41,7 @@ function emptyRow(partial?: Partial<ProviderRow>): ProviderRow {
 
 function configToRows(config: ModelsConfig | null): ProviderRow[] {
   const saved = Object.entries(config?.providers ?? {}).map(([key, p]) => emptyRow({
+    uid: `saved:${key}`,
     key,
     baseUrl: typeof p.baseUrl === 'string' ? p.baseUrl : '',
     api: typeof p.api === 'string' ? p.api : API_OPTIONS[0],
@@ -56,7 +60,7 @@ function configToRows(config: ModelsConfig | null): ProviderRow[] {
         api: existing.api || item.api,
       }
     }
-    return emptyRow({ key: item.key, baseUrl: item.baseUrl, api: item.api })
+    return emptyRow({ uid: `builtin:${item.key}`, key: item.key, baseUrl: item.baseUrl, api: item.api })
   })
   return [...builtins, ...byKey.values()]
 }
@@ -110,9 +114,8 @@ export function CustomModelsEditor(): React.JSX.Element {
     didOpenIncomplete.current = true
     setOpenIds(new Set(
       next
-        .map((row, index) => ({ row, id: row.key.trim() || `custom-${index}` }))
-        .filter(({ row }) => !isBuiltinProviderKey(row.key) && !providerReady(row))
-        .map(({ id }) => id),
+        .filter((row) => !isBuiltinProviderKey(row.key) && !providerReady(row))
+        .map((row) => row.uid),
     ))
   }, [customModels])
 
@@ -122,9 +125,11 @@ export function CustomModelsEditor(): React.JSX.Element {
   }
 
   const addProvider = (): void => {
-    const id = `custom-${Date.now()}`
-    setOpenIds((current) => new Set([...current, id]))
-    update([...rows, emptyRow()])
+    // Stable uid for the fold state: deriving it from the key text made the
+    // fold collapse the instant the first letter was typed.
+    const uid = `draft-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`
+    setOpenIds((current) => new Set([...current, uid]))
+    update([...rows, emptyRow({ uid })])
   }
 
   const toggleOpen = (id: string): void => {
@@ -136,7 +141,7 @@ export function CustomModelsEditor(): React.JSX.Element {
     })
   }
 
-  const rowId = (row: ProviderRow, index: number): string => row.key.trim() || `custom-${index}`
+  const rowId = (row: ProviderRow): string => row.uid
   const removeProvider = (i: number): void => {
     if (isBuiltinProviderKey(rows[i]?.key)) return
     const next = rows.filter((_, idx) => idx !== i)
@@ -204,7 +209,7 @@ export function CustomModelsEditor(): React.JSX.Element {
       setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
       setOpenIds((current) => {
         const next = new Set(current)
-        next.delete(rowId(row, i))
+        next.delete(rowId(row))
         return next
       })
     } catch (err) {
@@ -412,7 +417,7 @@ export function CustomModelsEditor(): React.JSX.Element {
   )
 
   const renderRow = (row: ProviderRow, pi: number, builtin: boolean): React.JSX.Element => {
-    const id = rowId(row, pi)
+    const id = rowId(row)
     const open = openIds.has(id)
     const ready = providerReady(row)
     const title = builtin
