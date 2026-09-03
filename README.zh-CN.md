@@ -2,7 +2,7 @@
 
 Windows 上的 **Oh My Pi（OMP）** / **Pi** 桌面客户端。产品意象：一把会自我磨利的桌面智能快刀。
 
-完整图文、截图和下载见主页 [README.md](./README.md)。
+完整图文、截图和下载见主页 [README.md](./README.md)。截图为 VesPi 1.0.1 本机界面（首页 / 对话 / 设置），不是 Pi Desktop。
 
 - 仓库：https://github.com/esseener/VesPi
 - 版本：**1.0.1**

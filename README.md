@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/screenshots/Screenshot_20260824_181929.png" alt="VesPi 首页" width="880">
+  <img src="docs/screenshots/vespi-home.png" alt="VesPi 首页" width="880">
 </p>
 
 <h1 align="center">VesPi</h1>
@@ -34,21 +34,17 @@ VesPi 把 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 和 **[Pi
 
 当前版本 **[1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**。
 
-## 界面
+## 界面（本机 VesPi 1.0.1 实拍）
 
-| 首页启动器 | 对话 / Agent |
+| 首页 | 对话 / Agent |
 |---|---|
-| <img src="docs/screenshots/Screenshot_20260824_181929.png" alt="首页"> | <img src="docs/screenshots/Screenshot_20260824_182005.png" alt="对话"> |
+| <img src="docs/screenshots/vespi-home.png" alt="VesPi 首页"> | <img src="docs/screenshots/vespi-chat.png" alt="VesPi 对话"> |
 
-| 会话与文件 | 设置 |
-|---|---|
-| <img src="docs/screenshots/Screenshot_20260824_182039.png" alt="文件"> | <img src="docs/screenshots/Screenshot_20260824_182117.png" alt="设置"> |
+| 设置 |
+|---|
+| <img src="docs/screenshots/vespi-settings.png" alt="VesPi 设置"> |
 
-| 终端 | Diff / 审查 |
-|---|---|
-| <img src="docs/screenshots/Screenshot_20260824_182225.png" alt="终端"> | <img src="docs/screenshots/Screenshot_20260824_182248.png" alt="Diff"> |
-
-界面默认中文，设置里可切 English。
+截图来自当前 Windows 安装包，不是 Pi Desktop。界面默认中文，设置里可切 English。
 
 ## Agent 能做什么
 
