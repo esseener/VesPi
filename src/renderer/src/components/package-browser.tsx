@@ -14,7 +14,6 @@ import {
   Loader2,
   Store,
   FolderOpen,
-  Puzzle,
   CheckCircle2,
   AlertCircle,
   X,
@@ -32,8 +31,6 @@ export function PackageBrowser(): React.JSX.Element {
   const removePackage = useAppStore((state) => state.removePackage)
   const loadCatalog = useAppStore((state) => state.loadCatalog)
   const clearPackageNotification = useAppStore((state) => state.clearPackageNotification)
-  const installedSkills = useAppStore((state) => state.installedSkills)
-  const loadSkills = useAppStore((state) => state.loadSkills)
 
 
   // Memoized so the tab components (below, React.memo'd) don't re-render just
@@ -43,14 +40,13 @@ export function PackageBrowser(): React.JSX.Element {
     [installedPackages]
   )
 
-  const [activeTab, setActiveTab] = useState<'installed' | 'catalog' | 'skills'>('installed')
+  const [activeTab, setActiveTab] = useState<'installed' | 'catalog'>('installed')
 
-  // Installed packages and skills are local/fast — load them up front so the
-  // default Installed tab paints immediately.
+  // Installed packages are local/fast — load up front so the default
+  // Installed tab paints immediately.
   useEffect(() => {
     loadInstalledPackages()
-    loadSkills()
-  }, [loadInstalledPackages, loadSkills])
+  }, [loadInstalledPackages])
 
   // The catalog requires a (prefetched) network crawl — load it lazily the first
   // time the Catalog tab is opened, so opening Packages never blocks on it.
@@ -86,13 +82,6 @@ export function PackageBrowser(): React.JSX.Element {
             onClick={() => setActiveTab('catalog')}
             icon={<Store size={12} />}
             label={t(language, 'catalog')}
-          />
-          <TabButton
-            active={activeTab === 'skills'}
-            onClick={() => setActiveTab('skills')}
-            icon={<Puzzle size={12} />}
-            label={t(language, 'skills')}
-            count={installedSkills.length}
           />
         </div>
       </div>
@@ -140,9 +129,6 @@ export function PackageBrowser(): React.JSX.Element {
             onInstall={installPackage}
             installedNames={installedNames}
           />
-        )}
-        {activeTab === 'skills' && (
-          <SkillsTab skills={installedSkills} />
         )}
       </div>
     </div>
@@ -444,51 +430,6 @@ const CatalogTab = memo(function CatalogTab({
   )
 })
 
-// ─── Skills Tab ──────────────────────────────────────────────────────────────
-
-const SkillsTab = memo(function SkillsTab({
-  skills,
-}: {
-  skills: Array<{ name: string; description: string; path: string; source: string; enabled: boolean }>
-}): React.JSX.Element {
-  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
-  if (skills.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-12 text-dim">
-        <Puzzle size={32} className="mb-3 text-faint" />
-        <p className="text-sm">{t(language, 'noSkillsFound')}</p>
-        <p className="mt-1 text-xs text-faint">
-          {t(language, 'installSkillsEmptyHint')}
-        </p>
-      </div>
-    )
-  }
-
-  return (
-    <div className="space-y-2">
-      {skills.map((skill) => (
-        <div
-          key={skill.path}
-          className="rounded-lg border border-border bg-surface/50 px-4 py-3"
-        >
-          <div className="flex items-center gap-2">
-            <Puzzle size={14} className="text-special" />
-            <span className="text-sm font-medium text-primary">{skill.name}</span>
-            <span className={clsx(
-              'rounded px-1.5 py-0.5 text-[10px]',
-              skill.source === 'openspace' || skill.source === 'bundled'
-                ? 'bg-accent-bg text-accent-fg'
-                : 'bg-success-bg text-success'
-            )}>
-              {skill.source}
-            </span>
-          </div>
-          <p className="mt-1 text-xs text-dim">{skill.description}</p>
-          <div className="mt-2 flex items-center gap-2 text-xs text-faint">
-            <span className="truncate">{skill.path}</span>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-})
+// Skills are managed by OpenSpace, which is not part of the product
+// (ARCHITECTURE.md §7): the list stays visible in the status popover, but the
+// Extensions page has no Skills tab to create/evolve them.

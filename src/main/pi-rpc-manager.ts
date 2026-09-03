@@ -23,7 +23,7 @@ import {
 import { escapeCmdSpawn } from './cmd-escape'
 import { appLog } from './app-log'
 import { getGuiDataPath } from './app-data-paths'
-import { vespiProfileArgs, VESPI_RPC_MODE, ensureVespiOpenspaceMcp } from './vespi-runtime'
+import { vespiProfileArgs, VESPI_RPC_MODE } from './vespi-runtime'
 
 /**
  * Manages a Pi RPC child process.
@@ -714,7 +714,9 @@ export class PiRpcManager extends EventEmitter {
       return this.getStatus()
     }
 
-    ensureVespiOpenspaceMcp(options.cwd)
+    // OpenSpace is not part of the product (see ARCHITECTURE.md §7): no MCP
+    // registration, no user API key handed to it. mcp.json cleanup runs at
+    // app startup for installs that predate the removal.
 
     // Spawn, with one retry reserved for a crash before readiness. See
     // STARTUP_MAX_ATTEMPTS: a crash is often transient; a timeout is not.

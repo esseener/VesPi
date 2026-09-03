@@ -556,16 +556,19 @@ html.light .app-console-mesh {
 }
 
 .status-shimmer {
+  --shimmer-base: #9a9a9a;
+  --shimmer-hi: #f6f6f6;
+  --shimmer-plain: #c8c8c8;
   position: relative;
   display: inline-block;
-  color: #c8c8c8;
+  color: var(--shimmer-plain);
   background-image: linear-gradient(
     90deg,
-    #9a9a9a 0%,
-    #9a9a9a 42%,
-    #f6f6f6 50%,
-    #9a9a9a 58%,
-    #9a9a9a 100%
+    var(--shimmer-base) 0%,
+    var(--shimmer-base) 42%,
+    var(--shimmer-hi) 50%,
+    var(--shimmer-base) 58%,
+    var(--shimmer-base) 100%
   );
   background-size: 200% 100%;
   background-clip: text;
@@ -573,6 +576,14 @@ html.light .app-console-mesh {
   -webkit-text-fill-color: transparent;
   animation: status-shimmer-sweep 2.8s linear infinite;
   will-change: background-position;
+}
+
+/* Light themes: the dark-theme near-white sweep vanishes on light
+   backgrounds, so use a mid-gray base with a dark sweep band. */
+html.light .status-shimmer {
+  --shimmer-base: #7d8590;
+  --shimmer-hi: #2f353d;
+  --shimmer-plain: #5b6470;
 }
 
 @keyframes status-shimmer-sweep {
@@ -587,9 +598,9 @@ html.light .app-console-mesh {
 @media (prefers-reduced-motion: reduce) {
   .status-shimmer {
     animation: none;
-    -webkit-text-fill-color: #c8c8c8;
+    -webkit-text-fill-color: var(--shimmer-plain);
     background: none;
-    color: #c8c8c8;
+    color: var(--shimmer-plain);
   }
 }
 

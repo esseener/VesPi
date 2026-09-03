@@ -3130,6 +3130,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   dismissUiUpdateProgress: () => set({ uiUpdateProgress: null }),
 
+  dismissUpdate: () => set({ updateDismissed: true }),
+
   installUiUpdate: async () => {
     const info = get().updateInfo
     if (info && !info.installerUrl && info.url) {

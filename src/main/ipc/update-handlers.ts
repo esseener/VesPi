@@ -1,7 +1,10 @@
 import { ipcMain, app, BrowserWindow, net, session, shell } from 'electron'
-import { createWriteStream } from 'fs'
+import { createWriteStream, createReadStream } from 'fs'
+import { createHash } from 'crypto'
+import { execFile } from 'child_process'
+import { promisify } from 'util'
 import { chmod, copyFile, mkdir, rename, unlink } from 'fs/promises'
-import { dirname, join } from 'path'
+import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
@@ -307,6 +310,93 @@ async function downloadToFile(
   })
 }
 
+async function fetchBytes(url: string, timeoutMs: number): Promise<Buffer> {
+  if (!isHttpsUrl(url) || !githubHostAllowed(url)) {
+    throw new Error('Download URL is not an allowed GitHub HTTPS host')
+  }
+  return await new Promise<Buffer>((resolve, reject) => {
+    const req = netRequest(url)
+    req.setHeader('User-Agent', USER_AGENT)
+    req.setHeader('Accept', 'application/octet-stream')
+    const timer = setTimeout(() => {
+      req.abort()
+      reject(new Error('timed out'))
+    }, timeoutMs)
+    const chunks: Buffer[] = []
+    req.on('response', (res) => {
+      res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      res.on('end', () => {
+        clearTimeout(timer)
+        if (res.statusCode !== 200) {
+          reject(new Error(`${res.statusCode} ${res.statusMessage ?? ''}`.trim()))
+          return
+        }
+        resolve(Buffer.concat(chunks))
+      })
+      res.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+    req.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    req.end()
+  })
+}
+
+function sha256OfFile(path: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const hash = createHash('sha256')
+    const input = createReadStream(path)
+    input.on('error', reject)
+    input.on('data', (chunk) => hash.update(chunk))
+    input.on('end', () => resolve(hash.digest('hex')))
+  })
+}
+
+/** Parse `sha256sum`-style output and return the expected hash for one asset. */
+export function parseSha256Sum(sumsText: string, assetName: string): string | null {
+  for (const line of sumsText.split(/\r?\n/)) {
+    const match = line.match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
+    if (!match) continue
+    const name = match[2].trim()
+    if (name === assetName || basename(name) === assetName) return match[1].toLowerCase()
+  }
+  return null
+}
+
+function sameVersion(a: string, b: string): boolean {
+  const pa = parseVersion(a)
+  const pb = parseVersion(b)
+  return pa.core.join('.') === pb.core.join('.') && pa.pre === pb.pre
+}
+
+const execFileAsync = promisify(execFile)
+
+/**
+ * Run a freshly downloaded kernel with `--version` before it replaces the
+ * working one. Returns the version it reports ('' when it runs but the output
+ * is unparseable) or null when the binary fails to start at all.
+ */
+async function probeBinaryVersion(binaryPath: string): Promise<string | null> {
+  const cwd = process.env.USERPROFILE ?? process.env.HOME ?? process.cwd()
+  try {
+    const { stdout, stderr } = await execFileAsync(binaryPath, ['--version'], {
+      cwd,
+      timeout: 15_000,
+      windowsHide: true,
+    })
+    const line = extractVersionLine(stdout + stderr)
+    if (!line) return ''
+    const match = line.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)/)
+    return match?.[1] ?? ''
+  } catch {
+    return null
+  }
+}
+
 export async function installKernelUpdate(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
   const kernel = await checkKernelUpdate()
   if (!kernel.updateAvailable) return { ok: false, error: 'OMP kernel is already up to date' }
@@ -316,6 +406,7 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
 
   const staged = `${dest}.new`
   const backup = `${dest}.bak`
+  let movedAside = false
   try {
     broadcastKernelProgress({ phase: 'downloading', percent: 0, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
     await downloadToFile(kernel.downloadUrl, staged, (received, total) => {
@@ -328,7 +419,29 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
         version: kernel.latestVersion,
       })
     })
+
+    // Fingerprint: the release's own SHA256SUMS.txt is the integrity anchor.
+    // Same HTTPS/GitHub origin as the binary, but a different asset — catches
+    // truncated/corrupted downloads and a swapped binary on a cached mirror.
+    const assetName = kernel.downloadUrl.slice(kernel.downloadUrl.lastIndexOf('/') + 1)
+    const sumsUrl = `${kernel.downloadUrl.slice(0, kernel.downloadUrl.lastIndexOf('/') + 1)}SHA256SUMS.txt`
     broadcastKernelProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
+    const sumsText = (await fetchBytes(sumsUrl, UPDATE_CHECK_TIMEOUT_MS)).toString('utf8')
+    const expectedHash = parseSha256Sum(sumsText, assetName)
+    if (!expectedHash) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}; refusing to install`)
+    const actualHash = await sha256OfFile(staged)
+    if (actualHash !== expectedHash) {
+      throw new Error(`Kernel checksum mismatch (expected ${expectedHash.slice(0, 12)}…, got ${actualHash.slice(0, 12)}…); refusing to install`)
+    }
+
+    // Health check: the staged binary must run, and it must report the very
+    // version we asked for. Only then is the current kernel moved aside.
+    const stagedVersion = await probeBinaryVersion(staged)
+    if (stagedVersion === null) throw new Error('New kernel failed its startup health check; keeping the current version')
+    if (stagedVersion && !sameVersion(stagedVersion, kernel.latestVersion)) {
+      throw new Error(`Downloaded binary reports ${stagedVersion} but release is ${kernel.latestVersion}; refusing to install`)
+    }
+
     try { await unlink(backup) } catch { /* no previous backup */ }
     try {
       await rename(dest, backup)
@@ -336,6 +449,7 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
       await copyFile(dest, backup)
       await unlink(dest)
     }
+    movedAside = true
     try {
       await rename(staged, dest)
     } catch {
@@ -349,9 +463,23 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     appLog.warn('updates', 'OMP kernel install failed', err)
+    // Roll back if the working binary was already moved aside but installing
+    // the new one did not complete — the old code left the install half-done.
+    if (movedAside) {
+      try { await unlink(dest) } catch { /* nothing to clear */ }
+      try {
+        await rename(backup, dest)
+      } catch {
+        try {
+          await copyFile(backup, dest)
+        } catch (rollbackErr) {
+          appLog.error('updates', 'Kernel rollback failed — restore .bak manually', rollbackErr)
+        }
+      }
+    }
     try { await unlink(staged) } catch { /* ignore */ }
     broadcastKernelProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: message })
-    return { ok: false, error: friendlyNetworkError(err) }
+    return { ok: false, error: friendlyNetworkError(new Error(message)) }
   }
 }
 

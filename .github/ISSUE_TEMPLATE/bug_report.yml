@@ -42,8 +42,8 @@ body:
     attributes:
       label: Operating system
       options:
-        - Linux (AppImage)
-        - Windows (portable .exe)
+        - Windows 11 (Setup installer)
+        - Windows 10 (Setup installer)
         - Built from source
         - Other
     validations:

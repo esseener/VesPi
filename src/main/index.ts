@@ -14,7 +14,8 @@ import { shouldHideToTray } from './tray-decision'
 import { createEditorGuard } from './editor-guard'
 import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
-import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV } from './vespi-runtime'
+import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp } from './vespi-runtime'
+import { reconcileModelsYml } from './models-reconcile'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
 
@@ -435,6 +436,14 @@ app.whenReady().then(async () => {
       userDataDir: app.getPath('userData'),
     })
   }
+
+  // Older builds registered OpenSpace (frozen, not part of the product) in the
+  // vespi profile's mcp.json. Strip it so OMP never spawns the removed runtime.
+  removeVespiOpenspaceMcp()
+
+  // Pre-1.0.13 builds saved providers to models.json without syncing OMP's
+  // authoritative models.yml. Reconcile once at startup so those profiles work.
+  reconcileModelsYml()
 
   // Set macOS dock icon (no-op on other platforms)
   if (process.platform === 'darwin' && app.dock) {

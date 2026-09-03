@@ -9,9 +9,7 @@ docs/superpowers/
 # Build outputs
 out/
 release/
-release-fresh/
-release-fresh2/
-release-fresh3/
+release-*/
 dist/
 build/
 .cache/

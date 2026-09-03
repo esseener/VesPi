@@ -55,8 +55,8 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
           {thinking && thinkingEnabled && (
             <div className="thinking-hover mb-2 min-w-0">
               <div className="flex h-7 items-center gap-1.5 text-sm">
-                <Brain size={12} className="shrink-0 text-[#c8c8c8]" />
-                <Loader2 size={12} className="shrink-0 animate-spin text-[#c8c8c8]" />
+                <Brain size={12} className="shrink-0 text-muted" />
+                <Loader2 size={12} className="shrink-0 animate-spin text-muted" />
                 <span className="status-shimmer">{t(language, 'thinkingStatus')}</span>
               </div>
               <div
@@ -118,7 +118,7 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
 
           {!content && !thinking && toolCalls.size === 0 && (
             <div className="flex h-7 items-center gap-2 text-sm">
-              <Loader2 size={12} className="animate-spin text-[#c8c8c8]" />
+              <Loader2 size={12} className="animate-spin text-muted" />
               <span className="status-shimmer">{t(language, 'workingStatus')}</span>
             </div>
           )}

@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "1.0.13",
+  "version": "1.0.14",
   "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP) and the Pi coding agent",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
@@ -130,26 +130,8 @@
         "from": "../runtime/omp",
         "to": "runtime/omp",
         "filter": [
-          "omp.exe"
-        ]
-      },
-      {
-        "from": "../runtime/openspace",
-        "to": "runtime/openspace",
-        "filter": [
-          "python.exe",
-          "pythonw.exe",
-          "python3.dll",
-          "python312.dll",
-          "python312.zip",
-          "python312._pth",
-          "vcruntime140.dll",
-          "vcruntime140_1.dll",
-          "Lib/**",
-          "*.pyd",
-          "*.dll",
-          "**/*.pyd",
-          "**/*.dll"
+          "omp.exe",
+          "LICENSE"
         ]
       }
     ],

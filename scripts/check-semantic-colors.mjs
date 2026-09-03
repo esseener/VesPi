@@ -2,7 +2,6 @@
 // Fails when renderer code bypasses the semantic token system, either by using
 // raw Tailwind color utilities or by reading a legacy CSS variable that no
 // longer exists. See docs/superpowers/specs/2026-07-16-theme-system-design.md.
-/* global console, process */
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 

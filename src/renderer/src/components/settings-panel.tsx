@@ -356,7 +356,7 @@ export function SettingsPanel(): React.JSX.Element {
   const openEditThemeEditor = () => {
     const baseTheme = getRegisteredThemes().find((t) => t.id === theme)?.file
     if (!baseTheme) {
-      setThemeActionError('Could not find the current theme to edit')
+      setThemeActionError(t(language, 'themeNotFoundToEdit'))
       return
     }
     setThemeEditorState({ baseTheme, baseId: theme, isUserTheme: true })
@@ -395,7 +395,7 @@ export function SettingsPanel(): React.JSX.Element {
     const effectiveThemeId = resolveEffectiveThemeId(theme)
     const currentThemeFile = getRegisteredThemes().find((t) => t.id === effectiveThemeId)?.file
     if (!currentThemeFile) {
-      setThemeActionError('Could not find the current theme to export')
+      setThemeActionError(t(language, 'themeNotFoundToExport'))
       return
     }
     const result = await window.piDesktop.themes.export(currentThemeFile)
@@ -467,14 +467,14 @@ export function SettingsPanel(): React.JSX.Element {
     if (result.ok) {
       handleRulesChange(result.rules)
     } else if (!result.canceled) {
-      setRulesActionError(result.error ?? 'Import failed')
+      setRulesActionError(result.error ?? t(language, 'importFailed'))
     }
   }
 
   const handleRulesExport = async (): Promise<void> => {
     const result = await window.piDesktop.permissionRules.exportToFile(normalizedRules(scopeRules[rulesScope].rules))
     if (!result.ok && !result.canceled) {
-      setRulesActionError(result.error ?? 'Export failed')
+      setRulesActionError(result.error ?? t(language, 'exportFailed'))
     }
   }
 

@@ -150,7 +150,7 @@ npm run package:win:nsis
 
 Shipped builds run a private `omp.exe` (`--profile vespi --mode rpc-ui`). You do not need a global `omp` / `pi` on PATH.
 
-Current release: **[1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**.
+Current release: **[1.0.13](https://github.com/esseener/VesPi/releases/latest)**.
 
 Based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). VesPi is the shell; OMP/Pi stay the agent.
 

@@ -4,6 +4,8 @@ import clsx from 'clsx'
 import { X, Check, User, ChevronLeft } from 'lucide-react'
 import type { GalleryTheme, UserThemeRecord } from '../../../shared/ipc-contracts'
 import { resolveThemeVars } from '../../../shared/theme/resolve'
+import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 
 // How many cards render before "Show more" reveals the next batch. Keeps a
 // large index responsive — each card mounts a live-preview subtree.
@@ -69,7 +71,7 @@ function ThemePreview({
           <span style={{ color: 'var(--cm-keyword)' }}>const</span>
           <span style={{ color: 'var(--cm-variable)' }}>theme</span>
           <span style={{ color: 'var(--cm-operator)' }}>=</span>
-          <span style={{ color: 'var(--cm-string)' }}>&quot;pi&quot;</span>
+          <span style={{ color: 'var(--cm-string)' }}>&quot;vespi&quot;</span>
           <span style={{ color: 'var(--cm-comment)' }}>// syntax</span>
         </div>
         <div className="flex items-center gap-1.5">
@@ -89,6 +91,7 @@ function ThemePreview({
 }
 
 export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [loadState, setLoadState] = useState<LoadState>('loading')
   const [themes, setThemes] = useState<GalleryTheme[]>([])
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -144,11 +147,11 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
     if (installedUrls.has(theme.url)) {
       return (
         <span className="flex items-center gap-1">
-          <Check size={14} /> Installed
+          <Check size={14} /> {t(language, 'installed')}
         </span>
       )
     }
-    return installingUrl === theme.url ? 'Installing…' : 'Install'
+    return installingUrl === theme.url ? t(language, 'installing') : t(language, 'install')
   }
 
   return (
@@ -165,7 +168,7 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
             {detail && (
               <button
                 onClick={() => setDetail(null)}
-                aria-label="Back to all themes"
+                aria-label={t(language, 'backToGallery')}
                 className="rounded p-1 text-dim hover:bg-surface-hover hover:text-primary transition-colors"
               >
                 <ChevronLeft size={16} />
@@ -173,18 +176,18 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
             )}
             <div>
               <h3 className="text-base font-semibold text-primary">
-                {detail ? detail.name : 'Community themes'}
+                {detail ? detail.name : t(language, 'communityThemes')}
               </h3>
               <p className="text-xs text-dim">
                 {detail
-                  ? 'Live preview from the theme’s real colors'
-                  : 'From the pi-desktop-themes gallery — click a theme for details'}
+                  ? t(language, 'galleryLivePreview')
+                  : t(language, 'gallerySourceHint')}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            aria-label="Close"
+            aria-label={t(language, 'close')}
             className="rounded p-1 text-dim hover:bg-surface-hover hover:text-primary transition-colors"
           >
             <X size={16} />
@@ -194,18 +197,19 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
           {detail ? (
             <ThemeDetail
               theme={detail}
+              language={language}
               installLabel={installButtonLabel(detail)}
               installDisabled={installingUrl === detail.url || installedUrls.has(detail.url)}
               onInstall={() => void install(detail)}
             />
           ) : (
             <>
-              {loadState === 'loading' && <p className="text-sm text-muted">Loading themes…</p>}
+              {loadState === 'loading' && <p className="text-sm text-muted">{t(language, 'loadingThemes')}</p>}
               {loadState === 'error' && (
-                <p className="text-sm text-error">Could not load the gallery: {loadError}</p>
+                <p className="text-sm text-error">{t(language, 'galleryLoadError', { error: loadError ?? '' })}</p>
               )}
               {loadState === 'ready' && themes.length === 0 && (
-                <p className="text-sm text-muted">No themes are available yet.</p>
+                <p className="text-sm text-muted">{t(language, 'noThemesYet')}</p>
               )}
               {loadState === 'ready' && themes.length > 0 && (
                 <>
@@ -221,7 +225,7 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
                         <button
                           type="button"
                           onClick={() => setDetail(theme)}
-                          aria-label={`View ${theme.name} details`}
+                          aria-label={t(language, 'viewThemeDetails', { name: theme.name })}
                           className="absolute inset-0 z-10 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-focus"
                         />
                         {theme.theme && <ThemePreview theme={theme.theme} />}
@@ -261,7 +265,7 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
                         onClick={() => setVisibleCount((n) => n + GALLERY_PAGE_SIZE)}
                         className="rounded-md border border-border-strong px-4 py-1.5 text-sm text-muted hover:bg-surface-hover transition-colors"
                       >
-                        Show more ({themes.length - visibleCount})
+                        {t(language, 'showMore', { count: String(themes.length - visibleCount) })}
                       </button>
                     </div>
                   )}
@@ -280,11 +284,13 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
 // author screenshot if present (lazily fetched as a data URI), and Install.
 function ThemeDetail({
   theme,
+  language,
   installLabel,
   installDisabled,
   onInstall,
 }: {
   theme: GalleryTheme
+  language: AppLanguage
   installLabel: React.JSX.Element | string
   installDisabled: boolean
   onInstall: () => void
@@ -341,13 +347,13 @@ function ThemeDetail({
       )}
       {theme.screenshotUrl && (
         <div>
-          <div className="mb-1 text-xs text-dim">Author screenshot</div>
-          {shot === 'loading' && <p className="text-xs text-muted">Loading screenshot…</p>}
-          {shot === 'error' && <p className="text-xs text-muted">Screenshot could not be loaded.</p>}
+          <div className="mb-1 text-xs text-dim">{t(language, 'authorScreenshot')}</div>
+          {shot === 'loading' && <p className="text-xs text-muted">{t(language, 'loadingScreenshot')}</p>}
+          {shot === 'error' && <p className="text-xs text-muted">{t(language, 'screenshotLoadError')}</p>}
           {shot === 'ready' && shotUri && (
             <img
               src={shotUri}
-              alt={`Screenshot of ${theme.name}`}
+              alt={t(language, 'screenshotOf', { name: theme.name })}
               className="max-h-80 w-full rounded-md border border-border object-contain"
             />
           )}

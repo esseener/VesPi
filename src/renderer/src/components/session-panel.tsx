@@ -605,7 +605,7 @@ function SessionEntry({
             onClick={handleArchive}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-secondary hover:bg-surface-hover"
           >
-            {isArchived ? <><ArchiveRestore size={13} /> Unarchive</> : <><Archive size={13} /> Archive</>}
+            {isArchived ? <><ArchiveRestore size={13} /> {t(language, 'unarchive')}</> : <><Archive size={13} /> {t(language, 'archive')}</>}
           </button>
           <button
             onClick={() => {
@@ -614,7 +614,7 @@ function SessionEntry({
             }}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-error hover:bg-error-bg"
           >
-            <Trash2 size={13} /> Delete...
+            <Trash2 size={13} /> {t(language, 'delete')}…
           </button>
         </div>,
         document.body

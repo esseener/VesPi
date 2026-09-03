@@ -6,7 +6,6 @@ export const VESPI_PRODUCT_NAME = 'VesPi'
 export const VESPI_USER_DATA_ENV = 'VESPI_USER_DATA_DIR'
 export const VESPI_WORKSPACE_ENV = 'VESPI_WORKSPACE'
 export const VESPI_PRIVATE_OMP_REL = 'runtime/omp/omp.exe'
-export const VESPI_PRIVATE_OPENSPACE_REL = 'runtime/openspace/python.exe'
 
 export function vespiProfileArgs(): string[] {
   return [VESPI_PROFILE_FLAG, VESPI_PROFILE]

@@ -1,5 +1,7 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
 import { AlertTriangle } from 'lucide-react'
+import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 interface ErrorBoundaryProps {
   children: ReactNode
@@ -24,11 +26,12 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
   render(): ReactNode {
     if (this.state.hasError) {
+      const language = useAppStore.getState().settings?.language ?? DEFAULT_LANGUAGE
       return (
         this.props.fallback ?? (
           <div className="flex h-full min-h-[12rem] flex-col items-center justify-center gap-2 px-6 text-center text-sm text-error">
             <AlertTriangle size={18} />
-            <div>界面渲染失败</div>
+            <div>{t(language, 'renderFailed')}</div>
             <div className="max-w-xl break-all text-xs text-dim">{this.state.error?.message ?? 'unknown error'}</div>
           </div>
         )

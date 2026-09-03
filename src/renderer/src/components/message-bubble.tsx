@@ -246,7 +246,7 @@ function UserMessage({
   }
 
   return (
-    <div className="group mb-4 flex justify-end animate-fade-in">
+    <div className="group mb-4 flex flex-col items-end animate-fade-in">
       <div className="relative max-w-[80%]">
         <div className="rounded-2xl rounded-br-md bg-card px-4 py-2.5 text-sm text-primary">
           {message.attachments && message.attachments.length > 0 && (
@@ -268,16 +268,17 @@ function UserMessage({
           )}
           <div className="font-chat whitespace-pre-wrap break-words">{message.content}</div>
         </div>
-        {/* Actions */}
-        <div className="mt-1 flex items-center justify-end gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-          <ActionButton icon={<Copy size={11} />} onClick={onCopy} title={t(language, 'actionCopy')} />
-          <ActionButton icon={<Edit3 size={11} />} onClick={onEdit} title={t(language, 'actionEditResend')} />
-          <ActionButton icon={<GitBranch size={11} />} onClick={onBranch} title={t(language, 'actionBranchHere')} />
-          {onRetry && (
-            <ActionButton icon={<RotateCcw size={11} />} onClick={() => onRetry(message.id)} title={t(language, 'actionRetry')} />
-          )}
-          <ActionButton icon={<Download size={11} />} onClick={onExport} title={t(language, 'actionExport')} />
-        </div>
+      </div>
+      {/* Actions — a sibling of the bubble, not a width driver: an invisible
+          hover row must never stretch the user bubble beyond its text. */}
+      <div className="mt-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+        <ActionButton icon={<Copy size={11} />} onClick={onCopy} title={t(language, 'actionCopy')} />
+        <ActionButton icon={<Edit3 size={11} />} onClick={onEdit} title={t(language, 'actionEditResend')} />
+        <ActionButton icon={<GitBranch size={11} />} onClick={onBranch} title={t(language, 'actionBranchHere')} />
+        {onRetry && (
+          <ActionButton icon={<RotateCcw size={11} />} onClick={() => onRetry(message.id)} title={t(language, 'actionRetry')} />
+        )}
+        <ActionButton icon={<Download size={11} />} onClick={onExport} title={t(language, 'actionExport')} />
       </div>
     </div>
   )

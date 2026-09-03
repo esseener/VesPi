@@ -1,6 +1,8 @@
-# Contributing to Pi Desktop
+# Contributing to VesPi
 
 This guide covers bug reports, feature requests, and the pull request workflow.
+
+> VesPi is a Windows-first desktop client for the [Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi) coding agent, forked from [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). It ships a private OMP kernel — you never install Pi, OMP, Bun, or a global agent separately.
 
 ## Architecture reference: `AGENTS.md`
 
@@ -30,33 +32,32 @@ By submitting a pull request, you acknowledge that you have read and agree to th
 
 ### Reporting bugs
 
-1. Check [existing issues](https://github.com/FaqFirebase/pi-desktop/issues) first
+1. Check [existing issues](https://github.com/esseener/VesPi/issues) first
 2. Open a new issue with:
    - Clear title and description
    - Steps to reproduce
    - Expected vs actual behavior
-   - Environment (OS, Electron version, Pi version)
+   - Environment (Windows version, VesPi version, OMP kernel version — all shown in the About panel)
    - Screenshots if applicable
 
 ### Suggesting features
 
-1. Open a [feature request](https://github.com/FaqFirebase/pi-desktop/issues/new?template=feature_request.yml)
+1. Open a [feature request](https://github.com/esseener/VesPi/issues/new?template=feature_request.yml)
 2. Describe the use case and expected behavior
 3. Explain why this would be useful to other users
 
 ### Submitting code
 
-This repository uses two long-lived branches:
-
-- `master` holds public-facing docs only (`README.md`, `AGENTS.md`, `LICENSE`, `CLA.md`, `CONTRIBUTING.md`, `.gitignore`). Do not target PRs here.
-- `Dev` holds all application source and is where active development happens. **Target your pull requests against `Dev`.**
+This repository uses a single long-lived branch: `master`. Active development
+happens there; releases are marked by tags (`v1.0.x`).
 
 Steps:
 
-1. Fork the repository
-2. Check out and branch from `Dev`:
+1. Fork the repository (to your own GitHub account — do not push to
+   `FaqFirebase/pi-desktop`, the upstream this project was forked from)
+2. Check out and branch from `master`:
    ```bash
-   git checkout Dev
+   git checkout master
    git pull
    git checkout -b feature/my-feature
    ```
@@ -70,7 +71,7 @@ Steps:
    ```bash
    git push origin feature/my-feature
    ```
-7. Open a pull request against `Dev` (not `master`)
+7. Open a pull request against `master`
 
 ### Commit message format
 
@@ -200,7 +201,7 @@ This is a guide, not a full listing. `AGENTS.md` carries the complete module map
 
 ## Getting help
 
-Report problems on [GitHub Issues](https://github.com/FaqFirebase/pi-desktop/issues) and ask questions in [GitHub Discussions](https://github.com/FaqFirebase/pi-desktop/discussions). For documentation, read [README.md](README.md) for an overview and the source under `src/` for implementation details.
+Report problems on [GitHub Issues](https://github.com/esseener/VesPi/issues). For documentation, read [README.md](README.md) for an overview and the source under `src/` for implementation details.
 
 ## License
 

@@ -63,4 +63,12 @@ export default tseslint.config(
       '@typescript-eslint/no-require-imports': 'off',
     },
   },
+  // ESM Node scripts under scripts/ (kernel updater, icon renderer, checks) —
+  // same Node globals, ESM source type.
+  {
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: { ...globals.node },
+    },
+  },
 )

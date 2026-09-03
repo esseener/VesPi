@@ -3,19 +3,19 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VesPi — Pi Desktop GUI for Oh My Pi (OMP)</title>
-  <meta name="description" content="VesPi 1.0.1 is a Pi Desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Chat, manage files, run commands, and review changes in one window." />
-  <meta name="keywords" content="VesPi, Pi, Pi Desktop, Oh My Pi, OMP, oh-my-pi, coding agent" />
+  <title>VesPi — Windows desktop client for Oh My Pi (OMP)</title>
+  <meta name="description" content="VesPi is a Windows desktop client for the Oh My Pi (OMP) coding agent. Chat, manage files, run commands, and review changes in one window." />
+  <meta name="keywords" content="VesPi, Oh My Pi, OMP, oh-my-pi, coding agent, Windows" />
   <link rel="canonical" href="https://pi-desktop.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="VesPi" />
-  <meta property="og:title" content="VesPi 1.0.1 — Pi Desktop for Oh My Pi" />
-  <meta property="og:description" content="A Pi Desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Open source. Standard 1.0.1." />
+  <meta property="og:title" content="VesPi — Windows desktop client for Oh My Pi" />
+  <meta property="og:description" content="A Windows desktop client for the Oh My Pi (OMP) coding agent. Based on Pi Desktop. Open source." />
   <meta property="og:image" content="https://pi-desktop.com/screenshots/Screenshot_20260824_181929.png" />
   <meta property="og:image:alt" content="VesPi — Home launcher screen with recent workspaces and sessions" />
   <meta property="og:url" content="https://pi-desktop.com/" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="VesPi 1.0.1 — Pi Desktop GUI for Oh My Pi (OMP)" />
+  <meta name="twitter:title" content="VesPi — Windows desktop client for Oh My Pi (OMP)" />
   <meta name="twitter:description" content="Download the Windows installer. Based on Pi Desktop, ships a private OMP kernel." />
   <meta name="twitter:image" content="https://pi-desktop.com/screenshots/Screenshot_20260824_181929.png" />
   <meta name="theme-color" content="#0d0d0d" />
@@ -28,11 +28,11 @@
     "name": "VesPi",
     "alternateName": ["Pi Desktop", "Oh My Pi", "OMP"],
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Linux, macOS, Windows",
-    "description": "A Pi Desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Chat, manage files, run commands, and review changes in one window.",
+    "operatingSystem": "Windows",
+    "description": "A Windows desktop client for the Oh My Pi (OMP) coding agent. Chat, manage files, run commands, and review changes in one window.",
     "url": "https://pi-desktop.com/",
-    "downloadUrl": "https://github.com/esseener/VesPi/releases/tag/v1.0.1",
-    "softwareVersion": "1.0.1",
+    "downloadUrl": "https://github.com/esseener/VesPi/releases/latest",
+    "softwareVersion": "1.0.13",
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
     "author": { "@type": "Organization", "name": "VesPi" },
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
@@ -292,17 +292,17 @@
       <a href="#features">Features</a>
       <a href="#install">Install</a>
       <a href="https://github.com/esseener/VesPi">GitHub</a>
-      <a href="https://github.com/esseener/VesPi/releases/tag/v1.0.1" class="btn btn-primary">Download</a>
+      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">Download</a>
     </div>
   </nav>
 
   <!-- HERO -->
   <section class="hero">
-    <div class="badge">Standard 1.0.1</div>
-    <h1>A Pi Desktop GUI for<br><span>Oh My Pi (OMP)</span></h1>
+    <div class="badge">v1.0.13</div>
+    <h1>A Windows desktop client for<br><span>Oh My Pi (OMP)</span></h1>
     <p>Based on Pi Desktop. Chat, review changes, browse files, and run commands in one window. Ships a private Oh My Pi kernel. Free and open source.</p>
     <div class="hero-actions">
-      <a href="https://github.com/esseener/VesPi/releases/tag/v1.0.1" class="btn btn-primary">
+      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">
         ↓ Download Windows installer
       </a>
       <a href="https://github.com/esseener/VesPi" class="btn btn-outline">
@@ -403,34 +403,29 @@
       <div class="install-step">
         <div class="step-num">1</div>
         <div class="step-body">
-          <h4>Install Pi</h4>
-          <p>Pi Desktop wraps the Pi coding agent. Install it first:</p>
-          <p class="mt-8"><code>npm install -g @earendil-works/pi-coding-agent</code></p>
+          <h4>Nothing to install first</h4>
+          <p>VesPi ships its own private OMP kernel — no global agent, no Bun, no PATH setup. Windows 10/11 x64 is all you need.</p>
         </div>
       </div>
       <div class="install-step">
         <div class="step-num">2</div>
         <div class="step-body">
           <h4>Download and run</h4>
-          <p>Grab the latest build for your platform from <a href="https://github.com/esseener/VesPi/releases">Releases</a>: Linux AppImage, macOS DMG (Apple Silicon), or Windows installer/portable.</p>
-          <p class="mt-8">
-            <code>chmod +x VesPi-*-linux-x64.AppImage</code><br>
-            <code>./VesPi-*-linux-x64.AppImage</code>
-          </p>
+          <p>Grab the latest Windows installer from <a href="https://github.com/esseener/VesPi/releases/latest">Releases</a>: <code>VesPi-Setup-*-win-x64.exe</code>. Run it and follow the prompts — the private OMP kernel ships inside, no extra downloads.</p>
         </div>
       </div>
     </div>
 
     <p class="install-note">
-      macOS and Windows builds are unsigned (community-tested); see the
-      <a href="https://github.com/esseener/VesPi#macos">README</a> for the one-time Gatekeeper/SmartScreen steps, or
-      <a href="https://github.com/esseener/VesPi#build-it-yourself">build from source</a> to skip them entirely.
+      The Windows build is unsigned (community-tested); see the
+      <a href="https://github.com/esseener/VesPi#windows">README</a> for the one-time SmartScreen step, or
+      <a href="https://github.com/esseener/VesPi#build-it-yourself">build from source</a> to skip it entirely.
     </p>
   </section>
 
   <!-- FOOTER -->
   <footer>
-    <p>VesPi &middot; Apache 2.0 &middot; 1.0.1</p>
+    <p>VesPi &middot; Apache 2.0 &middot; v1.0.13</p>
     <div class="footer-links">
       <a href="https://github.com/esseener/VesPi">GitHub</a>
       <a href="https://github.com/esseener/VesPi/releases">Releases</a>

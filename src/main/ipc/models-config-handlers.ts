@@ -6,7 +6,6 @@ import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { getPiCli } from '../pi-rpc-manager'
 import { getOmpSessionsRoot } from '../pi-paths'
-import { ensureVespiOpenspaceMcp } from '../vespi-runtime'
 import { buildModelsYml } from '../../shared/models-yml'
 
 
@@ -163,7 +162,6 @@ export function registerModelsConfigHandlers(): void {
       if (getPiCli().kind === 'omp') {
         await writeFile(modelsYmlPath(dir), buildModelsYml(config as ModelsConfig), 'utf-8')
       }
-      ensureVespiOpenspaceMcp()
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }

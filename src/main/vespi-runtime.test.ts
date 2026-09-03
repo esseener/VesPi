@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
-import { mkdtemp, mkdir, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readFile, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
-import { defaultOmpExecutablePath, defaultOpenspacePythonPath, resolvePrivateOmpPath, resolvePrivateOpenspacePython, vespiProfileArgs } from './vespi-runtime'
+import { defaultOmpExecutablePath, removeVespiOpenspaceMcp, resolvePrivateOmpPath, vespiProfileArgs } from './vespi-runtime'
 import { VESPI_PROFILE, VESPI_RPC_MODE } from '../shared/vespi'
 
 
@@ -49,16 +49,19 @@ test('defaultOmpExecutablePath always names omp.exe', () => {
   assert.match(resolved.replaceAll('\\', '/'), /omp\.exe$/)
 })
 
-test('resolvePrivateOpenspacePython finds python.exe next to the app binary', async () => {
-  const root = await mkdtemp(join(tmpdir(), 'vespi-openspace-'))
-  const pyDir = join(root, 'runtime', 'openspace')
-  await mkdir(pyDir, { recursive: true })
-  const python = join(pyDir, 'python.exe')
-  await writeFile(python, '')
-  assert.equal(resolvePrivateOpenspacePython(join(root, 'VesPi.exe')), python)
+test('removeVespiOpenspaceMcp drops only the openspace entry', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vespi-mcp-'))
+  const file = join(root, 'mcp.json')
+  await writeFile(file, JSON.stringify({ mcpServers: { openspace: { command: 'gone' }, mine: { command: 'keep' } } }))
+  removeVespiOpenspaceMcp(file)
+  const parsed = JSON.parse(await readFile(file, 'utf-8')) as { mcpServers: Record<string, unknown> }
+  assert.deepEqual(Object.keys(parsed.mcpServers), ['mine'])
 })
 
-test('defaultOpenspacePythonPath always names python.exe', () => {
-  const resolved = defaultOpenspacePythonPath()
-  assert.match(resolved.replaceAll('\\', '/'), /python\.exe$/)
+test('removeVespiOpenspaceMcp tolerates a missing or malformed file', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'vespi-mcp-'))
+  assert.doesNotThrow(() => removeVespiOpenspaceMcp(join(root, 'missing.json')))
+  const bad = join(root, 'bad.json')
+  await writeFile(bad, 'not json')
+  assert.doesNotThrow(() => removeVespiOpenspaceMcp(bad))
 })

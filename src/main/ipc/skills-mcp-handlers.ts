@@ -1,34 +1,15 @@
-import { app, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { IPC_CHANNELS, type InstalledSkill, type SkillMutationResult } from '../../shared/ipc-contracts'
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { execFile } from 'child_process'
-import { promisify } from 'util'
 import type { IpcContext } from './context'
 import { VESPI_PROFILE } from '../../shared/vespi'
-import { resolvePrivateOpenspacePython, vespiOpenspaceProcessEnv } from '../vespi-runtime'
 
-const execFileAsync = promisify(execFile)
-
-function resourceScript(name: string): string | null {
-  const candidates = [
-    join(app.getAppPath(), 'resources', name),
-    join(process.cwd(), 'resources', name),
-  ]
-  if (typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0) {
-    candidates.unshift(join(process.resourcesPath, 'resources', name))
-  }
-  return candidates.find((path) => existsSync(path)) ?? null
-}
-
-function openspaceManageScript(): string | null {
-  return resourceScript('openspace-manage-skills.py')
-}
-
-function openspaceListScript(): string | null {
-  return openspaceManageScript() ?? resourceScript('openspace-list-skills.py')
-}
+// Skills listing reads skill folders from disk only. Creating, evolving, or
+// deleting skills lived on the OpenSpace Python runtime, which is not part of
+// the product (ARCHITECTURE.md §7); those handlers report that plainly.
+const OPENSPACE_UNAVAILABLE = 'OpenSpace 未随 VesPi 发布，技能仅支持查看'
 
 export function registerSkillsMcpHandlers(ctx: IpcContext): void {
   const { workspaceManager } = ctx
@@ -38,31 +19,28 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.SKILLS_LIST, async () => {
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
-    return listSkills(cwd)
+    return listSkillsFromDisk(cwd)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SKILLS_CREATE, async (_event, name: unknown, description: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SKILLS_CREATE, async (_event, name: unknown, description: unknown): Promise<SkillMutationResult> => {
     if (typeof name !== 'string' || typeof description !== 'string') {
-      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+      return { ok: false, error: 'invalid arguments' }
     }
-    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
-    return runSkillMutation(['create', '--cwd', cwd, '--name', name, '--description', description], cwd)
+    return { ok: false, error: OPENSPACE_UNAVAILABLE }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SKILLS_DELETE, async (_event, path: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SKILLS_DELETE, async (_event, path: unknown): Promise<SkillMutationResult> => {
     if (typeof path !== 'string') {
-      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+      return { ok: false, error: 'invalid arguments' }
     }
-    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
-    return runSkillMutation(['delete', '--cwd', cwd, '--path', path], cwd)
+    return { ok: false, error: OPENSPACE_UNAVAILABLE }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SKILLS_EVOLVE, async (_event, path: unknown, direction: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SKILLS_EVOLVE, async (_event, path: unknown, direction: unknown): Promise<SkillMutationResult> => {
     if (typeof path !== 'string' || typeof direction !== 'string') {
-      return { ok: false, error: 'invalid arguments' } satisfies SkillMutationResult
+      return { ok: false, error: 'invalid arguments' }
     }
-    const cwd = workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
-    return runSkillMutation(['evolve', '--cwd', cwd, '--path', path, '--direction', direction], cwd, 180_000)
+    return { ok: false, error: OPENSPACE_UNAVAILABLE }
   })
 
   ipcMain.handle(IPC_CHANNELS.COMMANDS_LIST, async () => {
@@ -87,100 +65,6 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
 }
 
 // ─── Skills Listing ──────────────────────────────────────────────────────────
-
-async function listSkills(cwd: string): Promise<InstalledSkill[]> {
-  const fromRegistry = await listSkillsFromOpenspace(cwd)
-  if (fromRegistry !== null) return fromRegistry
-  return listSkillsFromDisk(cwd)
-}
-
-async function listSkillsFromOpenspace(cwd: string): Promise<InstalledSkill[] | null> {
-  const python = resolvePrivateOpenspacePython()
-  const script = openspaceListScript()
-  if (!python || !script) return null
-  try {
-    const args = script.endsWith('openspace-manage-skills.py') ? [script, 'list', '--cwd', cwd] : [script, cwd]
-    const { stdout } = await execFileAsync(python, args, {
-      timeout: 15_000,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        ...vespiOpenspaceProcessEnv(cwd),
-      },
-    })
-    const parsed = JSON.parse(extractJsonPayload(stdout, '[')) as unknown
-    if (!Array.isArray(parsed)) return null
-    return parsed.filter(isInstalledSkill)
-  } catch {
-    return null
-  }
-}
-
-async function runSkillMutation(args: string[], cwd: string, timeout = 15_000): Promise<SkillMutationResult> {
-  const python = resolvePrivateOpenspacePython()
-  const script = openspaceManageScript()
-  if (!python || !script) return { ok: false, error: 'OpenSpace runtime is not packaged' }
-  try {
-    const { stdout } = await execFileAsync(python, [script, ...args], {
-      timeout,
-      windowsHide: true,
-      env: {
-        ...process.env,
-        ...vespiOpenspaceProcessEnv(cwd),
-      },
-    })
-    return parseMutationResult(stdout) ?? { ok: false, error: 'invalid manager output' }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err)
-    if (err && typeof err === 'object' && 'stdout' in err && typeof err.stdout === 'string') {
-      const parsed = parseMutationResult(err.stdout)
-      if (parsed) return parsed
-    }
-    return { ok: false, error: message }
-  }
-}
-
-function parseMutationResult(stdout: string): SkillMutationResult | null {
-  try {
-    const parsed: unknown = JSON.parse(extractJsonPayload(stdout, '{'))
-    if (!parsed || typeof parsed !== 'object' || !('ok' in parsed) || typeof parsed.ok !== 'boolean') {
-      return null
-    }
-    const error = 'error' in parsed && typeof parsed.error === 'string' ? parsed.error : undefined
-    const path = 'path' in parsed && typeof parsed.path === 'string' ? parsed.path : undefined
-    const name = 'name' in parsed && typeof parsed.name === 'string' ? parsed.name : undefined
-    const skillId = 'skillId' in parsed && typeof parsed.skillId === 'string' ? parsed.skillId : undefined
-    const jobs = 'jobs' in parsed && typeof parsed.jobs === 'number' ? parsed.jobs : undefined
-    const outcomes = 'outcomes' in parsed && typeof parsed.outcomes === 'number' ? parsed.outcomes : undefined
-    const statuses =
-      'statuses' in parsed && Array.isArray(parsed.statuses)
-        ? parsed.statuses.filter((item): item is string => typeof item === 'string')
-        : undefined
-    return { ok: parsed.ok, error, path, name, skillId, jobs, outcomes, statuses }
-  } catch {
-    return null
-  }
-}
-
-
-function extractJsonPayload(stdout: string, startChar: '[' | '{' = '['): string {
-  const start = stdout.indexOf(startChar)
-  const end = stdout.lastIndexOf(startChar === '[' ? ']' : '}')
-  if (start >= 0 && end > start) return stdout.slice(start, end + 1)
-  return stdout.trim()
-}
-
-function isInstalledSkill(value: unknown): value is InstalledSkill {
-  if (typeof value !== 'object' || value === null) return false
-  const row = value as Record<string, unknown>
-  return (
-    typeof row.name === 'string' &&
-    typeof row.description === 'string' &&
-    typeof row.path === 'string' &&
-    (row.source === 'vespi' || row.source === 'project' || row.source === 'openspace' || row.source === 'bundled') &&
-    row.enabled === true
-  )
-}
 
 async function listSkillsFromDisk(cwd: string): Promise<InstalledSkill[]> {
   const skills: InstalledSkill[] = []

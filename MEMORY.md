@@ -30,9 +30,9 @@ Loop:
 2. Rebuild a versioned installer (`npm run package:win` / `package:win:nsis`) and **install it over the local VesPi** so the user runs the same artifact they would ship.
 3. Wait for the user to test that installed app and say it is OK.
 4. Only then: bump `package.json` if not already bumped, commit, push `master` to remote `vespi` (`https://github.com/esseener/VesPi.git`), tag `vX.Y.Z`, `gh release create` with the installer.
-5. Copy the two shipped files into `desktop/release/`:
+5. Copy the shipped file into `desktop/release/`:
    - `VesPi-Setup-{version}-win-x64.exe`
-   - `VesPi-{version}-win-x64.exe`
+   (Installer only since 1.0.10 — the portable exe is discontinued; never ship it.)
    Remove older versioned exes from that folder so it only holds the latest installer.
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
