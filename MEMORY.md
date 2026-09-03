@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.7** (2026-09-03).
+- Current shipped version: **1.0.8** (2026-09-03).
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
@@ -39,6 +39,10 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.8 notes
+
+- New-session startup no longer flickers: empty-chat tagline/chips/composer stay constant while OMP starts; `sendPrompt` waits (≤30s) for the ready event instead of silently dropping the send or double-starting.
 
 ## 1.0.7 notes
 

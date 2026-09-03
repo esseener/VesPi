@@ -226,17 +226,15 @@ export function ChatPanel(): React.JSX.Element {
                         className="mx-auto mb-4 block h-32 w-auto max-w-[40rem]"
                       />
                       <p className="text-sm text-dim">
-                        {piStatus === 'running'
-                          ? t(language, 'pickProjectDescribe')
-                          : piStatus === 'starting'
-                            ? t(language, 'startingAgent', { engine: engineLabel })
-                            : piStatus === 'error'
-                              ? t(language, 'failedStartCheckSettings', { engine: engineLabel })
-                              : t(language, 'chooseProjectStartsOnSend')}
+                        {piStatus === 'error'
+                          ? t(language, 'failedStartCheckSettings', { engine: engineLabel })
+                          : piStatus === 'stopped'
+                            ? t(language, 'chooseProjectStartsOnSend')
+                            : t(language, 'pickProjectDescribe')}
                       </p>
                     </div>
                     <div className="w-full max-w-3xl">
-                      {piStatus === 'running' && (
+                      {piStatus !== 'error' && (
                         <div className="mb-4 flex flex-wrap justify-center gap-2 px-4">
                           {emptyChatSuggestions.map((prompt) => (
                             <button

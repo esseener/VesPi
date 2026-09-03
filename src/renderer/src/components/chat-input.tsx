@@ -402,9 +402,11 @@ export function ChatInput(): React.JSX.Element {
     }
   }, [])
 
-  // A stopped agent stays typable: the first send lazy-starts Pi/OMP.
-  // Only transient/error states block input.
-  const isDisabled = piStatus === 'starting' || piStatus === 'error'
+  // A stopped agent stays typable: the first send lazy-starts Pi/OMP. A
+  // starting one stays typable too — sendPrompt waits for readiness, so the
+  // composer never flickers between a disabled and enabled look. Only an
+  // error blocks input.
+  const isDisabled = piStatus === 'error'
 
   const handlePaste = useCallback(
     (e: React.ClipboardEvent<HTMLTextAreaElement>) => {

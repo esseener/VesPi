@@ -1051,8 +1051,18 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     // Navigation never spawns Pi; the first prompt does. startPi applies the
     // resume preference, so a previously-used project continues its last
     // conversation; a fresh one gets a new session.
-    if (get().piStatus !== 'running') {
+    const currentStatus = get().piStatus
+    if (currentStatus === 'stopped') {
       await get().startPi()
+      if (get().piStatus !== 'running') return
+    } else if (currentStatus === 'starting') {
+      // A runtime is already coming up (fresh session or lazy start). Wait for
+      // its ready event instead of failing the send or double-starting; the
+      // composer stays fully interactive during this, so no flicker.
+      const deadline = Date.now() + 30_000
+      while (get().piStatus === 'starting' && Date.now() < deadline) {
+        await new Promise((resolve) => setTimeout(resolve, 150))
+      }
       if (get().piStatus !== 'running') return
     }
 
