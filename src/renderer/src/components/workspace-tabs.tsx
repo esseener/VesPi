@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
@@ -56,7 +57,18 @@ export function WorkspaceTabs(): React.JSX.Element {
   const createNewSession = useAppStore((state) => state.createNewSession)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
-  const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null)
+  // Tab removal confirm. The tab strip is overflow-clipped, so the card is
+  // portaled to <body> and pinned under the tab's own rect.
+  const [confirmTarget, setConfirmTarget] = useState<{ id: string; left: number; top: number } | null>(null)
+
+  const askRemove = (workspaceId: string, anchor: HTMLElement): void => {
+    const rect = anchor.getBoundingClientRect()
+    setConfirmTarget({
+      id: workspaceId,
+      left: Math.min(rect.left, window.innerWidth - 300),
+      top: rect.bottom + 4,
+    })
+  }
 
   const toolView = ['settings', 'packages', 'notes', 'skills', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
   const toolsActive =
@@ -109,7 +121,7 @@ export function WorkspaceTabs(): React.JSX.Element {
             onAuxClick={(event) => {
               if (event.button !== 1) return
               event.preventDefault()
-              setConfirmingRemoveId(workspace.id)
+              askRemove(workspace.id, event.currentTarget as HTMLElement)
             }}
             className={clsx(
               'titlebar-no-drag group relative flex h-7 min-w-[128px] max-w-[220px] shrink-0 items-center gap-1.5 border-b px-2 text-[11px] transition-colors',
@@ -144,42 +156,16 @@ export function WorkspaceTabs(): React.JSX.Element {
               {completed && <CheckCircle2 size={11} className="shrink-0 text-success" />}
               {failed && <XCircle size={11} className="shrink-0 text-error" />}
             </button>
-            {tabs.length > 1 && confirmingRemoveId !== workspace.id && (
+            {tabs.length > 1 && confirmTarget?.id !== workspace.id && (
               <button
                 type="button"
-                onClick={() => setConfirmingRemoveId(workspace.id)}
+                onClick={(event) => askRemove(workspace.id, event.currentTarget.parentElement as HTMLElement)}
                 className="shrink-0 rounded-sm p-0.5 text-faint opacity-0 transition-all hover:bg-highlight hover:text-primary group-hover:opacity-100"
                 title={isWorktree ? 'Close tab' : 'Remove workspace'}
                 aria-label={isWorktree ? `Close ${tabLabel(workspace)}` : `Remove ${tabLabel(workspace)}`}
               >
                 <X size={11} />
               </button>
-            )}
-            {confirmingRemoveId === workspace.id && (
-              <div className="absolute left-1 right-1 top-full z-30 mt-1 rounded-sm border border-error bg-app px-2 py-1.5 shadow-lg">
-                <div className="truncate text-[11px] text-error">
-                  {t(language, 'removeWorkspaceInline', { name: tabLabel(workspace) })}
-                </div>
-                <div className="mt-1 flex justify-end gap-1">
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingRemoveId(null)}
-                    className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
-                  >
-                    {t(language, 'cancel')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void removeWorkspace(workspace.id, { skipConfirm: true })
-                      setConfirmingRemoveId(null)
-                    }}
-                    className="rounded-md border border-error px-1.5 py-0.5 text-[11px] text-error"
-                  >
-                    {t(language, 'confirmRemove')}
-                  </button>
-                </div>
-              </div>
             )}
           </div>
         )
@@ -286,6 +272,54 @@ export function WorkspaceTabs(): React.JSX.Element {
       </div>
     )}
     </div>
+    {confirmTarget && createPortal(
+      <>
+        <div
+          className="fixed inset-0 z-[90]"
+          onClick={() => setConfirmTarget(null)}
+          aria-hidden="true"
+        />
+        <div
+          className="fixed z-[95] w-72 rounded-md border border-error bg-app px-3 py-2 shadow-xl shadow-black/40"
+          style={{ left: Math.max(8, confirmTarget.left), top: confirmTarget.top }}
+          role="dialog"
+          aria-label={t(language, 'confirmRemoveWorkspace')}
+        >
+          {(() => {
+            const workspace = workspaces.find((ws) => ws.id === confirmTarget.id)
+            if (!workspace) return null
+            return (
+              <>
+                <div className="truncate text-[11px] font-medium text-primary">{tabLabel(workspace)}</div>
+                <div className="mt-0.5 text-[11px] leading-snug text-error">
+                  {t(language, 'removeWorkspaceTabInline', { name: tabLabel(workspace) })}
+                </div>
+                <div className="mt-1.5 flex justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setConfirmTarget(null)}
+                    className="rounded px-2 py-0.5 text-[11px] text-muted hover:text-primary"
+                  >
+                    {t(language, 'cancel')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void removeWorkspace(workspace.id, { skipConfirm: true })
+                      setConfirmTarget(null)
+                    }}
+                    className="rounded-md border border-error bg-transparent px-2 py-0.5 text-[11px] text-error transition-colors hover:border-error-hover"
+                  >
+                    {t(language, 'confirmRemove')}
+                  </button>
+                </div>
+              </>
+            )
+          })()}
+        </div>
+      </>,
+      document.body
+    )}
     {ContextMenuComponent}
     </>
   )

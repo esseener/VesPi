@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.5** (2026-09-03).
+- Current shipped version: **1.0.6** (2026-09-03).
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
@@ -39,6 +39,10 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.6 notes
+
+- Top workspace tabs: the remove confirm now opens as a portal card under the tab. The old in-tab absolute card was clipped by the tab strip's overflow, so the × looked dead.
 
 ## 1.0.5 notes
 
