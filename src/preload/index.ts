@@ -27,6 +27,7 @@ import type {
   NoteInput,
   NoteUpdate,
   UpdateCheckResult,
+  KernelUpdateProgress,
   SessionLineageRecord,
   ModelsConfig,
   ModelsReadResult,
@@ -276,6 +277,8 @@ interface PiDesktopAPI {
     pathKind(path: string): Promise<PathKindResult>
     openExternal(url: string): Promise<void>
     revealPath(path: string): Promise<void>
+    /** Open the OS Recycle Bin / Trash. Deleted sessions land there. */
+    openTrash(): Promise<void>
     getVersion(): Promise<string>
     minimizeWindow(): Promise<void>
     toggleMaximizeWindow(): Promise<boolean>
@@ -316,6 +319,7 @@ interface PiDesktopAPI {
   updates: {
     check(): Promise<UpdateCheckResult>
     installKernel(): Promise<{ ok: true; version: string } | { ok: false; error: string }>
+    onKernelProgress(callback: (progress: KernelUpdateProgress) => void): () => void
   }
 
   terminal: {
@@ -539,6 +543,7 @@ const api: PiDesktopAPI = {
     platform: process.platform,
     openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, url),
     revealPath: (path) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_REVEAL_PATH, path),
+    openTrash: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_TRASH),
     getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_GET_VERSION),
     minimizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_MINIMIZE),
     toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_TOGGLE_MAXIMIZE),
@@ -569,6 +574,11 @@ const api: PiDesktopAPI = {
   updates: {
     check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
     installKernel: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_KERNEL),
+    onKernelProgress: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, progress: KernelUpdateProgress) => callback(progress)
+      ipcRenderer.on(IPC_CHANNELS.EVENT_KERNEL_UPDATE_PROGRESS, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_KERNEL_UPDATE_PROGRESS, handler)
+    },
   },
 
   terminal: {

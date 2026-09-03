@@ -1,327 +1,122 @@
 # VesPi
 
-**VesPi** is a desktop GUI for [Pi](https://pi.dev) and [Oh My Pi](https://github.com/can1357/oh-my-pi) (OMP). It is based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) and ships a private OMP kernel.
+**VesPi** is a Windows desktop client for **[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi)** and the **[Pi](https://pi.dev)** coding agent. Chat, tools, Diff, terminal, permissions, models, and kernel updates live in one window.
 
-Search terms: VesPi, Pi, Pi Desktop, Oh My Pi, OMP, oh-my-pi, coding agent.
+It is based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). The shipped Windows build runs a **private `omp.exe`** — you do not need a global `pi` or `omp` on PATH.
 
-Current release: **1.0.1**.
+**Search:** VesPi · Pi · Pi Desktop · Oh My Pi · OMP · oh-my-pi · coding agent · desktop agent · Windows AI IDE
 
-![VesPi — Home launcher screen](docs/screenshots/Screenshot_20260824_181929.png)
+**Current release: [1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**
 
-## What it does
+[Download Windows installer](https://github.com/esseener/VesPi/releases/latest) · [Oh My Pi kernel](https://github.com/can1357/oh-my-pi) · [Pi docs](https://pi.dev)
 
-- Streaming chat with thinking blocks, tool use, and rich rendering: bundled fonts and color emoji, inline SVG preview, and clickable file links that open a preview pane. Consecutive tool calls fold into collapsible groups. File reads show as line-numbered, syntax-highlighted code and edits as diffs
-- Find within a conversation (`Ctrl/Cmd+F`); streaming follows new output only while you're at the bottom, with a jump-to-bottom control
-- Composer file mentions (type `@` to insert a path reference for Pi to read) and `Up`/`Down` to recall prompts sent in the current session
-- Home dashboard with usage stats: messages, tokens, active-day streaks, peak hour, and a per-model breakdown
-- [Multi-Agent Council Planning](#multi-agent-council-planning), where Pi, Claude, and Codex plan together and reach consensus before Pi builds (opt-in)
-- Quick switcher (`Ctrl/Cmd+K`) for skills, prompt templates, built-in commands, workspaces, sessions, and files; `/` in the composer for commands
-- Skills browser, session fork/branch tree, and one-click context compaction
-- Session naming (read from Pi) with inline rename, and a themed in-app confirmation for delete
-- Custom models & providers editor in Settings, which edits `~/.pi/agent/models.json`
-- Multiple workspaces, with an independent agent process per live session, so a turn keeps running when you switch away from it; Mission Control and sidebar activity dots surface background work across projects, with optional desktop notifications when a session finishes, fails, or waits for approval
-- New Task launcher starts a real fresh Pi session in a selected project, optionally in an isolated Git worktree, and sends the issue immediately while work continues in the background; matching task metadata, explicit branches, and GitHub PR URLs reuse an existing local worktree when found
-- Diff Review conveyor with explicit Commit → Push → PR actions, upstream-aware GitHub CLI PR creation, and exact notification clicks back to the finished session
-- Diagnostics view: Pi/OMP install and PATH resolution, provider configuration, permissions, and recent errors
-- Review rail (toggleable) with permissions, approvals, changed files, and session status
-- Custom permission rules: allow/deny glob rules per Pi tool that refine the permission modes, with per-workspace rule files, import/export, and live edits that apply without restarting Pi
-- File tree, code/image/PDF/HTML preview panes, code editor (CodeMirror 6 with syntax highlighting), diff viewer, file search
-- Terminal with ANSI colors
-- Package browser connected to pi.dev/packages, with instant local search
-- Session tags, model switching, live-preview settings, themes (7 built-ins plus System, and custom themes you can create in-app, import, export, or install from a URL)
+![VesPi home](docs/screenshots/Screenshot_20260824_181929.png)
 
-## Review rail
+## Why VesPi
 
-The right-side Review rail keeps safety and working-tree state visible while you chat with Pi. Toggle it from the chat toolbar (hidden by default, so it doesn't compete for space with file/image previews).
+- **Install and run.** Bundled OMP kernel (`runtime/omp/omp.exe`) with `--profile vespi --mode rpc-ui`.
+- **Supervise the agent.** Streaming reply, thinking, tool cards, approvals, Diff, file tree, terminal.
+- **Do not fork the kernel.** VesPi is the shell. OMP/Pi remain the agent. Sessions, models, and tools stay in the engine.
+- **Two update channels.** UI from this repo. Kernel from `can1357/oh-my-pi`, with in-app **更新内核** and a visible download progress bar.
 
-Changed files use readable status badges:
+## Screenshots
 
-| Badge | Meaning |
-|-------|---------|
-| `NEW` | Untracked new file |
-| `MOD` | Existing tracked file was modified |
-| `DEL` | Tracked file was deleted |
-| `ADD` | New file staged in git |
-| `STG` | Modified file staged in git |
-| `REN` | File was renamed |
+| Home | Chat |
+|---|---|
+| ![Home](docs/screenshots/Screenshot_20260824_181929.png) | ![Chat](docs/screenshots/Screenshot_20260824_182005.png) |
 
-## Pi and OMP engines
+| Sessions / files | Settings |
+|---|---|
+| ![Files](docs/screenshots/Screenshot_20260824_182039.png) | ![Settings](docs/screenshots/Screenshot_20260824_182117.png) |
 
-Pi Desktop speaks Pi's RPC protocol directly, so it can run either the standard `pi` CLI or the compatible `omp` binary from [oh-my-pi](https://github.com/can1357/oh-my-pi). **Settings → Agent Configuration → Agent Installation** scans for installed engines, lets you select one, and also supports a custom executable or install directory.
+## Highlights in 1.0.1
 
-Each engine keeps its own sessions: Pi writes to `~/.pi/agent/sessions`, OMP to `~/.omp/agent/sessions`. The app reads both, so switching engines never hides your history. When sessions from both appear in one list, each row is tagged `Pi` or `OMP`, and opening one starts the engine that wrote it.
+- **Session delete** confirms **on that session row** (name included), not a bottom-of-window dialog.
+- **Windows Recycle Bin.** Deleted session files go to the system recycle bin. **打开回收站** is on the confirm row and on **关于**.
+- **Tool tabs** show the page you opened (设置 / 关于 / 速记 / 拓展), not a generic “拓展坞”.
+- **Kernel update progress.** Checking → download % and size → replace files → restart, then a success or error message.
+- **Mid-turn extra text.** While OMP is writing, Enter does not send immediately. Choose:
+  - **介入引导 (steer)** — OMP native queue. Does **not** abort the current reply or its tools. Injected after current tools finish, before the next model call (same idea as typing in the OMP TUI).
+  - **排队等候 (follow_up)** — also does **not** abort. Sent when the agent is idle (no leftover tools or steering).
 
-OMP's protocol-v2 large-frame transport is negotiated automatically, and model-specific thinking efforts, including `max`, are shown when advertised. Its native `read`, `grep`, and `glob` tools are used for Plan / Read-only mode, and its plugin install/update/remove verbs are mapped behind the existing package actions.
+## What you get
 
-## Permissions
+- Streaming chat, thinking blocks, tool cards, markdown, SVG preview, clickable file links
+- Composer `@` file mentions, prompt history with Up/Down, `#tags`
+- Home dashboard: tokens, streaks, per-model usage
+- Quick switcher `Ctrl+K` (commands, workspaces, sessions, files)
+- Independent OMP/Pi process **per live session**; switching tabs does not kill the previous turn
+- Mission Control, sidebar activity dots, optional desktop notifications
+- Diff review with explicit Commit → Push → PR
+- File tree, CodeMirror editor, image/HTML preview, ANSI terminal
+- Permission modes + glob allow/deny rules (workspace trust gate)
+- Package / skill browser, diagnostics, themes
+- Dual engine: **OMP** (default, VesPi profile) and **Pi CLI** if you point Settings at one
 
-Four base modes control what Pi may do, selectable from the Review rail or **Settings → Behavior**:
+## Engines: Oh My Pi (OMP) and Pi
 
-| Mode | Behavior |
-|------|----------|
-| Plan / Read-only | Only read/search/list tools are enabled; edits and shell commands are blocked |
-| Ask before edits | Pi asks before file edits and shell commands |
-| Ask before commands | Pi asks before shell commands |
-| Trusted | All tools enabled |
+| | OMP (default) | Pi |
+|---|---|---|
+| Binary | Bundled `omp.exe` | Optional `pi` |
+| Profile | `--profile vespi` | standard Pi |
+| Sessions | `~/.omp/profiles/vespi/agent/sessions` | `~/.pi/agent/sessions` |
+| Protocol | JSONL RPC UI mode | same family |
 
-Custom permission rules refine the modes with allow/deny rules per Pi tool, edited in **Settings → Behavior → Permission rules**:
+Opening a session starts the engine that **wrote** that file, not whichever default is in Settings.
 
-- A rule is an action (`allow`/`deny`), a tool name (`bash`, `edit`, `write`, `read`, … or `*` for any), and an optional glob pattern matched against the tool's input: the shell command for `bash`, the file path for file tools. `*` is the only wildcard.
-- Precedence: deny beats allow, and allow beats the mode default. Deny rules are enforced in every mode; a `deny * *.env*` rule holds even in Trusted. Allow rules skip the confirmation prompt in the ask modes.
-- Rule edits apply to the next tool call without restarting Pi.
-- Rules come in two scopes. The **Global | This workspace** tabs edit either your global rules or the active workspace's `.pi-desktop/permission-rules.json`. A workspace file is gated by workspace trust: once you trust the workspace it fully replaces the global list while you work there. Until then (the default for a repo you just opened) only its *deny* rules apply, layered on top of your global rules, and its *allow* rules are ignored, so a cloned repo can tighten your permissions but never loosen them. Opening a workspace whose file contains allow rules prompts you to trust it; you can also Trust/Revoke from the **This workspace** tab. Import/Export moves rule lists as JSON files, and the workspace file can be hand-edited or committed with a repo. The app picks up changes live.
-- One honest caveat: rules match raw strings, with no path canonicalization or command parsing. Treat them as a guardrail against accidents rather than a security sandbox, and keep even a trusted workspace's allow rules narrow.
+## Download (Windows x64)
 
-Example rules:
+From [Releases](https://github.com/esseener/VesPi/releases/latest):
 
-```json
-{ "action": "allow", "tool": "bash", "match": "npm test*" }
-{ "action": "deny",  "tool": "bash", "match": "rm -rf *" }
-{ "action": "deny",  "tool": "*",    "match": "*.env*" }
-```
+- **Installer:** `VesPi-Setup-1.0.1-win-x64.exe` — recommended. Installs under `%LOCALAPPDATA%\Programs\VesPi\`.
+- **Portable:** `VesPi-1.0.1-win-x64.exe`
 
-## Custom themes
-
-Pi Desktop ships 7 built-in themes (Dark, Light, Nord, Gruvbox, Breeze Dark, Breeze Light, Breeze Claudius) plus System, and you can create your own from **Settings → Appearance**.
-
-To build one in the app, click **Create theme** to fork the currently active theme, or **Edit theme** to keep editing one you already created. Pick 7 seed colors (app background, surface, text, accent, success, warning, error) and a dark or light kind; every other color in the app is derived from those seeds. Changes preview live across the whole window as you edit. Two disclosures cover finer control:
-
-- **Advanced** lets you override any of the ~30 derived tokens individually (borders, hovers, scrollbars, and so on) instead of accepting the automatic derivation.
-- **Syntax colors** overrides the code-highlighting colors (keywords, strings, comments, etc.) used by the code editor and diff viewer.
-
-Themes you create are listed alongside the built-ins in the **Theme** dropdown. Rename one by editing its name in the editor, duplicate one by selecting it and clicking **Create theme** (which forks whatever is active), and delete one with the **Delete** button that appears next to the dropdown whenever a custom theme is selected.
-
-To share a theme, use **Import** and **Export** to move it as a `.json` file, or paste an `https://` URL into **Install from URL** to fetch and install one directly (HTTP is rejected, and downloads are size-capped).
-
-A theme file uses the `pi-theme/v1` format: JSON with a `$schema`, a `name`, a `kind` (`"dark"` or `"light"`), and 7 `seeds`. That's enough for a complete, valid theme; everything else is derived automatically via CSS `color-mix()`:
-
-```json
-{
-  "$schema": "pi-theme/v1",
-  "name": "My Theme",
-  "kind": "dark",
-  "seeds": {
-    "app": "#0a0a0a",
-    "surface": "#171717",
-    "text": "#f5f5f5",
-    "accent": "#2563eb",
-    "success": "#34d399",
-    "warning": "#facc15",
-    "error": "#f87171"
-  }
-}
-```
-
-Two optional top-level objects let you pin exact values instead of relying on derivation: `overrides` (any derived token, e.g. `border`, `scrollbar`, `accent-hover`) and `syntax` (code-highlighting colors, e.g. `keyword`, `string`, `comment`). Omit both and the theme still renders correctly from the 7 seeds alone.
-
-User theme files live in the app's user-data directory under `themes/` (on Linux, `~/.config/pi-desktop/themes/`).
-
-There's also a community gallery at [pi-desktop-themes](https://github.com/FaqFirebase/pi-desktop-themes): copy any theme's raw URL into **Install from URL**, or submit your own with a pull request.
-
-## Multi-Agent Council Planning
-
-Pi, Claude, and Codex each produce an initial plan, share and converge, and Pi presents the agreed consensus plan *before* anything is built. All members plan read-only; Pi is the only agent that edits files.
-
-The feature is off by default. Enable it in **Settings → "Multi-Agent Council Planning"**; a confirmation dialog warns that it increases token and credit usage, since each request runs multiple agents.
-
-The app auto-detects each member's CLI cross-platform, and only detected agents can be enabled (per-agent checkboxes). At least two members must be available or a run is refused. Pi always merges the plans into the final consensus, even when it isn't checked as a planner.
-
-Every member plans read-only: Claude runs with `--permission-mode plan`, Codex with `--sandbox read-only`, and Pi with write tools excluded. They produce plans but never modify files. Only Pi implements the approved result.
-
-During the consulting phase, each member streams its plan live in its own card with an elapsed timer.
-
-There are two consensus modes:
-
-- **One debate round** (default): each member sees the others' plans and revises once, then Pi merges. You watch them converge.
-- **Arbiter merge**: faster and cheaper. Pi synthesizes the initial plans directly with no debate round.
-
-A per-member timeout (10 to 600 seconds, default 240) bounds each member. A member that times out or errors is dropped, and the run proceeds as long as at least one plan was produced.
-
-To use it, type your request with the feature enabled and click **Plan with Council** in the composer. Review each member's plan and Pi's merged consensus plan. If you want changes, type feedback in **Request changes to the plan…** and Pi revises the consensus; repeat as needed. When you're happy, click **Implement this** and Pi builds it. The panel collapses once a plan is ready so the output stays readable.
-
-## Getting started
-
-VesPi 1.0.1 ships a private OMP kernel (`runtime/omp/omp.exe`). You do not need a separate Pi/OMP install for the default Windows build.
-
-### Windows
-
-Download the latest from [Releases](https://github.com/esseener/VesPi/releases/latest):
-
-- **Installer (recommended):** `VesPi-Setup-1.0.1-win-x64.exe` — choose the install folder, desktop shortcut, and Start Menu entry. Running a newer installer upgrades an existing install.
-- **Portable:** `VesPi-1.0.1-win-x64.exe` — no installer.
-
-Builds are unsigned, so SmartScreen may warn; choose **More info → Run anyway**. If file edits or saves fail, see the [Controlled Folder Access](#controlled-folder-access-ransomware-protection) note below.
-
-## Updates
-
-Each small UI change ships as a new version (`1.0.1`, `1.0.2`, …) on [GitHub Releases](https://github.com/esseener/VesPi/releases). The app checks that feed on launch:
-
-- **About** shows **有更新** when a newer VesPi build exists, and opens the release page.
-- A top banner and the About sidebar dot appear at the same time.
-- **About → Check for updates** also checks the bundled OMP kernel (`can1357/oh-my-pi`) and can replace `runtime/omp/omp.exe`.
-
-Install the versioned installer (or replace the portable exe) to pick up UI changes. Older `1.0.0` clients already point at `esseener/VesPi`, so they will see `1.0.1`.
-
-### Linux
-
-Grab the AppImage from [Releases](https://github.com/esseener/VesPi/releases):
-
-```bash
-chmod +x VesPi-*-linux-x64.AppImage
-./VesPi-*-linux-x64.AppImage
-```
-
-### macOS
-
-Download the `.dmg` (Apple Silicon / arm64) from [Releases](https://github.com/esseener/VesPi/releases), open it, and drag **VesPi** to Applications.
-
-Builds are **not yet signed or notarized**. Because the download is unsigned, macOS quarantines it, and on first launch Gatekeeper shows this dialog (this is macOS's message, not our advice):
-
-> VesPi is damaged and can't be opened. You should move it to the Trash.
-
-**Do not move it to the Trash.** The app is not damaged; this is just how Gatekeeper phrases its block on any unsigned app. macOS offers no "Open Anyway" button for this particular dialog, so clear the quarantine flag in Terminal instead:
-
-```bash
-xattr -dr com.apple.quarantine "/Applications/VesPi.app"
-```
-
-Then open the app normally. You only need to do this once.
-
-## Keyboard shortcuts
-
-| Shortcut | What it does |
-|----------|-------------|
-| `Enter` | Send message |
-| `Shift+Enter` | New line |
-| `Up/Down` | Recall previous prompts |
-| `@` | Mention a workspace file |
-| `Escape` | Stop streaming |
-| `Ctrl/Cmd+K` | Open command palette |
-| `/` (start of message) | Open command palette |
-| `Ctrl+P` | Cycle model |
-| `Ctrl/Cmd+F` | Find in conversation |
-| `Ctrl+Shift+F` | File search |
-| `Ctrl+Shift+P` | Insert saved note |
-| `Ctrl+N` | New session |
-| `Ctrl+Shift+N` | New workspace |
-| `Ctrl+O` | Open project |
-
-## Build it yourself
+Builds may be unsigned. SmartScreen: **More info → Run anyway**.
 
 ### Linux / macOS
 
+Optional AppImage / unsigned `.dmg` may appear on Releases. Windows is the supported product path.
+
+## Updates
+
+On launch and when **关于** opens, VesPi checks **both**:
+
+| Channel | Source | Action |
+|---|---|---|
+| VesPi UI | `esseener/VesPi` Releases | Banner + 有更新 → open the release |
+| OMP kernel | `can1357/oh-my-pi` Releases | Banner + **更新内核** (progress, then success/error) |
+
+## Develop
+
+Needs Node.js. Private kernel is already in the repo as `runtime/omp/omp.exe` (packaged from the parent tree).
+
 ```bash
-git clone https://github.com/esseener/VesPi.git
-cd VesPi
+cd desktop
 npm install
 npm run dev
 ```
 
-### Windows
+Windows installer:
 
-Windows requires extra steps because **node-pty** (the terminal backend) compiles a native module against Electron's ABI.
-
-#### 1. Install prerequisites
-
-Install all of the following **before** cloning:
-
-- [Git for Windows](https://git-scm.com/download/win)
-- [Node.js LTS](https://nodejs.org), via the official Windows installer (adds `node` and `npm` to PATH)
-- **Visual Studio Build Tools 2022**, downloaded from [Visual Studio downloads](https://visualstudio.microsoft.com/downloads/#build-tools-for-visual-studio-2022)
-  - Select the **Desktop development with C++** workload
-  - Open **Individual components**, search `Spectre`, and install **Spectre-mitigated libs for v143 toolset**
-
-> **Use VS Build Tools 2022, not 2026.** node-pty requires Spectre-mitigated runtime libraries. VS 2022 stable (v143 toolset) ships them; VS 2026 preview (v180 toolset) does not, and `npm install` will fail with `MSB8040: Spectre-mitigated libraries are required for this project`.
-
-#### 2. Add a Windows Defender exclusion (recommended)
-
-Defender can block or slow `npm install` on projects with many small files. Before cloning, add an exclusion:
-
-Settings → Privacy & Security → Windows Security → Virus & threat protection → Manage settings → Exclusions → Add a folder → (pick where you'll clone the repo)
-
-#### 3. Clone and install
-
-```powershell
-git clone https://github.com/esseener/VesPi.git
-cd VesPi
-npm install
+```bash
+npm run package:win:nsis
 ```
 
-The postinstall script rebuilds `node-pty` against Electron's ABI and downloads the Electron binary. First install may take a few minutes.
+## Keyboard
 
-If the Electron binary is missing after install, use the [manual Electron binary download](#manual-electron-binary-download) steps below. This is the confirmed fallback on Windows when Electron's postinstall extraction leaves a partial `dist` folder.
-
-#### 4. Install Pi
-
-```powershell
-powershell -c "irm https://pi.dev/install.ps1 | iex"
-```
-
-Open a **new terminal** after this so the updated PATH takes effect.
-
-#### 5. Run
-
-```powershell
-npm run dev
-```
-
-#### Common Windows errors
-
-| Error | Cause | Fix |
-|-------|-------|-----|
-| `MSB8040`: Spectre libs missing | VS Build Tools 2026 (v180 toolset) installed instead of 2022 (v143) | Uninstall 2026, install VS Build Tools 2022 with Spectre libs for v143 |
-| `electron-vite is not recognized` | `npm install` didn't complete | Run `npm install` again |
-| Electron binary missing after install | Electron's postinstall extraction left a partial or missing `dist` folder | Add the repo folder to Defender exclusions, then `npm install` again. If it still fails, use the manual download steps below |
-| `EPERM` / `EACCES` writing a project file | Controlled Folder Access (Ransomware protection) is blocking writes under Documents/Desktop | Keep the repo and your projects out of protected folders, or allow Pi Desktop through Controlled folder access (see below) |
-| Pi shows "error" in status popover | Pi not installed or PATH not updated | Run the install script above in a **new** terminal window |
-
-#### Controlled Folder Access (Ransomware protection)
-
-Windows **Controlled Folder Access** protects `Documents`, `Desktop`, `Pictures`, and similar folders by silently blocking apps it doesn't trust from writing to them. Because Pi Desktop is a coding agent that edits files, this shows up as intermittent `EPERM`/`EACCES` failures (during `npm install`, when the agent edits code, or when you save a file) if your repo or projects live inside a protected folder.
-
-The reliable fix is to keep code out of protected folders. Clone the repo and put your projects somewhere unprotected, for example:
-
-```powershell
-# Not C:\Users\<you>\Documents\... — use an unprotected path:
-git clone https://github.com/esseener/VesPi.git C:\dev\VesPi
-```
-
-If you must keep code under Documents/Desktop, allow the app instead:
-
-**Windows Security → Virus & threat protection → Ransomware protection → Manage ransomware protection → Allow an app through Controlled folder access → Add an allowed app**, then add the installed `Pi Desktop.exe` (and, for development, `node.exe`, `git.exe`, and `electron.exe`).
-
-> The portable `.exe` re-extracts to a temporary folder on each launch, so allow-listing it doesn't stick. Prefer the **installer** (`Pi-Desktop-<version>-win-x64-setup.exe`) if you rely on the allow-list approach.
-
-#### Manual Electron binary download
-
-If `npm install` completes but the app won't launch because Electron is missing or corrupted, download it directly from GitHub and unpack it into place. This is the known-good fallback when `node_modules\electron\dist` contains only partial contents, such as `locales`, and no `electron.exe`.
-
-Replace `43.0.0` with the version in `node_modules/electron/package.json` if it differs.
-
-```powershell
-$ver = "43.0.0"
-$url = "https://github.com/electron/electron/releases/download/v$ver/electron-v$ver-win32-x64.zip"
-$zip = "$env:TEMP\electron-v$ver-win32-x64.zip"
-Invoke-WebRequest -Uri $url -OutFile $zip
-if (Test-Path node_modules\electron\dist) { Remove-Item -Recurse -Force node_modules\electron\dist }
-Expand-Archive -Path $zip -DestinationPath node_modules\electron\dist -Force
-"electron.exe" | Out-File -Encoding ASCII -NoNewline node_modules\electron\path.txt
-"v$ver" | Out-File -Encoding ASCII -NoNewline node_modules\electron\dist\version
-```
-
-After this, `npm run dev` should work normally.
-
-> **Note:** Windows builds are community-tested. If you hit an issue not listed above, please [open a bug report](https://github.com/esseener/VesPi/issues).
+| Shortcut | Action |
+|---|---|
+| Enter | Send (or open steer / follow-up chooser while streaming) |
+| Shift+Enter | New line |
+| Escape | Stop generation (`abort`) |
+| Ctrl+K | Command palette |
+| Ctrl+P | Cycle models |
+| @ | Mention a workspace file |
 
 ## License
 
-Apache 2.0
+- VesPi changes: Apache-2.0
+- Desktop shell originates from Pi Desktop GUI Contributors — keep NOTICE / copyright
+- OMP remains upstream MIT; do not rebrand it as VesPi
 
-## Links
-
-- [VesPi releases](https://github.com/esseener/VesPi/releases)
-- [Pi agent](https://pi.dev)
-- [Oh My Pi / OMP](https://github.com/can1357/oh-my-pi)
-- [Pi Desktop (upstream GUI)](https://github.com/FaqFirebase/pi-desktop)
-- [Packages](https://pi.dev/packages)
-- [Issues](https://github.com/esseener/VesPi/issues)
+Public repo: **[esseener/VesPi](https://github.com/esseener/VesPi)**. Do not publish product updates to `FaqFirebase/pi-desktop`.

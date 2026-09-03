@@ -1,9 +1,11 @@
 import { ipcMain, dialog, shell, app, BrowserWindow } from 'electron'
+import { spawn } from 'child_process'
+import { homedir } from 'os'
 import type { ActivityStatsResult, OpenDialogOptions } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { activityStatsStore } from '../activity-stats'
 import { stat } from 'fs/promises'
-import { resolve } from 'path'
+import { join, resolve } from 'path'
 import { isString, isObject } from './validation'
 import type { IpcContext } from './context'
 
@@ -92,6 +94,19 @@ export function registerSystemHandlers(ctx: IpcContext): void {
     }
     const error = await shell.openPath(filePath)
     if (error) throw new Error(error)
+  })
+
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_OPEN_TRASH, async () => {
+    if (process.platform === 'win32') {
+      spawn('explorer.exe', ['shell:RecycleBinFolder'], { detached: true, stdio: 'ignore' }).unref()
+      return
+    }
+    if (process.platform === 'darwin') {
+      const error = await shell.openPath(join(homedir(), '.Trash'))
+      if (error) throw new Error(error)
+      return
+    }
+    spawn('xdg-open', ['trash://'], { detached: true, stdio: 'ignore' }).unref()
   })
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_GET_VERSION, async () => {

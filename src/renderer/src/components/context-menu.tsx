@@ -18,7 +18,6 @@ import {
 } from 'lucide-react'
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { useAppStore } from '../store'
-import { getSessionTitle } from '../utils/session-title'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 function menuLang() {
@@ -416,7 +415,6 @@ export function buildSessionContextMenu(
   isArchived: boolean,
   actions: SessionContextMenuActions
 ): ContextMenuItem[] {
-  const displayName = getSessionTitle(session.name, session.sessionId, session.preview)
   const items: ContextMenuItem[] = [
     {
       id: 'session-open',
@@ -466,19 +464,10 @@ export function buildSessionContextMenu(
     id: 'session-delete',
     label: t(menuLang(), 'deleteEllipsis'),
     icon: <Trash2 size={14} />,
-    action: async () => {
-      // Confirm before destructive action via an in-app themed dialog (not the
-      // native window.confirm, which mismatches the theme and leaves the
-      // Electron window without keyboard focus). Trash is recoverable when
-      // installed; without it, delete is permanent — the wording is honest.
-      const lang = menuLang()
-      const ok = await useAppStore.getState().requestConfirm({
-        title: t(lang, 'deleteSessionTitle'),
-        message: t(lang, 'deleteSessionMessage', { name: displayName }),
-        confirmLabel: t(lang, 'confirmRemove'),
-        danger: true,
-      })
-      if (ok) actions.onDelete(session)
+    action: () => {
+      // Confirm is inline next to the session row (sidebar / session panel).
+      // Do not open the global bottom/center AppConfirmDialog here.
+      actions.onDelete(session)
     },
   })
 

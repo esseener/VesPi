@@ -9,9 +9,15 @@ docs/superpowers/
 # Build outputs
 out/
 release/
+release-fresh/
+release-fresh2/
+release-fresh3/
 dist/
 build/
 .cache/
+.mimosa/
+.tmp-asar-check/
+.tmp-dialog-preview/
 
 # IDE / editors
 .vscode/

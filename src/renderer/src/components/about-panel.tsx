@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Info, Loader2, ArrowUpCircle } from 'lucide-react'
+import { Info, Loader2, ArrowUpCircle, Trash2 } from 'lucide-react'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel } from '../utils/kernel-update-progress'
 import type { DiagnosticsReport } from '../../../shared/ipc-contracts'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
 
@@ -29,6 +30,10 @@ export function AboutPanel(): React.JSX.Element {
   const updateInfo = useAppStore((state) => state.updateInfo)
   const checkForUpdates = useAppStore((state) => state.checkForUpdates)
   const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
+  const kernelUpdateProgress = useAppStore((state) => state.kernelUpdateProgress)
+  const kernelBusy = kernelUpdateBusy(kernelUpdateProgress)
+  const kernelDone = kernelUpdateProgress?.phase === 'done'
+  const kernelFailed = kernelUpdateProgress?.phase === 'error'
   const [report, setReport] = useState<DiagnosticsReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
@@ -128,6 +133,14 @@ export function AboutPanel(): React.JSX.Element {
           <div className="space-y-2">
             <button
               type="button"
+              onClick={() => { void window.piDesktop.system.openTrash() }}
+              className="flex w-full items-center justify-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
+            >
+              <Trash2 size={14} />
+              {t(language, 'openRecycleBin')}
+            </button>
+            <button
+              type="button"
               onClick={() => void handleCheck()}
               disabled={checking || installing}
               className="flex w-full items-center justify-center gap-2 border border-border-strong bg-transparent px-3 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-60"
@@ -149,24 +162,48 @@ export function AboutPanel(): React.JSX.Element {
                 <span className="shrink-0 text-xs text-dim">{t(language, 'updateOpenRelease')}</span>
               </button>
             )}
-            {updateInfo?.kernel.updateAvailable && (
-              <button
-                type="button"
-                onClick={() => void handleInstallKernel()}
-                disabled={installing || !updateInfo.kernel.downloadUrl}
-                className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg disabled:opacity-60"
-              >
-                {installing ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <ArrowUpCircle size={14} className="shrink-0" />}
-                <span className="min-w-0 flex-1 truncate">
-                  {installing
-                    ? t(language, 'updatingKernel')
-                    : `${t(language, 'updateHasUpdate')} · ${t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion || ompVersion}` })}`}
-                </span>
-                <span className="shrink-0 text-xs text-dim">{t(language, 'updateKernel')}</span>
-              </button>
+            {(updateInfo?.kernel.updateAvailable || kernelBusy || kernelDone || kernelFailed) && (
+              <div className="space-y-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (kernelDone) {
+                      useAppStore.getState().dismissKernelUpdateProgress()
+                      return
+                    }
+                    void handleInstallKernel()
+                  }}
+                  disabled={installing || kernelBusy || (!kernelDone && !kernelFailed && !updateInfo?.kernel.downloadUrl)}
+                  className="flex w-full items-center gap-2 border border-accent-fg/60 bg-transparent px-3 py-2 text-left text-sm text-primary transition-colors hover:border-accent-fg disabled:opacity-60"
+                >
+                  {installing || kernelBusy ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <ArrowUpCircle size={14} className="shrink-0" />}
+                  <span className={`min-w-0 flex-1 truncate ${kernelDone ? 'text-success' : kernelFailed ? 'text-error' : ''}`}>
+                    {installing || kernelBusy || kernelDone || kernelFailed
+                      ? kernelUpdateLabel(language, kernelUpdateProgress)
+                      : `${t(language, 'updateHasUpdate')} · ${t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion || ompVersion}` })}`}
+                  </span>
+                  <span className="shrink-0 text-xs text-dim">
+                    {installing || kernelBusy
+                      ? `${kernelUpdateBarPercent(kernelUpdateProgress)}%`
+                      : kernelFailed
+                        ? t(language, 'updateKernel')
+                        : kernelDone
+                          ? t(language, 'dismiss')
+                          : t(language, 'updateKernel')}
+                  </span>
+                </button>
+                {(installing || kernelBusy) && (
+                  <div className="h-1.5 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                    <div
+                      className="h-full bg-accent-fg transition-[width] duration-200"
+                      style={{ width: `${kernelUpdateBarPercent(kernelUpdateProgress)}%` }}
+                    />
+                  </div>
+                )}
+              </div>
             )}
-            {kernelMessage && <p className="text-xs text-success">{kernelMessage}</p>}
-            {kernelError && <p className="text-xs text-error">{kernelError}</p>}
+            {(kernelMessage || kernelDone) && <p className="text-xs text-success">{kernelMessage || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}
+            {(kernelError || kernelFailed) && <p className="text-xs text-error">{kernelError || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}
             {checked && updateInfo && !updateInfo.updateAvailable && !updateInfo.kernel.updateAvailable && (
               <p className="text-xs text-dim">
                 {t(language, 'updateCurrent', { vespi: updateInfo.currentVersion || uiVersion, omp: updateInfo.kernel.currentVersion || ompVersion })}

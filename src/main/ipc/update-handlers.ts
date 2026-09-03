@@ -1,10 +1,10 @@
-import { ipcMain, app } from 'electron'
+import { ipcMain, app, BrowserWindow } from 'electron'
 import { createWriteStream } from 'fs'
 import { chmod, copyFile, mkdir, rename, unlink } from 'fs/promises'
 import { dirname } from 'path'
 import { pipeline } from 'stream/promises'
 import { Readable } from 'stream'
-import type { KernelUpdateInfo, UpdateCheckResult } from '../../shared/ipc-contracts'
+import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
 import { extractVersionLine } from '../diagnostics-report'
@@ -14,7 +14,7 @@ import { resolvePrivateOmpPath } from '../vespi-runtime'
 const UPDATE_REPO = 'esseener/VesPi'
 const KERNEL_REPO = 'can1357/oh-my-pi'
 const UPDATE_CHECK_TIMEOUT_MS = 8000
-const KERNEL_DOWNLOAD_TIMEOUT_MS = 120_000
+const KERNEL_DOWNLOAD_TIMEOUT_MS = 10 * 60_000
 const USER_AGENT = 'VesPi'
 
 interface GithubAsset {
@@ -158,7 +158,18 @@ async function checkForUpdate(): Promise<UpdateCheckResult> {
   return { ...vespi, kernel }
 }
 
-async function downloadToFile(url: string, dest: string): Promise<void> {
+function broadcastKernelProgress(progress: KernelUpdateProgress): void {
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (window.isDestroyed()) continue
+    window.webContents.send(IPC_CHANNELS.EVENT_KERNEL_UPDATE_PROGRESS, progress)
+  }
+}
+
+async function downloadToFile(
+  url: string,
+  dest: string,
+  onProgress?: (received: number, total: number) => void,
+): Promise<void> {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), KERNEL_DOWNLOAD_TIMEOUT_MS)
   try {
@@ -169,7 +180,16 @@ async function downloadToFile(url: string, dest: string): Promise<void> {
     })
     if (!res.ok || !res.body) throw new Error(`Download failed: ${res.status} ${res.statusText}`)
     await mkdir(dirname(dest), { recursive: true })
-    await pipeline(Readable.fromWeb(res.body as never), createWriteStream(dest))
+    const total = Number(res.headers.get('content-length') ?? 0)
+    let received = 0
+    onProgress?.(0, total)
+    const source = Readable.fromWeb(res.body as never)
+    source.on('data', (chunk: Buffer | string) => {
+      received += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
+      onProgress?.(received, total)
+    })
+    await pipeline(source, createWriteStream(dest))
+    onProgress?.(received, total || received)
   } finally {
     clearTimeout(timer)
   }
@@ -185,7 +205,18 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
   const staged = `${dest}.new`
   const backup = `${dest}.bak`
   try {
-    await downloadToFile(kernel.downloadUrl, staged)
+    broadcastKernelProgress({ phase: 'downloading', percent: 0, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
+    await downloadToFile(kernel.downloadUrl, staged, (received, total) => {
+      const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
+      broadcastKernelProgress({
+        phase: 'downloading',
+        percent,
+        receivedBytes: received,
+        totalBytes: total,
+        version: kernel.latestVersion,
+      })
+    })
+    broadcastKernelProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
     try { await unlink(backup) } catch { /* no previous backup */ }
     try {
       await rename(dest, backup)
@@ -201,11 +232,13 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
     }
     if (process.platform !== 'win32') await chmod(dest, 0o755)
     appLog.warn('updates', `Installed OMP kernel ${kernel.latestVersion} at ${dest}`)
+    broadcastKernelProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
     return { ok: true, version: kernel.latestVersion }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
     appLog.warn('updates', 'OMP kernel install failed', err)
     try { await unlink(staged) } catch { /* ignore */ }
+    broadcastKernelProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: message })
     return { ok: false, error: message }
   }
 }
@@ -215,6 +248,7 @@ export function registerUpdateHandlers(): void {
     return checkForUpdate()
   })
   ipcMain.handle(IPC_CHANNELS.UPDATE_INSTALL_KERNEL, async () => {
+    broadcastKernelProgress({ phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 })
     return installKernelUpdate()
   })
 }

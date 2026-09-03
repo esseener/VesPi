@@ -397,11 +397,13 @@ Follow semver on the 1.x line:
 - `1.x.0` — Feature additions.
 - `x.0.0` — Breaking major.
 
-Never ship a user-visible change only as a local preview. After the change is tested:
+Never ship a user-visible change only as a local preview. **User gate:** after a fix, install the rebuilt package onto this machine's VesPi (`%LOCALAPPDATA%\Programs\VesPi\`) and wait for the user to test and confirm. Do not commit-push, tag, or GitHub-Release until they say it is OK.
 
-1. Bump `package.json` version
+After the user confirms:
+
+1. Bump `package.json` version (if not already bumped for that install)
 2. Commit and push `master` to `vespi` (`esseener/VesPi`)
-3. `npm run package:win`
+3. `npm run package:win` if artifacts still need a final rebuild
 4. Tag `vX.Y.Z` and create a GitHub Release with both versioned artifacts
 5. Confirm About / the top banner can see the new tag from an older client
 
@@ -426,6 +428,7 @@ Before delivering a change:
 4. Add or update tests (`npx tsx --test`) when the contract changed
 5. Remove dead code
 6. Ensure consistency (naming, API shape, structure)
-7. Verify on the actual UI (`npm run preview` or the versioned portable)
-8. After local testing succeeds, bump the version, push `esseener/VesPi`, rebuild the versioned installer, and publish a GitHub Release so other machines and other agents can sync
-9. Update `MEMORY.md` with the ship decision (version, what changed, update channels)
+7. Verify on the actual UI (`npm run preview` during development)
+8. Rebuild the versioned installer, **install it over the local VesPi**, and stop. The user tests that installed app.
+9. Only after the user confirms: bump version if needed, push `esseener/VesPi`, tag, and publish a GitHub Release
+10. Update `MEMORY.md` with the ship decision (version, what changed, update channels)

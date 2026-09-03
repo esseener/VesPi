@@ -77,6 +77,8 @@ type Attachment =
 export function ChatInput(): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const sendPrompt = useAppStore((state) => state.sendPrompt)
+  const sendSteer = useAppStore((state) => state.sendSteer)
+  const sendFollowUp = useAppStore((state) => state.sendFollowUp)
   const abort = useAppStore((state) => state.abort)
   const isStreaming = useAppStore((state) => state.isStreaming)
   const piStatus = useAppStore((state) => state.piStatus)
@@ -143,6 +145,11 @@ export function ChatInput(): React.JSX.Element {
 
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [midTurnDraft, setMidTurnDraft] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!isStreaming) setMidTurnDraft(null)
+  }, [isStreaming])
 
   // Clear the composer and collapse it back to the idle height. The textarea is
   // uncontrolled and auto-grows in onInput, so clearing the value alone leaves it
@@ -258,16 +265,7 @@ export function ChatInput(): React.JSX.Element {
     [builtins, resetComposer, resizeTextarea]
   )
 
-  const handleSend = useCallback(
-    async (message: string) => {
-      // Record the raw prompt (pre-attachment-inlining) for ↑/↓ recall, and
-      // reset any in-progress history navigation.
-      recordPrompt(message)
-      historyIndex.current = -1
-      draft.current = ''
-
-      // Text attachments are inlined into the prompt; image attachments are
-      // sent as Pi image blocks so the model actually sees them.
+  const composePayload = useCallback((message: string) => {
       const textAttachments = attachments.filter((a) => a.kind === 'text')
       const imageAttachments = attachments.filter(
         (a): a is Extract<Attachment, { kind: 'image' }> => a.kind === 'image'
@@ -279,14 +277,28 @@ export function ChatInput(): React.JSX.Element {
         mimeType: a.image.mimeType,
         data: a.image.data,
       }))
-
       let fullMessage = message
       if (textAttachments.length > 0) {
         fullMessage += textAttachments
           .map((a) => `\n\n${formatUntrustedBlock(`ATTACHED FILE: ${a.name}`, a.content, ATTACHMENT_DATA_NOTE)}`)
           .join('')
       }
+      return { fullMessage, images, displayAttachments }
+    }, [attachments])
 
+  const handleSend = useCallback(
+    async (message: string) => {
+      if (isStreaming) {
+        setMidTurnDraft(message)
+        return
+      }
+      recordPrompt(message)
+      historyIndex.current = -1
+      draft.current = ''
+
+      // Text attachments are inlined into the prompt; image attachments are
+      // sent as Pi image blocks so the model actually sees them.
+      const { fullMessage, images, displayAttachments } = composePayload(message)
       sendPrompt(
         fullMessage,
         images.length > 0 ? { images, attachments: displayAttachments } : undefined
@@ -294,8 +306,24 @@ export function ChatInput(): React.JSX.Element {
       setAttachments([])
       resetComposer()
     },
-    [sendPrompt, attachments, recordPrompt, resetComposer]
+    [sendPrompt, composePayload, recordPrompt, resetComposer, isStreaming]
   )
+
+  const confirmMidTurn = useCallback((mode: 'steer' | 'followUp') => {
+    if (!midTurnDraft) return
+    recordPrompt(midTurnDraft)
+    historyIndex.current = -1
+    draft.current = ''
+    const { fullMessage, images } = composePayload(midTurnDraft)
+    if (mode === 'steer') {
+      void sendSteer(fullMessage, images.length > 0 ? { images } : undefined)
+    } else {
+      void sendFollowUp(fullMessage)
+    }
+    setMidTurnDraft(null)
+    setAttachments([])
+    resetComposer()
+  }, [midTurnDraft, composePayload, recordPrompt, resetComposer, sendSteer, sendFollowUp])
 
   const handleAbort = useCallback(() => {
     abort()
@@ -426,6 +454,37 @@ export function ChatInput(): React.JSX.Element {
           <SubagentProgress />
         </div>
         <div id="vespi-composer-popup" className="pointer-events-auto absolute bottom-full left-0 right-0 z-[60] mb-2" />
+
+        {midTurnDraft && isStreaming && (
+          <div className="border-b border-border px-3 py-2">
+            <p className="text-[11px] leading-snug text-secondary">{t(language, 'midTurnChooserHint')}</p>
+            <div className="mt-2 flex flex-wrap items-stretch gap-1.5">
+              <button
+                type="button"
+                onClick={() => confirmMidTurn('steer')}
+                className="min-w-0 flex-1 rounded-md border border-warning/70 bg-transparent px-2 py-1.5 text-left transition-colors hover:border-warning"
+              >
+                <div className="text-[11px] font-medium text-warning">{t(language, 'midTurnSteer')}</div>
+                <div className="mt-0.5 text-[10px] leading-snug text-faint">{t(language, 'midTurnSteerHint')}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmMidTurn('followUp')}
+                className="min-w-0 flex-1 rounded-md border border-border-strong bg-transparent px-2 py-1.5 text-left transition-colors hover:border-accent-fg"
+              >
+                <div className="text-[11px] font-medium text-primary">{t(language, 'midTurnFollowUp')}</div>
+                <div className="mt-0.5 text-[10px] leading-snug text-faint">{t(language, 'midTurnFollowUpHint')}</div>
+              </button>
+              <button
+                type="button"
+                onClick={() => setMidTurnDraft(null)}
+                className="rounded-md px-2 py-1.5 text-[11px] text-muted hover:text-primary"
+              >
+                {t(language, 'midTurnCancel')}
+              </button>
+            </div>
+          </div>
+        )}
 
         {slashOpen && (
           <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl">

@@ -622,23 +622,36 @@ function SessionEntry({
 
       {/* Inline delete confirmation */}
       {confirmingDelete && (
-        <div className="mt-2 flex items-center gap-2 rounded border border-error-bg bg-error-bg px-2 py-1.5 text-[11px] text-error">
-          <Trash2 size={12} className="shrink-0" />
-          <span className="flex-1">
-            Delete this session? Will use <code className="text-error">trash</code> if available, otherwise permanent.
-          </span>
-          <button
-            onClick={() => setConfirmingDelete(false)}
-            className="rounded px-2 py-0.5 text-muted hover:text-primary"
-          >
-            Cancel
-          </button>
-          <button
-            onClick={handleDelete}
-            className="rounded-md border border-error bg-transparent px-2 py-0.5 text-error transition-colors hover:border-error-hover"
-          >
-            Delete
-          </button>
+        <div className="mt-2 rounded border border-error bg-error-bg/40 px-2 py-1.5 text-[11px]">
+          <div className="truncate font-medium text-primary">
+            {getSessionTitle(session.name, session.sessionId, session.preview)}
+          </div>
+          <div className="mt-0.5 text-error">
+            {t(language, 'deleteSessionInline', {
+              name: getSessionTitle(session.name, session.sessionId, session.preview),
+            })}
+          </div>
+          <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => { void window.piDesktop.system.openTrash() }}
+              className="mr-auto rounded px-2 py-0.5 text-muted hover:text-primary"
+            >
+              {t(language, 'openRecycleBin')}
+            </button>
+            <button
+              onClick={() => setConfirmingDelete(false)}
+              className="rounded px-2 py-0.5 text-muted hover:text-primary"
+            >
+              {t(language, 'cancel')}
+            </button>
+            <button
+              onClick={handleDelete}
+              className="rounded-md border border-error bg-transparent px-2 py-0.5 text-error transition-colors hover:border-error-hover"
+            >
+              {t(language, 'confirmRemove')}
+            </button>
+          </div>
         </div>
       )}
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react'
 import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
+import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { useGlobalWorkflowOpen } from '../hooks'
@@ -13,6 +14,24 @@ import { useContextMenu, buildWorkspaceContextMenu } from './context-menu'
 
 function tabLabel(workspace: Workspace): string {
   return workspace.name || workspace.path.split(/[\\/]/).filter(Boolean).pop() || workspace.path
+}
+
+const TOOL_TAB_LABEL: Record<string, MessageKey> = {
+  settings: 'settings',
+  packages: 'extensions',
+  notes: 'notes',
+  skills: 'skills',
+  about: 'about',
+  diagnostics: 'diagnostics',
+  sessions: 'sessions',
+  timeline: 'timeline',
+  diff: 'changedFiles',
+  'mission-control': 'missionControl',
+}
+
+function toolTabLabel(view: string, workflowOpen: boolean): MessageKey {
+  if (workflowOpen) return 'allWorkflows'
+  return TOOL_TAB_LABEL[view] ?? 'tools'
 }
 
 export function WorkspaceTabs(): React.JSX.Element {
@@ -38,9 +57,10 @@ export function WorkspaceTabs(): React.JSX.Element {
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
 
-  const toolView = ['settings', 'packages', 'notes', 'skills', 'about'] as const
+  const toolView = ['settings', 'packages', 'notes', 'skills', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
   const toolsActive =
     toolView.includes(currentView as (typeof toolView)[number]) || globalWorkflowOpen
+  const toolsTabKey = toolTabLabel(currentView, globalWorkflowOpen)
 
   const tabs = useMemo(
     () => [...workspaces].sort((a, b) => a.createdAt - b.createdAt),
@@ -143,10 +163,10 @@ export function WorkspaceTabs(): React.JSX.Element {
           <div
             aria-current="page"
             className="flex min-w-0 flex-1 items-center gap-1.5 px-2 text-left text-[11px]"
-            title={t(language, 'extensionsDock')}
+            title={t(language, toolsTabKey)}
           >
             <Settings size={12} className="shrink-0 text-accent-fg" />
-            <span className="truncate font-jetbrains">{t(language, 'extensionsDock')}</span>
+            <span className="truncate font-jetbrains">{t(language, toolsTabKey)}</span>
           </div>
           <button
             type="button"

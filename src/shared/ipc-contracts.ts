@@ -82,6 +82,7 @@ export const IPC_CHANNELS = {
   SYSTEM_PATH_KIND: 'system:path-kind',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
   SYSTEM_REVEAL_PATH: 'system:reveal-path',
+  SYSTEM_OPEN_TRASH: 'system:open-trash',
   SYSTEM_GET_VERSION: 'system:get-version',
   SYSTEM_WINDOW_MINIMIZE: 'system:window-minimize',
   SYSTEM_WINDOW_TOGGLE_MAXIMIZE: 'system:window-toggle-maximize',
@@ -90,6 +91,7 @@ export const IPC_CHANNELS = {
   EVENT_WINDOW_MAXIMIZED: 'event:window-maximized',
   UPDATE_CHECK: 'update:check',
   UPDATE_INSTALL_KERNEL: 'update:install-kernel',
+  EVENT_KERNEL_UPDATE_PROGRESS: 'event:kernel-update-progress',
 
   // Activity
   ACTIVITY_GET_STATS: 'activity:get-stats',
@@ -1144,6 +1146,18 @@ export interface KernelUpdateInfo {
   latestVersion: string
   url: string
   downloadUrl: string
+}
+
+export type KernelUpdatePhase = 'checking' | 'downloading' | 'installing' | 'restarting' | 'done' | 'error'
+
+export interface KernelUpdateProgress {
+  phase: KernelUpdatePhase
+  /** 0–100 while downloading; 0 when size is unknown. */
+  percent: number
+  receivedBytes: number
+  totalBytes: number
+  version?: string
+  error?: string
 }
 
 /** Result of checking GitHub releases for VesPi and the bundled OMP kernel. */

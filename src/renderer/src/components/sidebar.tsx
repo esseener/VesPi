@@ -111,6 +111,7 @@ export function Sidebar(): React.JSX.Element {
   const [renamingWhere, setRenamingWhere] = useState<'current' | 'recent' | null>(null)
   const [renameValue, setRenameValue] = useState('')
   const renameCancelRef = useRef(false)
+  const [confirmingDeletePath, setConfirmingDeletePath] = useState<string | null>(null)
 
   const startSessionRename = (where: 'current' | 'recent'): void => {
     renameCancelRef.current = false
@@ -279,7 +280,7 @@ export function Sidebar(): React.JSX.Element {
         onOpen: (s) => { openSession(s) },
         onArchive: (id) => archiveSession(id),
         onUnarchive: (id) => unarchiveSession(id),
-        onDelete: (s) => { deleteSession(s) },
+        onDelete: (s) => { setConfirmingDeletePath(s.path) },
         // Rename only offered for the active session (Pi renames the active one).
         onRename: isActive ? () => startSessionRename('recent') : undefined,
         onRuns: (s) => openWorkflowRunsForSession(resolveRunSessionId(s.piSessionId, s.sessionId) ?? s.sessionId),
@@ -327,6 +328,56 @@ export function Sidebar(): React.JSX.Element {
         >
           <Clock size={12} className="shrink-0 text-muted" />
           {renderRenameInput()}
+        </div>
+      )
+    }
+
+    if (confirmingDeletePath === session.path) {
+      return (
+        <div
+          key={session.path}
+          className={clsx(
+            'rounded-sm border border-error bg-error-bg/40 px-2 py-1.5',
+            nested && 'pl-2'
+          )}
+        >
+          <div className="flex items-start gap-2">
+            <Trash2 size={12} className="mt-0.5 shrink-0 text-error" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-xs font-medium text-primary" title={labels.title}>
+                {labels.title}
+              </div>
+              <div className="mt-0.5 text-[11px] leading-snug text-error">
+                {t(language, 'deleteSessionInline', { name: labels.title })}
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
+                <button
+                  type="button"
+                  onClick={() => { void window.piDesktop.system.openTrash() }}
+                  className="mr-auto rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
+                >
+                  {t(language, 'openRecycleBin')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setConfirmingDeletePath(null)}
+                  className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
+                >
+                  {t(language, 'cancel')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void deleteSession(session)
+                    setConfirmingDeletePath(null)
+                  }}
+                  className="rounded-md border border-error bg-transparent px-1.5 py-0.5 text-[11px] text-error transition-colors hover:border-error-hover"
+                >
+                  {t(language, 'confirmRemove')}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )
     }

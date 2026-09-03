@@ -47,6 +47,7 @@ import type {
   NoteInput,
   NoteUpdate,
   UpdateCheckResult,
+  KernelUpdateProgress,
   PromptImage,
   CouncilArbiterRequest,
   PermissionRule,
@@ -383,6 +384,7 @@ interface AppState {
   // Update check (GitHub releases). Set when a newer version is available.
   updateInfo: UpdateCheckResult | null
   updateDismissed: boolean
+  kernelUpdateProgress: KernelUpdateProgress | null
 
   // Cross-session lineage tree
   lineage: LineageNode[]
@@ -402,7 +404,7 @@ interface AppActions {
 
   // Prompts
   sendPrompt: (message: string, options?: { images?: PromptImage[]; attachments?: DisplayAttachment[] }) => Promise<void>
-  sendSteer: (message: string) => Promise<void>
+  sendSteer: (message: string, options?: { images?: PromptImage[] }) => Promise<void>
   sendFollowUp: (message: string) => Promise<void>
   runCouncil: (request: string) => Promise<void>
   approveCouncilPlan: () => Promise<void>
@@ -579,6 +581,8 @@ interface AppActions {
   // Update check
   checkForUpdates: () => Promise<void>
   installKernelUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
+  handleKernelUpdateProgress: (progress: KernelUpdateProgress) => void
+  dismissKernelUpdateProgress: () => void
   dismissUpdate: () => void
 
   // Lineage
@@ -668,6 +672,10 @@ const LOCAL_ECHO_MAX = 50
 function recordLocalEcho(text: string): void {
   pendingLocalEchoes.push({ text, sentAt: Date.now() })
   if (pendingLocalEchoes.length > LOCAL_ECHO_MAX) pendingLocalEchoes.shift()
+}
+
+export function resetLocalEchoesForTests(): void {
+  pendingLocalEchoes.length = 0
 }
 
 /** Consume the oldest pending local echo matching this content, if any. */
@@ -943,6 +951,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   noteDraft: null,
   updateInfo: null,
   updateDismissed: false,
+  kernelUpdateProgress: null,
 
   lineage: [],
 
@@ -1043,6 +1052,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
 
     const { isStreaming, sessionState, settings } = get()
+    if (isStreaming) return
 
     // Extract #tags from message
     const tagMatches = message.match(/#([a-z0-9_-]+)/gi)
@@ -1065,31 +1075,21 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ isStreaming: true, streamingContent: '', streamingThinking: '', streamingToolCalls: new Map() })
 
     try {
-      if (isStreaming) {
-        // Queue as steering during streaming, carrying any image attachments.
-        recordLocalEcho(message)
-        await window.piDesktop.commands.steer(message, options?.images)
-      } else {
-        const prompt = settings?.permissionMode === 'plan-readonly'
-          ? buildPlanningPrompt(message)
-          : message
-        // Record the text actually sent (plan mode wraps it), not the text
-        // displayed — Pi's message_start echo carries the sent form.
-        recordLocalEcho(prompt)
-        await window.piDesktop.commands.prompt(prompt, options)
-      }
+      const prompt = settings?.permissionMode === 'plan-readonly'
+        ? buildPlanningPrompt(message)
+        : message
+      recordLocalEcho(prompt)
+      await window.piDesktop.commands.prompt(prompt, options)
     } catch (err) {
       get().addMessage(notice('sysError', { detail: errDetail(err) }))
       set({ isStreaming: false })
     }
   },
 
-  sendSteer: async (message) => {
+  sendSteer: async (message, options) => {
     try {
-      // Steers are intentionally not rendered as bubbles; record the echo so
-      // the message_start handler does not render one as an external prompt.
       recordLocalEcho(message)
-      await window.piDesktop.commands.steer(message)
+      await window.piDesktop.commands.steer(message, options?.images)
     } catch (err) {
       get().addMessage(notice('sysSteerError', { detail: errDetail(err) }))
     }
@@ -1097,7 +1097,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   sendFollowUp: async (message) => {
     try {
-      // Same as sendSteer: suppress the echo-rendered external bubble.
       recordLocalEcho(message)
       await window.piDesktop.commands.followUp(message)
     } catch (err) {
@@ -3084,11 +3083,48 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
+  handleKernelUpdateProgress: (progress) => {
+    set({ kernelUpdateProgress: progress })
+  },
+
+  dismissKernelUpdateProgress: () => set({ kernelUpdateProgress: null }),
+
   installKernelUpdate: async () => {
+    set({
+      kernelUpdateProgress: { phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 },
+    })
     const result = await window.piDesktop.updates.installKernel()
     if (result.ok) {
+      set({
+        kernelUpdateProgress: {
+          phase: 'restarting',
+          percent: 100,
+          receivedBytes: 0,
+          totalBytes: 0,
+          version: result.version,
+        },
+      })
       await get().checkForUpdates()
       if (get().piStatus === 'running') await get().restartPi()
+      set({
+        kernelUpdateProgress: {
+          phase: 'done',
+          percent: 100,
+          receivedBytes: 0,
+          totalBytes: 0,
+          version: result.version,
+        },
+      })
+    } else {
+      set({
+        kernelUpdateProgress: {
+          phase: 'error',
+          percent: 0,
+          receivedBytes: 0,
+          totalBytes: 0,
+          error: result.error,
+        },
+      })
     }
     return result
   },

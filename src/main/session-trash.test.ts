@@ -1,12 +1,11 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { buildTrashArgs, moveToTrash, type TrashSpawn, type TrashSpawnResult } from './session-trash'
+import { buildTrashArgs, buildWindowsRecycleArgs, moveToTrash, type TrashSpawn, type TrashSpawnResult } from './session-trash'
 
 /**
  * A deleted session must land in the desktop trash whenever the machine can
- * offer one. The regression these cover: trash-cli is absent on most installs,
- * and when the only helper was `trash`, every delete became a permanent
- * unlink with no undo.
+ * offer one. Linux: trash-cli then gio. Windows: recycle-to-bin.ps1 via
+ * PowerShell -File so the path is a separate argv item.
  */
 
 const NOT_INSTALLED: TrashSpawnResult = { status: null, error: Object.assign(new Error('spawn ENOENT'), { code: 'ENOENT' }) }
@@ -24,33 +23,31 @@ function recordingSpawn(replies: Record<string, TrashSpawnResult>): { spawn: Tra
 
 test('trash-cli is used when it is installed, and nothing else is tried', () => {
   const { spawn, calls } = recordingSpawn({ trash: SUCCEEDED })
-  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn), true)
+  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn, 'linux'), true)
   assert.deepEqual(calls.map((c) => c.command), ['trash'])
 })
 
 test('a missing trash-cli falls through to gio instead of failing', () => {
-  // This is the machine the sessions were lost on: no trash-cli, gio present.
   const { spawn, calls } = recordingSpawn({ trash: NOT_INSTALLED, gio: SUCCEEDED })
-  assert.equal(moveToTrash('/home/u/.omp/agent/sessions/p/a.jsonl', spawn), true)
+  assert.equal(moveToTrash('/home/u/.omp/agent/sessions/p/a.jsonl', spawn, 'linux'), true)
   assert.deepEqual(calls.map((c) => c.command), ['trash', 'gio'])
   assert.deepEqual(calls[1].args, ['trash', '/home/u/.omp/agent/sessions/p/a.jsonl'])
 })
 
 test('no helper installed reports failure so the caller can decide', () => {
   const { spawn, calls } = recordingSpawn({})
-  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn), false)
-  // Every helper must be attempted before giving up on a recoverable delete.
+  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn, 'linux'), false)
   assert.deepEqual(calls.map((c) => c.command), ['trash', 'gio'])
 })
 
 test('a helper that runs and refuses is not treated as success', () => {
   const { spawn } = recordingSpawn({ trash: REFUSED, gio: REFUSED })
-  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn), false)
+  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn, 'linux'), false)
 })
 
 test('a refusal by one helper still lets the next one try', () => {
   const { spawn, calls } = recordingSpawn({ trash: REFUSED, gio: SUCCEEDED })
-  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn), true)
+  assert.equal(moveToTrash('/home/u/.pi/agent/sessions/p/a.jsonl', spawn, 'linux'), true)
   assert.deepEqual(calls.map((c) => c.command), ['trash', 'gio'])
 })
 
@@ -59,8 +56,26 @@ test('a path that could read as an option is separated with --', () => {
   assert.deepEqual(buildTrashArgs(['trash'], '-weird.jsonl'), ['trash', '--', '-weird.jsonl'])
 })
 
+test('Windows uses PowerShell -File with the path as a separate argument', () => {
+  const script = 'C:\\app\\resources\\recycle-to-bin.ps1'
+  const target = 'C:\\Users\\u\\.omp\\profiles\\vespi\\agent\\sessions\\a.jsonl'
+  const { spawn, calls } = recordingSpawn({ 'powershell.exe': SUCCEEDED, trash: SUCCEEDED, gio: SUCCEEDED })
+  assert.equal(moveToTrash(target, spawn, 'win32', script), true)
+  assert.deepEqual(calls.map((c) => c.command), ['powershell.exe'])
+  assert.deepEqual(calls[0].args, buildWindowsRecycleArgs(script, target))
+  assert.equal(calls[0].args.includes('-File'), true)
+  assert.equal(calls[0].args.includes('-Command'), false)
+})
+
+test('Windows recycle args keep the session path as its own argv item', () => {
+  const script = '/resources/recycle-to-bin.ps1'
+  const target = "C:\\Users\\O'Brien\\a.jsonl"
+  const args = buildWindowsRecycleArgs(script, target)
+  assert.equal(args[args.length - 1], target)
+  assert.equal(args[args.length - 2], '-Path')
+})
+
 test('an ordinary absolute path is passed without a separator', () => {
-  // Not every minimal `trash` build accepts `--`, so it is added only when needed.
   assert.deepEqual(buildTrashArgs([], '/home/u/a.jsonl'), ['/home/u/a.jsonl'])
   assert.deepEqual(buildTrashArgs(['trash'], '/home/u/a.jsonl'), ['trash', '/home/u/a.jsonl'])
 })

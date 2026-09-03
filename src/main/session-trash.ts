@@ -1,33 +1,49 @@
 import { spawnSync } from 'child_process'
+import { join } from 'path'
 
 /**
  * Moving a deleted session to the desktop trash instead of destroying it.
  *
- * Pi's own session selector shells out to the `trash` CLI, and the GUI
- * followed it. But `trash` (trash-cli) is a separate package that most
- * distributions do not install, and the only fallback was `unlink`. On any
- * machine without trash-cli every confirmed delete was therefore permanent,
- * with no undo, while the code read as if deletion were recoverable.
- *
- * So more than one helper is tried. `gio trash` ships with GLib and is
- * present on essentially every desktop Linux install, which restores a real
- * trash bin on the machines trash-cli misses.
+ * Linux: try `trash` (trash-cli), then `gio trash` (GLib).
+ * Windows: a fixed helper script under resources/recycle-to-bin.ps1; the
+ * session path is a separate argv item, never concatenated into -Command.
+ * If no helper works, the caller falls back to unlink.
  */
 
-/** Trash helpers in preference order; the first one installed that succeeds wins. */
 const TRASH_HELPERS: ReadonlyArray<{ command: string; leadingArgs: readonly string[] }> = [
-  // trash-cli, matching what Pi itself invokes.
   { command: 'trash', leadingArgs: [] },
-  // GLib's file mover, part of the `libglib2.0-bin` package every GTK desktop pulls in.
   { command: 'gio', leadingArgs: ['trash'] },
 ]
 
-/** Exit status of a helper that completed successfully. */
 const TRASH_EXIT_OK = 0
+
+export const WINDOWS_RECYCLE_SCRIPT = 'recycle-to-bin.ps1'
+
+export function windowsRecycleScriptPath(): string {
+  // Packaged: extraResources copies resources/ to process.resourcesPath/resources/.
+  // Dev / tests: sibling of src/main via ../../resources.
+  const resourcesDir =
+    typeof process.resourcesPath === 'string' && process.resourcesPath.length > 0
+      ? join(process.resourcesPath, 'resources')
+      : join(__dirname, '../../resources')
+  return join(resourcesDir, WINDOWS_RECYCLE_SCRIPT)
+}
+
+export function buildWindowsRecycleArgs(scriptPath: string, targetPath: string): string[] {
+  return [
+    '-NoProfile',
+    '-NonInteractive',
+    '-WindowStyle',
+    'Hidden',
+    '-File',
+    scriptPath,
+    '-Path',
+    targetPath,
+  ]
+}
 
 export interface TrashSpawnResult {
   status: number | null
-  /** Set when the helper could not be executed at all, e.g. ENOENT when it is not installed. */
   error?: Error
 }
 
@@ -38,26 +54,26 @@ function runTrashHelper(command: string, args: string[]): TrashSpawnResult {
   return { status: result.status, error: result.error }
 }
 
-/**
- * Arguments for one helper. `--` is added only for a path that could be read
- * as an option, because not every minimal `trash` build accepts the separator.
- */
 export function buildTrashArgs(leadingArgs: readonly string[], targetPath: string): string[] {
   return targetPath.startsWith('-')
     ? [...leadingArgs, '--', targetPath]
     : [...leadingArgs, targetPath]
 }
 
-/**
- * Try every trash helper in turn. Returns true once one reports success.
- * A helper that is not installed is skipped, not treated as a refusal to
- * delete, so a missing trash-cli falls through to `gio` rather than to
- * permanent removal.
- */
-export function moveToTrash(targetPath: string, spawn: TrashSpawn = runTrashHelper): boolean {
+export function moveToTrash(
+  targetPath: string,
+  spawn: TrashSpawn = runTrashHelper,
+  platform: NodeJS.Platform = process.platform,
+  recycleScriptPath: string = windowsRecycleScriptPath(),
+): boolean {
+  if (platform === 'win32') {
+    const result = spawn('powershell.exe', buildWindowsRecycleArgs(recycleScriptPath, targetPath))
+    if (!result.error && result.status === TRASH_EXIT_OK) return true
+    return false
+  }
+
   for (const { command, leadingArgs } of TRASH_HELPERS) {
     const result = spawn(command, buildTrashArgs(leadingArgs, targetPath))
-    // No status at all means the helper never ran (not installed); try the next.
     if (result.error) continue
     if (result.status === TRASH_EXIT_OK) return true
   }

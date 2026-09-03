@@ -26,8 +26,10 @@ import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut } fro
 import { useFolderDrop } from './hooks/use-folder-drop'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
+import { clsx } from 'clsx'
 import { ArrowUpCircle, FolderOpen, PanelLeft, X } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../shared/i18n'
+import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel } from './utils/kernel-update-progress'
 
 
 export function App(): React.JSX.Element {
@@ -44,6 +46,10 @@ export function App(): React.JSX.Element {
   const updateDismissed = useAppStore((state) => state.updateDismissed)
   const dismissUpdate = useAppStore((state) => state.dismissUpdate)
   const installKernelUpdate = useAppStore((state) => state.installKernelUpdate)
+  const kernelUpdateProgress = useAppStore((state) => state.kernelUpdateProgress)
+  const kernelBusy = kernelUpdateBusy(kernelUpdateProgress)
+  const kernelDone = kernelUpdateProgress?.phase === 'done'
+  const kernelFailed = kernelUpdateProgress?.phase === 'error'
   const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
   const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
   const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
@@ -92,7 +98,7 @@ export function App(): React.JSX.Element {
   // empty-chat center prompt is the "minimal" launch surface when not opening Home.
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
-  const showUpdateBanner = !!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed
+  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
@@ -121,10 +127,10 @@ export function App(): React.JSX.Element {
           </div>
         </div>
       )}
-      {showUpdateBanner && updateInfo && (
+      {showUpdateBanner && (
         <div className="titlebar-no-drag flex shrink-0 items-center justify-center gap-3 border-b border-border bg-transparent px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
-          {updateInfo.updateAvailable && (
+          {updateInfo?.updateAvailable && !kernelBusy && !kernelDone && !kernelFailed && (
             <>
               <span>
                 {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
@@ -137,18 +143,36 @@ export function App(): React.JSX.Element {
               </button>
             </>
           )}
-          {updateInfo.kernel.updateAvailable && (
+          {(updateInfo?.kernel.updateAvailable || kernelBusy || kernelDone || kernelFailed) && (
             <>
-              <span>
-                {t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo.kernel.latestVersion}`, current: `v${updateInfo.kernel.currentVersion}` })}
+              <span className={clsx('min-w-0 truncate', kernelDone && 'text-success', kernelFailed && 'text-error')}>
+                {kernelBusy || kernelDone || kernelFailed
+                  ? kernelUpdateLabel(language, kernelUpdateProgress)
+                  : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion}` })}
               </span>
-              <button
-                onClick={() => void installKernelUpdate()}
-                disabled={!updateInfo.kernel.downloadUrl}
-                className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
-              >
-                {t(language, 'updateKernel')}
-              </button>
+              {kernelBusy ? (
+                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                  <div
+                    className="h-full bg-accent-fg transition-[width] duration-200"
+                    style={{ width: `${kernelUpdateBarPercent(kernelUpdateProgress)}%` }}
+                  />
+                </div>
+              ) : kernelFailed ? (
+                <button
+                  onClick={() => void installKernelUpdate()}
+                  className="rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
+                >
+                  {t(language, 'updateKernel')}
+                </button>
+              ) : kernelDone ? null : (
+                <button
+                  onClick={() => void installKernelUpdate()}
+                  disabled={!updateInfo?.kernel.downloadUrl}
+                  className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                >
+                  {t(language, 'updateKernel')}
+                </button>
+              )}
             </>
           )}
           <button

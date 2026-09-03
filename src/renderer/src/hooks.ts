@@ -33,6 +33,9 @@ export function usePiEvents(): void {
     const unsubscribeCounts = window.piDesktop.onPendingPrompts(handlePendingPromptCounts)
     const unsubscribeActivity = window.piDesktop.onWorkspaceActivity(handleWorkspaceActivity)
     const unsubscribeSessionRuntime = window.piDesktop.onSessionRuntime(handleSessionRuntime)
+    const unsubscribeKernelProgress = window.piDesktop.updates.onKernelProgress(
+      useAppStore.getState().handleKernelUpdateProgress,
+    )
 
     // A desktop-notification click hands the renderer the switch intent so the
     // usual streaming/dirty-editor confirms still run; landing on chat shows
@@ -91,6 +94,7 @@ export function usePiEvents(): void {
       unsubscribeCounts()
       unsubscribeActivity()
       unsubscribeSessionRuntime()
+      unsubscribeKernelProgress()
       unsubscribeActivate()
     }
   }, [handlePiEvent, handlePendingPromptCounts, handleWorkspaceActivity, handleSessionRuntime, recoverPendingPrompts])
@@ -411,7 +415,7 @@ export function useChatKeyboard(
         const value = inputRef.current?.value.trim()
         if (value) {
           onSend(value)
-          if (inputRef.current) inputRef.current.value = ''
+          if (!isStreaming && inputRef.current) inputRef.current.value = ''
         }
       }
     }

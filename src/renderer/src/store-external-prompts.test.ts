@@ -18,13 +18,15 @@ const piDesktopStub = {
 
 type AppStore = typeof import('./store')['useAppStore']
 let useAppStore: AppStore
+let resetLocalEchoesForTests: typeof import('./store')['resetLocalEchoesForTests']
 
 before(async () => {
   ;(globalThis as unknown as { window: unknown }).window = { piDesktop: piDesktopStub }
-  ;({ useAppStore } = await import('./store'))
+  ;({ useAppStore, resetLocalEchoesForTests } = await import('./store'))
 })
 
 beforeEach(() => {
+  resetLocalEchoesForTests()
   useAppStore.setState({
     piStatus: 'running',
     settings: null,
@@ -51,7 +53,7 @@ function userBubbles(): string[] {
 function externalPromptEvents(): number {
   return useAppStore
     .getState()
-    .timelineEvents.filter((e) => e.title === 'External prompt received').length
+    .timelineEvents.filter((e) => e.title === 'timelineExternalPrompt' || e.title === 'External prompt received' || e.title === '收到外部提示').length
 }
 
 // A prompt injected inside the Pi process (e.g. pi-nvim's socket bridge) only
@@ -108,12 +110,18 @@ test('plan-mode prompt echo is deduped against the wrapped form', async () => {
 
 // Steering while a turn is streaming goes through commands.steer with the raw
 // message text; its echo must be swallowed like a prompt echo.
+test('sendPrompt during streaming does not auto-steer', async () => {
+  useAppStore.setState({ isStreaming: true, messages: [] })
+  await useAppStore.getState().sendPrompt('change course')
+  assert.deepEqual(userBubbles(), [])
+})
+
 test('steering prompt echo during streaming is deduped', async () => {
   useAppStore.setState({ isStreaming: true })
-  await useAppStore.getState().sendPrompt('change course')
+  await useAppStore.getState().sendSteer('change course')
   useAppStore.getState().handlePiEvent(userMessageStart('change course'))
 
-  assert.deepEqual(userBubbles(), ['change course'])
+  assert.deepEqual(userBubbles(), [])
   assert.equal(externalPromptEvents(), 0)
 })
 

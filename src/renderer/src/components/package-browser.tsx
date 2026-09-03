@@ -70,7 +70,7 @@ export function PackageBrowser(): React.JSX.Element {
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 mb-3">
           <Package size={16} className="text-muted" />
-          <h2 className="text-sm font-medium text-primary">{t(language, 'extensionsDock')}</h2>
+          <h2 className="text-sm font-medium text-primary">{t(language, 'extensions')}</h2>
         </div>
 
         <div className="flex gap-1">
