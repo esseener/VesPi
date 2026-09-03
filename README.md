@@ -12,7 +12,7 @@
 <p align="center">
   <a href="#中文">中文</a> ·
   <a href="#english">English</a> ·
-  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.1</a>
+  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.2</a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ VesPi 把 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 和 **[Pi
 
 默认跑仓库/安装包里的私有 `omp.exe`（`--profile vespi --mode rpc-ui`）。不需要你自己配 PATH 上的 `omp` 或 `pi`。
 
-当前版本 **[1.0.1](https://github.com/esseener/VesPi/releases/tag/v1.0.1)**。
+当前版本 **[1.0.2](https://github.com/esseener/VesPi/releases/tag/v1.0.2)**。
 
 ## 界面（本机 VesPi 1.0.1 实拍）
 
@@ -62,6 +62,10 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 - 插件 / 技能浏览、诊断、主题
 - 双通道更新：界面看本仓库；**更新内核** 从 `can1357/oh-my-pi` 下载，带进度和成功/失败提示
 
+## 1.0.2
+
+首页顶栏「下载 / 更新内核」在启动页也能点，不再被窗口拖拽层挡住。1.0.0 / 1.0.1 打开应用会提示有更新。
+
 ## 1.0.1 这一版
 
 - 会话删除贴行确认 + 回收站
@@ -73,8 +77,8 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 
 [Releases](https://github.com/esseener/VesPi/releases/latest)
 
-- 安装包：`VesPi-Setup-1.0.1-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
-- 便携包：`VesPi-1.0.1-win-x64.exe`
+- 安装包：`VesPi-Setup-1.0.2-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
+- 便携包：`VesPi-1.0.2-win-x64.exe`
 
 未签名时 SmartScreen 选「更多信息 → 仍要运行」。
 
@@ -119,8 +123,8 @@ While the model is writing, extra text is not sent immediately. **Steer** and **
 
 ## Download
 
-- Installer: `VesPi-Setup-1.0.1-win-x64.exe`
-- Portable: `VesPi-1.0.1-win-x64.exe`
+- Installer: `VesPi-Setup-1.0.2-win-x64.exe`
+- Portable: `VesPi-1.0.2-win-x64.exe`
 
 ## License
 

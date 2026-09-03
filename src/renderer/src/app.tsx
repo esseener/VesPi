@@ -106,7 +106,7 @@ export function App(): React.JSX.Element {
     <div className="app-console relative flex h-screen flex-col bg-app text-primary">
       <div className="app-console-mesh" aria-hidden="true" />
       {isHome && <WindowControls overlay />}
-      {isHome && (
+      {isHome && !showUpdateBanner && (
         <div className="titlebar-drag-overlay titlebar-drag absolute inset-x-0 top-0 z-40 h-10" aria-hidden="true" />
       )}
       {isDraggingFolder && (
@@ -128,7 +128,7 @@ export function App(): React.JSX.Element {
         </div>
       )}
       {showUpdateBanner && (
-        <div className="titlebar-no-drag flex shrink-0 items-center justify-center gap-3 border-b border-border bg-transparent px-4 py-1.5 text-xs text-primary">
+        <div className="titlebar-no-drag relative z-50 flex shrink-0 items-center justify-center gap-3 border-b border-border bg-app/95 px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
           {updateInfo?.updateAvailable && !kernelBusy && !kernelDone && !kernelFailed && (
             <>
@@ -136,8 +136,9 @@ export function App(): React.JSX.Element {
                 {t(language, 'updateAvailable', { latest: `v${updateInfo.latestVersion}`, current: `v${updateInfo.currentVersion}` })}
               </span>
               <button
+                type="button"
                 onClick={() => window.piDesktop.system.openExternal(updateInfo.url)}
-                className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary"
+                className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
                 {t(language, 'download')}
               </button>
@@ -159,16 +160,18 @@ export function App(): React.JSX.Element {
                 </div>
               ) : kernelFailed ? (
                 <button
+                  type="button"
                   onClick={() => void installKernelUpdate()}
-                  className="rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
+                  className="titlebar-no-drag rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
                 >
                   {t(language, 'updateKernel')}
                 </button>
               ) : kernelDone ? null : (
                 <button
+                  type="button"
                   onClick={() => void installKernelUpdate()}
                   disabled={!updateInfo?.kernel.downloadUrl}
-                  className="rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                  className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
                 >
                   {t(language, 'updateKernel')}
                 </button>
