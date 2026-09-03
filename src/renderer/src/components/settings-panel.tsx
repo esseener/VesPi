@@ -15,6 +15,7 @@ import type {
 } from '../../../shared/ipc-contracts'
 import type { ThemeFile } from '../../../shared/theme/theme-file'
 import { Settings, RotateCcw, ChevronDown } from 'lucide-react'
+import { ThemedSelect } from './themed-select'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
@@ -590,43 +591,35 @@ export function SettingsPanel(): React.JSX.Element {
 
         <SettingsSection title={t(language, 'appearance')}>
           <SettingsRow label={t(language, 'language')} description={t(language, 'languageDescription')}>
-            <select
+            <ThemedSelect
               value={language}
-              onChange={(e) => {
-                const next = e.target.value as AppLanguage
-                setLanguage(next)
-                persistSettingPatch({ language: next })
+              onChange={(next) => {
+                const lang = next as AppLanguage
+                setLanguage(lang)
+                persistSettingPatch({ language: lang })
               }}
-              className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
-            >
-              <option value="zh">{t(language, 'languageZh')}</option>
-              <option value="en">{t(language, 'languageEn')}</option>
-            </select>
+              options={[
+                { value: 'zh', label: t(language, 'languageZh') },
+                { value: 'en', label: t(language, 'languageEn') },
+              ]}
+            />
           </SettingsRow>
           <SettingsRow label={t(language, 'theme')} description={t(language, 'themeHint')}>
-            <div className="relative">
-              <select
-                value={theme}
-                onChange={(e) => {
-                  const newTheme = e.target.value
-                  setTheme(newTheme)
-                  applyTheme(newTheme)
-                  persistSettingPatch({ theme: newTheme })
-                }}
-                className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
-              >
-                <option value="system">{t(language, 'themeSystem')}</option>
-                {getRegisteredThemes().map((registeredTheme) => (
-                  <option key={registeredTheme.id} value={registeredTheme.id}>
-                    {registeredTheme.file.name}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown
-                size={14}
-                className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-dim"
-              />
-            </div>
+            <ThemedSelect
+              value={theme}
+              onChange={(newTheme) => {
+                setTheme(newTheme)
+                applyTheme(newTheme)
+                persistSettingPatch({ theme: newTheme })
+              }}
+              options={[
+                { value: 'system', label: t(language, 'themeSystem') },
+                ...getRegisteredThemes().map((registeredTheme) => ({
+                  value: registeredTheme.id,
+                  label: registeredTheme.file.name,
+                })),
+              ]}
+            />
           </SettingsRow>
 
 
@@ -911,24 +904,18 @@ export function SettingsPanel(): React.JSX.Element {
                 label={t(language, 'consensusMode')}
                 description={t(language, 'consensusModeHint')}
               >
-                <div className="relative">
-                  <select
-                    value={settings.council.consensusMode}
-                    onChange={(e) =>
-                      void saveCouncil({
-                        consensusMode: e.target.value as CouncilConfig['consensusMode'],
-                      })
-                    }
-                    className="w-full appearance-none rounded-md border border-border-strong bg-transparent py-1.5 pl-3 pr-9 text-sm text-primary hover:border-border-strong-hover focus:border-accent-fg focus:outline-none"
-                  >
-                    <option value="arbiter">{t(language, 'consensusArbiter')}</option>
-                    <option value="debate">{t(language, 'consensusDebate')}</option>
-                  </select>
-                  <ChevronDown
-                    size={14}
-                    className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-dim"
-                  />
-                </div>
+                <ThemedSelect
+                  value={settings.council.consensusMode}
+                  onChange={(next) =>
+                    void saveCouncil({
+                      consensusMode: next as CouncilConfig['consensusMode'],
+                    })
+                  }
+                  options={[
+                    { value: 'arbiter', label: t(language, 'consensusArbiter') },
+                    { value: 'debate', label: t(language, 'consensusDebate') },
+                  ]}
+                />
               </SettingsRow>
 
               <SettingsRow

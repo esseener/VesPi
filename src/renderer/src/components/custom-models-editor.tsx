@@ -6,6 +6,7 @@ import { withImageInput } from '../../../shared/models-config'
 import type { ModelsConfig, ProviderConfig, CustomModel } from '../../../shared/models-config'
 import { BUILTIN_PROVIDERS, isBuiltinProviderKey } from '../../../shared/builtin-providers'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { ThemedSelect } from './themed-select'
 
 const API_OPTIONS = [
   'openai-completions',
@@ -268,15 +269,12 @@ export function CustomModelsEditor(): React.JSX.Element {
             placeholder={t(language, 'providerBaseUrl')}
             className="rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
           />
-          <select
+          <ThemedSelect
             value={row.api}
-            onChange={(e) => patchProvider(pi, { api: e.target.value })}
-            className="col-span-2 rounded border border-border-strong bg-surface px-2 py-1 text-sm text-primary focus:border-focus focus:outline-none"
-          >
-            {API_OPTIONS.map((opt) => (
-              <option key={opt} value={opt}>{opt}</option>
-            ))}
-          </select>
+            onChange={(next) => patchProvider(pi, { api: next })}
+            className="col-span-2"
+            options={API_OPTIONS.map((opt) => ({ value: opt, label: opt }))}
+          />
         </div>
       )}
       <input

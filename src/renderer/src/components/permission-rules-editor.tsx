@@ -1,4 +1,5 @@
 import { Plus, Trash2, Upload, Download, Copy, ShieldCheck, ShieldAlert } from 'lucide-react'
+import { ThemedSelect } from './themed-select'
 import type { PermissionRule, PermissionRuleAction, PermissionRulesScope } from '../../../shared/ipc-contracts'
 import { emptyRule } from './permission-rules-editor-helpers'
 import { useAppStore } from '../store'
@@ -166,15 +167,16 @@ export function PermissionRulesEditor({
 
       {rules.map((rule, index) => (
         <div key={index} className="flex items-center gap-1.5">
-          <select
+          <ThemedSelect
             value={rule.action}
-            onChange={(e) => updateRule(index, { action: e.target.value as PermissionRuleAction })}
-            className="rounded-md border border-border-strong bg-surface px-1.5 py-1 text-xs text-primary"
+            onChange={(next) => updateRule(index, { action: next as PermissionRuleAction })}
             aria-label={t(language, 'permRuleAction', { n: String(index + 1) })}
-          >
-            <option value="allow">{t(language, 'permAllow')}</option>
-            <option value="deny">{t(language, 'permDeny')}</option>
-          </select>
+            className="w-[5.5rem] shrink-0"
+            options={[
+              { value: 'allow', label: t(language, 'permAllow') },
+              { value: 'deny', label: t(language, 'permDeny') },
+            ]}
+          />
           <input
             type="text"
             value={rule.tool}

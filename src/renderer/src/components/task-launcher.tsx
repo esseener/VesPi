@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { GitBranch, Layers, Play, X } from 'lucide-react'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { ThemedSelect } from './themed-select'
 
 export function TaskLauncher(): React.JSX.Element | null {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -87,18 +88,17 @@ export function TaskLauncher(): React.JSX.Element | null {
             <span className="mb-1.5 block text-xs font-medium text-secondary">{t(language, 'taskLauncherProject')}</span>
             <span className="flex items-center gap-2 rounded-md border border-border bg-app px-3 py-2">
               <Layers size={14} className="shrink-0 text-muted" />
-              <select
+              <ThemedSelect
                 value={workspaceId}
-                onChange={(event) => setWorkspaceId(event.target.value)}
+                onChange={setWorkspaceId}
                 disabled={busy || workspaces.length === 0}
-                data-themed-select="true"
-                className="task-launcher-select min-w-0 flex-1 bg-transparent text-sm text-primary outline-none"
-              >
-                {workspaces.length === 0 && <option value="">{t(language, 'taskLauncherOpenProjectFirst')}</option>}
-                {workspaces.map((workspace) => (
-                  <option key={workspace.id} value={workspace.id}>{workspace.name}</option>
-                ))}
-              </select>
+                className="min-w-0 flex-1"
+                options={
+                  workspaces.length === 0
+                    ? [{ value: '', label: t(language, 'taskLauncherOpenProjectFirst') }]
+                    : workspaces.map((workspace) => ({ value: workspace.id, label: workspace.name }))
+                }
+              />
             </span>
           </label>
 

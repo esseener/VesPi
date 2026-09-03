@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.2** (2026-09-03).
+- Current shipped version: **1.0.3** (2026-09-03).
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
@@ -34,6 +34,10 @@ Loop:
 5. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.3 notes
+
+- Native `<select>` popups were Windows white. Settings, permission rules, models, task launcher, and model setup now use a themed dark dropdown.
 
 ## 1.0.2 notes
 

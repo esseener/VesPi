@@ -4,6 +4,7 @@ import { useAppStore } from '../store'
 import { firstConfiguredChatModel, type ModelsConfig } from '../../../shared/models-config'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
+import { ThemedSelect } from './themed-select'
 
 const API_OPTIONS = [
   'openai-completions',
@@ -138,15 +139,12 @@ export function ModelSetupScreen(): React.JSX.Element {
           </label>
           <label className="block text-xs text-dim">
             {t(language, 'modelApi')}
-            <select
+            <ThemedSelect
               value={api}
-              onChange={(event) => setApi(event.target.value)}
-              className="mt-1 w-full rounded border border-border-strong bg-surface px-2 py-1.5 text-sm text-primary"
-            >
-              {API_OPTIONS.map((option) => (
-                <option key={option} value={option}>{option}</option>
-              ))}
-            </select>
+              onChange={setApi}
+              className="mt-1 w-full"
+              options={API_OPTIONS.map((option) => ({ value: option, label: option }))}
+            />
           </label>
           <label className="block text-xs text-dim">
             {t(language, 'providerApiKey')}
