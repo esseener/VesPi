@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.8** (2026-09-03).
+- Current shipped version: **1.0.9** (2026-09-03).
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
@@ -39,6 +39,11 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.9 notes
+
+- Sidebar session row now appears the moment the first message is sent (`agent_start` refreshes the list; before, the only refresh ran while the new session file was still header-only and got filtered as empty).
+- Sessions auto-title from the first prompt (Codex/ZCode-style, ≤40 chars, no model call). One shot per session; manual renames always win.
 
 ## 1.0.8 notes
 

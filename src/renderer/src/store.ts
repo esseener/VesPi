@@ -670,6 +670,9 @@ function maybeAutoCompact(get: () => AppState & AppActions): void {
  * message.
  */
 const pendingLocalEchoes: { text: string; sentAt: number }[] = []
+// Sessions auto-titled from their first prompt (Codex/ZCode-style). One shot
+// per session id so later prompts never overwrite a name.
+const autoNamedSessions = new Set<string>()
 const LOCAL_ECHO_TTL_MS = 5 * 60 * 1000
 const LOCAL_ECHO_MAX = 50
 
@@ -1095,6 +1098,18 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         : message
       recordLocalEcho(prompt)
       await window.piDesktop.commands.prompt(prompt, options)
+
+      // Name the session from its first prompt — instant, free, no model
+      // round-trip. Only when the session is still unnamed, so a manual rename
+      // or a kernel-provided name always wins; one shot per session id.
+      const st = get().sessionState
+      if (st?.sessionId && !st.sessionName && !autoNamedSessions.has(st.sessionId)) {
+        const firstLine = message.split(/\r?\n/, 1)[0]?.replace(/\s+/g, ' ').trim() ?? ''
+        if (firstLine && !firstLine.startsWith('/')) {
+          autoNamedSessions.add(st.sessionId)
+          await get().setSessionName(firstLine.slice(0, 40))
+        }
+      }
     } catch (err) {
       get().addMessage(notice('sysError', { detail: errDetail(err) }))
       set({ isStreaming: false })
@@ -2023,6 +2038,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // A fresh turn means real stream context from its first byte — any
         // pending mid-turn-attach backfill was already handled at agent_end.
         set({ reattachedMidTurn: false })
+        // The first user message is on disk now: surface the session row in
+        // the sidebar immediately instead of waiting for an unrelated refresh.
+        scheduleSessionListRefresh(get)
         get().addTimelineEvent({
           id: generateId(),
           type: 'system',

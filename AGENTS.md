@@ -1,6 +1,6 @@
 # VesPi
 
-VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.8**.
+VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.9**.
 
 ## Version
 
