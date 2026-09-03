@@ -3076,7 +3076,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const info = await window.piDesktop.updates.check()
       set({
         updateInfo: info,
-        updateDismissed: !info.updateAvailable && !info.kernel.updateAvailable,
+        updateDismissed: !info.updateAvailable && !info.kernel.updateAvailable && !info.checkError && !info.kernel.checkError,
       })
     } catch {
       // Silent — update check is best-effort

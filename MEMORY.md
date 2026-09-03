@@ -38,6 +38,7 @@ Loop:
 ## 1.0.2 notes
 
 - Home update banner buttons (下载 / 更新内核) were covered by the window-drag overlay. Banner is now above the drag layer and clickable on Home.
+- Update check/download uses Electron `net` (Chromium + system/TUN proxy) instead of Node fetch. Failed GitHub checks show a readable proxy hint instead of failing silently.
 
 ## 1.0.1 notes
 

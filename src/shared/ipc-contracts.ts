@@ -1146,6 +1146,7 @@ export interface KernelUpdateInfo {
   latestVersion: string
   url: string
   downloadUrl: string
+  checkError?: string
 }
 
 export type KernelUpdatePhase = 'checking' | 'downloading' | 'installing' | 'restarting' | 'done' | 'error'
@@ -1169,6 +1170,8 @@ export interface UpdateCheckResult {
   url: string
   // Release name/title, when available.
   name?: string
+  /** Set when the VesPi GitHub check itself failed (network / proxy). */
+  checkError?: string
   kernel: KernelUpdateInfo
 }
 

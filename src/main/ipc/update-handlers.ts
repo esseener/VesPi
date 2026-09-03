@@ -1,9 +1,7 @@
-import { ipcMain, app, BrowserWindow } from 'electron'
+import { ipcMain, app, BrowserWindow, net, session } from 'electron'
 import { createWriteStream } from 'fs'
 import { chmod, copyFile, mkdir, rename, unlink } from 'fs/promises'
 import { dirname } from 'path'
-import { pipeline } from 'stream/promises'
-import { Readable } from 'stream'
 import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
@@ -69,19 +67,93 @@ function emptyKernel(currentVersion: string): KernelUpdateInfo {
   return { updateAvailable: false, currentVersion, latestVersion: currentVersion, url: '', downloadUrl: '' }
 }
 
-async function fetchJson<T>(url: string, timeoutMs: number): Promise<T> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
+function isHttpsUrl(url: string): boolean {
   try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': USER_AGENT },
-      signal: controller.signal,
-    })
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-    return await res.json() as T
-  } finally {
-    clearTimeout(timer)
+    return new URL(url).protocol === 'https:'
+  } catch {
+    return false
   }
+}
+
+function githubHostAllowed(url: string): boolean {
+  try {
+    const host = new URL(url).hostname.toLowerCase()
+    return host === 'api.github.com' || host === 'github.com' || host.endsWith('.githubusercontent.com')
+  } catch {
+    return false
+  }
+}
+
+function friendlyNetworkError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err)
+  const lower = raw.toLowerCase()
+  if (lower.includes('abort') || lower.includes('timed out') || lower.includes('timeout')) {
+    return '连接 GitHub 超时。更新走 api.github.com，请开系统代理或 TUN/增强模式后重试。'
+  }
+  if (
+    lower.includes('enotfound')
+    || lower.includes('eai_again')
+    || lower.includes('network')
+    || lower.includes('offline')
+    || lower.includes('failed to fetch')
+    || lower.includes('err_connection')
+    || lower.includes('err_name_not_resolved')
+    || lower.includes('err_tunnel')
+    || lower.includes('err_proxy')
+  ) {
+    return '连不上 GitHub。普通浏览器梯子往往只管浏览器；请开系统代理或 TUN，并允许 VesPi 走代理。'
+  }
+  return raw
+}
+
+function netRequest(url: string): Electron.ClientRequest {
+  return net.request({
+    method: 'GET',
+    url,
+    session: session.defaultSession,
+    redirect: 'follow',
+  })
+}
+
+async function fetchJson<T>(url: string, timeoutMs: number): Promise<T> {
+  if (!isHttpsUrl(url) || !githubHostAllowed(url)) {
+    throw new Error('Update URL is not an allowed GitHub HTTPS host')
+  }
+  return await new Promise<T>((resolve, reject) => {
+    const req = netRequest(url)
+    req.setHeader('Accept', 'application/vnd.github+json')
+    req.setHeader('User-Agent', USER_AGENT)
+    const timer = setTimeout(() => {
+      req.abort()
+      reject(new Error('timed out'))
+    }, timeoutMs)
+    req.on('response', (res) => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk) => chunks.push(Buffer.from(chunk)))
+      res.on('end', () => {
+        clearTimeout(timer)
+        const body = Buffer.concat(chunks).toString('utf8')
+        if (res.statusCode !== 200) {
+          reject(new Error(`${res.statusCode} ${res.statusMessage ?? ''}`.trim()))
+          return
+        }
+        try {
+          resolve(JSON.parse(body) as T)
+        } catch (err) {
+          reject(err)
+        }
+      })
+      res.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+    req.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    req.end()
+  })
 }
 
 function pickLatestRelease(releases: GithubRelease[]): GithubRelease | null {
@@ -124,7 +196,7 @@ async function checkVespiUpdate(): Promise<Omit<UpdateCheckResult, 'kernel'>> {
     }
   } catch (err) {
     appLog.warn('updates', 'VesPi update check failed', err)
-    return none
+    return { ...none, checkError: friendlyNetworkError(err) }
   }
 }
 
@@ -149,7 +221,7 @@ async function checkKernelUpdate(): Promise<KernelUpdateInfo> {
     }
   } catch (err) {
     appLog.warn('updates', 'OMP kernel update check failed', err)
-    return none
+    return { ...none, checkError: friendlyNetworkError(err) }
   }
 }
 
@@ -170,29 +242,57 @@ async function downloadToFile(
   dest: string,
   onProgress?: (received: number, total: number) => void,
 ): Promise<void> {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), KERNEL_DOWNLOAD_TIMEOUT_MS)
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/octet-stream' },
-      signal: controller.signal,
-      redirect: 'follow',
-    })
-    if (!res.ok || !res.body) throw new Error(`Download failed: ${res.status} ${res.statusText}`)
-    await mkdir(dirname(dest), { recursive: true })
-    const total = Number(res.headers.get('content-length') ?? 0)
-    let received = 0
-    onProgress?.(0, total)
-    const source = Readable.fromWeb(res.body as never)
-    source.on('data', (chunk: Buffer | string) => {
-      received += typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length
-      onProgress?.(received, total)
-    })
-    await pipeline(source, createWriteStream(dest))
-    onProgress?.(received, total || received)
-  } finally {
-    clearTimeout(timer)
+  if (!isHttpsUrl(url) || !githubHostAllowed(url)) {
+    throw new Error('Download URL is not an allowed GitHub HTTPS host')
   }
+  await mkdir(dirname(dest), { recursive: true })
+  await new Promise<void>((resolve, reject) => {
+    const req = netRequest(url)
+    req.setHeader('User-Agent', USER_AGENT)
+    req.setHeader('Accept', 'application/octet-stream')
+    const timer = setTimeout(() => {
+      req.abort()
+      reject(new Error('timed out'))
+    }, KERNEL_DOWNLOAD_TIMEOUT_MS)
+    req.on('response', (res) => {
+      if ((res.statusCode ?? 0) >= 400) {
+        clearTimeout(timer)
+        reject(new Error(`Download failed: ${res.statusCode} ${res.statusMessage ?? ''}`.trim()))
+        return
+      }
+      const total = Number(res.headers['content-length'] ?? 0)
+      let received = 0
+      onProgress?.(0, total)
+      const out = createWriteStream(dest)
+      res.on('data', (chunk) => {
+        const buf = Buffer.from(chunk)
+        received += buf.length
+        onProgress?.(received, total)
+        out.write(buf)
+      })
+      res.on('end', () => {
+        clearTimeout(timer)
+        out.end(() => {
+          onProgress?.(received, total || received)
+          resolve()
+        })
+      })
+      res.on('error', (err) => {
+        clearTimeout(timer)
+        out.destroy()
+        reject(err)
+      })
+      out.on('error', (err) => {
+        clearTimeout(timer)
+        reject(err)
+      })
+    })
+    req.on('error', (err) => {
+      clearTimeout(timer)
+      reject(err)
+    })
+    req.end()
+  })
 }
 
 export async function installKernelUpdate(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
@@ -239,7 +339,7 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
     appLog.warn('updates', 'OMP kernel install failed', err)
     try { await unlink(staged) } catch { /* ignore */ }
     broadcastKernelProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: message })
-    return { ok: false, error: message }
+    return { ok: false, error: friendlyNetworkError(err) }
   }
 }
 

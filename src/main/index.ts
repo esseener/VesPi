@@ -27,6 +27,7 @@ const WORKSPACE_ENV_VAR = VESPI_WORKSPACE_ENV
 // which makes the taskbar and notification identity use Electron branding.
 app.setName(VESPI_PRODUCT_NAME)
 if (process.platform === 'win32') app.setAppUserModelId(VESPI_APP_ID)
+app.commandLine.appendSwitch('enable-features', 'EnableNetworkService')
 
 
 // Suppress EPIPE errors from closed subprocess pipes

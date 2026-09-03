@@ -204,13 +204,15 @@ export function AboutPanel(): React.JSX.Element {
             )}
             {(kernelMessage || kernelDone) && <p className="text-xs text-success">{kernelMessage || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}
             {(kernelError || kernelFailed) && <p className="text-xs text-error">{kernelError || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}
-            {checked && updateInfo && !updateInfo.updateAvailable && !updateInfo.kernel.updateAvailable && (
+            {checked && updateInfo && !updateInfo.updateAvailable && !updateInfo.kernel.updateAvailable && !updateInfo.checkError && !updateInfo.kernel.checkError && (
               <p className="text-xs text-dim">
                 {t(language, 'updateCurrent', { vespi: updateInfo.currentVersion || uiVersion, omp: updateInfo.kernel.currentVersion || ompVersion })}
               </p>
             )}
-            {checked && !updateInfo && (
-              <p className="text-xs text-error">{t(language, 'updateCheckFailed')}</p>
+            {checked && (updateInfo?.checkError || updateInfo?.kernel.checkError || !updateInfo) && (
+              <p className="text-xs text-error">
+                {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
+              </p>
             )}
           </div>
           <p className="text-center text-[11px] tracking-wide text-faint">{t(language, 'poweredBy')}</p>

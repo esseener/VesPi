@@ -98,7 +98,8 @@ export function App(): React.JSX.Element {
   // empty-chat center prompt is the "minimal" launch surface when not opening Home.
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
-  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
+  const updateCheckFailed = Boolean(updateInfo?.checkError || updateInfo?.kernel.checkError)
+  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || updateCheckFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
@@ -130,6 +131,11 @@ export function App(): React.JSX.Element {
       {showUpdateBanner && (
         <div className="titlebar-no-drag relative z-50 flex shrink-0 items-center justify-center gap-3 border-b border-border bg-app/95 px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
+          {updateCheckFailed && !kernelBusy && (
+            <span className="min-w-0 truncate text-error">
+              {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
+            </span>
+          )}
           {updateInfo?.updateAvailable && !kernelBusy && !kernelDone && !kernelFailed && (
             <>
               <span>
