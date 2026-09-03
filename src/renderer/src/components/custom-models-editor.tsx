@@ -207,11 +207,8 @@ export function CustomModelsEditor(): React.JSX.Element {
       }
       patchProvider(i, { models: merged })
       setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
-      setOpenIds((current) => {
-        const next = new Set(current)
-        next.delete(rowId(row))
-        return next
-      })
+      // Fold stays open: the user fetched models to review/edit them, not to
+      // be kicked out of the editor.
     } catch (err) {
       setProbeMessage({ index: i, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
     } finally {
@@ -241,6 +238,16 @@ export function CustomModelsEditor(): React.JSX.Element {
       if (result.ok) {
         setErrors([])
         setSavedIndex(i)
+        // models.json applies on kernel restart. Restart right away when no
+        // session is mid-turn, so the new model shows up in the selector
+        // immediately; otherwise keep the manual restart hint.
+        const state = useAppStore.getState()
+        const busyTurn = Object.values(state.sessionRuntimes).some(
+          (rt) => !rt.closed && (rt.activity === 'working' || rt.activity === 'needs-approval'),
+        )
+        if (!busyTurn) {
+          void state.restartPi()
+        }
       } else {
         setErrors(result.errors ?? [t(language, 'saveFailed')])
       }

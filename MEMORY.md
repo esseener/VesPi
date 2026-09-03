@@ -5,7 +5,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 ## Product
 
 - Public repo: `esseener/VesPi` (git remote `vespi`). Do not publish updates to `FaqFirebase/pi-desktop`.
-- Current shipped version: **1.0.11** (2026-09-03).
+- Current shipped version: **1.0.12** (2026-09-03).
 - Windows artifact: **installer only** — `VesPi-Setup-{version}-win-x64.exe`. The self-extracting portable exe was dropped in 1.0.10: it re-extracted ~400 MB (Electron + OMP + OpenSpace runtime) to %TEMP% on every launch, so double-click looked dead for minutes. A fast "portable" would have to be an extract-once ZIP instead.
 - After every ship, copy the current installer into `desktop/release/` (the user's local keep folder). Replace older versioned exes there. Do not treat `release/` as git; it holds the local latest installer.
 
@@ -37,6 +37,11 @@ Loop:
 6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
+
+## 1.0.12 notes
+
+- Test-fetch models no longer collapses the provider row (that auto-collapse was intentional code but bad UX).
+- After a successful provider save, if no session is mid-turn the kernel restarts automatically so the new provider/model appears in the selector right away; when something is running the manual restart hint stays.
 
 ## 1.0.11 notes
 

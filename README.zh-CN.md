@@ -5,10 +5,10 @@ Windows 上的 **Oh My Pi（OMP）** / **Pi** 桌面客户端。产品意象：�
 完整图文、截图和下载见主页 [README.md](./README.md)。截图为 VesPi 1.0.1 本机界面（首页 / 对话 / 设置），不是 Pi Desktop。
 
 - 仓库：https://github.com/esseener/VesPi
-- 版本：**1.0.11**
+- 版本：**1.0.12**
 - 内核：私有 `omp.exe`，`--profile vespi --mode rpc-ui`
 - 会话：`~/.omp/profiles/vespi/agent/sessions`
-- 安装：`VesPi-Setup-1.0.11-win-x64.exe`
+- 安装：`VesPi-Setup-1.0.12-win-x64.exe`
 
 **Agent 界面：** 流式对话、Thinking、工具卡片、审批、Diff、终端、文件树、编辑器、权限。
 
