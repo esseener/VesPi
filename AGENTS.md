@@ -405,7 +405,8 @@ After the user confirms:
 2. Commit and push `master` to `vespi` (`esseener/VesPi`)
 3. `npm run package:win` if artifacts still need a final rebuild
 4. Tag `vX.Y.Z` and create a GitHub Release with both versioned artifacts
-5. Confirm About / the top banner can see the new tag from an older client
+5. Copy both artifacts into `desktop/release/` (latest installer + portable only; delete older versioned exes there)
+6. Confirm About / the top banner can see the new tag from an older client
 
 ## Dual update reminders
 
@@ -431,4 +432,5 @@ Before delivering a change:
 7. Verify on the actual UI (`npm run preview` during development)
 8. Rebuild the versioned installer, **install it over the local VesPi**, and stop. The user tests that installed app.
 9. Only after the user confirms: bump version if needed, push `esseener/VesPi`, tag, and publish a GitHub Release
-10. Update `MEMORY.md` with the ship decision (version, what changed, update channels)
+10. Copy `VesPi-Setup-{version}-win-x64.exe` and `VesPi-{version}-win-x64.exe` into `desktop/release/` and drop older versioned exes from that folder
+11. Update `MEMORY.md` with the ship decision (version, what changed, update channels)

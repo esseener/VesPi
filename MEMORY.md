@@ -9,6 +9,7 @@ Long-lived product decisions. Agents MUST read this before shipping.
 - Windows artifacts MUST include the version in the filename:
   - `VesPi-Setup-{version}-win-x64.exe`
   - `VesPi-{version}-win-x64.exe`
+- After every ship, copy **both** current artifacts into `desktop/release/` (the user's local keep folder). Replace older versioned exes there. Do not treat `release/` as git; it is the local latest installer + portable.
 
 ## Dual update reminders
 
@@ -31,7 +32,11 @@ Loop:
 2. Rebuild a versioned installer (`npm run package:win` / `package:win:nsis`) and **install it over the local VesPi** so the user runs the same artifact they would ship.
 3. Wait for the user to test that installed app and say it is OK.
 4. Only then: bump `package.json` if not already bumped, commit, push `master` to remote `vespi` (`https://github.com/esseener/VesPi.git`), tag `vX.Y.Z`, `gh release create` with both versioned exes.
-5. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
+5. Copy the two shipped files into `desktop/release/`:
+   - `VesPi-Setup-{version}-win-x64.exe`
+   - `VesPi-{version}-win-x64.exe`
+   Remove older versioned exes from that folder so it only holds the latest pair.
+6. Confirm an older client (`1.0.0` vs `1.0.1`, etc.) sees **有更新**.
 
 `npm run preview` is for the agent during development. User acceptance is the **installed package**. Never push on the agent's say-so.
 
