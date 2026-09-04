@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vespi.dev/schemas/omp-runtime-lock.schema.json",
+  "title": "VesPi OMP runtime lock",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["repository", "version", "checksumAsset", "assets"],
+  "properties": {
+    "$schema": { "type": "string" },
+    "repository": { "type": "string", "pattern": "^[^/]+/[^/]+$" },
+    "version": { "type": "string", "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$" },
+    "checksumAsset": { "type": "string", "minLength": 1 },
+    "assets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "sha256"],
+        "properties": {
+          "name": { "type": "string", "minLength": 1 },
+          "sha256": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+        }
+      }
+    }
+  }
+}

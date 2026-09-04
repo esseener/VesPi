@@ -1,89 +1,65 @@
+#!/usr/bin/env node
 /**
- * Refresh the bundled OMP kernel before a Windows package build.
+ * Prepare the bundled OMP runtime from an explicit, reviewable lock file.
  *
- * Downloads the newest published `omp-windows-x64.exe` (or arm64) from
- * can1357/oh-my-pi into the repo's runtime/omp/, verifying it against the
- * release's SHA256SUMS.txt before it replaces the existing binary. Only swaps
- * when the release tag differs from the marker file. Network or verification
- * failures warn and exit 0 so packaging can proceed with the existing kernel.
+ * Default mode is developer-friendly: failures retain the existing binary.
+ * `--strict` is for release builds: every mismatch or network/probe failure
+ * exits non-zero, so an installer can never silently ship an unknown runtime.
  */
-import { existsSync, readFileSync, renameSync, writeFileSync, unlinkSync, statSync } from 'node:fs'
-import { createWriteStream, createReadStream } from 'node:fs'
+import {
+  chmodSync,
+  copyFileSync,
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from 'node:fs'
 import { createHash } from 'node:crypto'
-import { join, dirname } from 'node:path'
+import { spawnSync } from 'node:child_process'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { pipeline } from 'node:stream/promises'
 import { Readable } from 'node:stream'
 
-const REPO = 'can1357/oh-my-pi'
-const MARKER = '.version'
+const scriptDir = dirname(fileURLToPath(import.meta.url))
+const projectDir = join(scriptDir, '..')
+const runtimeDir = join(projectDir, '..', 'runtime', 'omp')
+const lockPath = join(projectDir, 'resources', 'omp-runtime-lock.json')
+const ompPath = join(runtimeDir, 'omp.exe')
+const markerPath = join(runtimeDir, '.version')
+const strict = process.argv.includes('--strict')
 const TIMEOUT_MS = 10 * 60_000
 const USER_AGENT = 'VesPi-packaging'
 
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const runtimeDir = join(scriptDir, '..', '..', 'runtime', 'omp')
-const ompPath = join(runtimeDir, 'omp.exe')
-const markerPath = join(runtimeDir, MARKER)
-
-const arch = process.arch === 'arm64' ? 'arm64' : 'x64'
-const assetName = `omp-windows-x64.exe`.replace('x64', arch)
-
 function log(message) {
-  console.log(`[update-omp] ${message}`)
+  console.log(`[prepare-omp] ${message}`)
 }
 
-async function fetchJson(url, timeoutMs) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, {
-      headers: { Accept: 'application/vnd.github+json', 'User-Agent': USER_AGENT },
-      signal: controller.signal,
-    })
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-    return await res.json()
-  } finally {
-    clearTimeout(timer)
-  }
+function fail(message, cause) {
+  const detail = cause instanceof Error ? `: ${cause.message}` : ''
+  if (strict) throw new Error(`${message}${detail}`)
+  log(`${message}${detail}; keeping the existing kernel`)
+  return false
 }
 
-async function downloadTo(url, dest) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'application/octet-stream' },
-      signal: controller.signal,
-      redirect: 'follow',
-    })
-    if (!res.ok || !res.body) throw new Error(`Download failed: ${res.status} ${res.statusText}`)
-    let received = 0
-    const source = Readable.fromWeb(res.body)
-    source.on('data', (chunk) => {
-      received += chunk.length
-      process.stdout.write(`\r[update-omp] ${Math.round(received / 1024 / 1024)} MB`)
-    })
-    await pipeline(source, createWriteStream(dest))
-    process.stdout.write('\n')
-  } finally {
-    clearTimeout(timer)
+function readLock() {
+  const parsed = JSON.parse(readFileSync(lockPath, 'utf8'))
+  if (!parsed || typeof parsed !== 'object') throw new Error('runtime lock must be an object')
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(parsed.version ?? '')) {
+    throw new Error('runtime lock has an invalid version')
   }
-}
-
-async function fetchText(url, timeoutMs) {
-  const controller = new AbortController()
-  const timer = setTimeout(() => controller.abort(), timeoutMs)
-  try {
-    const res = await fetch(url, {
-      headers: { 'User-Agent': USER_AGENT, Accept: 'text/plain' },
-      signal: controller.signal,
-      redirect: 'follow',
-    })
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-    return await res.text()
-  } finally {
-    clearTimeout(timer)
+  if (!/^[^/]+\/[^/]+$/.test(parsed.repository ?? '')) throw new Error('runtime lock has an invalid repository')
+  const key = `${process.platform}-${process.arch}`
+  const asset = parsed.assets?.[key]
+  if (!asset) throw new Error(`runtime lock has no asset for ${key}`)
+  if (typeof asset.name !== 'string' || !/^[0-9a-f]{64}$/.test(asset.sha256 ?? '')) {
+    throw new Error(`runtime lock asset ${key} is invalid`)
   }
+  return { repository: parsed.repository, version: parsed.version, checksumAsset: parsed.checksumAsset, asset }
 }
 
 function sha256Of(path) {
@@ -96,118 +72,114 @@ function sha256Of(path) {
   })
 }
 
-function expectedHash(sumsText, name) {
-  for (const line of sumsText.split(/\r?\n/)) {
-    const match = line.match(/^([0-9a-fA-F]{64})\s+\*?(.+)$/)
-    if (!match) continue
-    const file = match[2].trim()
-    if (file === name || file.split('/').pop() === name) return match[1].toLowerCase()
+async function downloadTo(url, dest) {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS)
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': USER_AGENT, Accept: 'application/octet-stream' },
+      signal: controller.signal,
+      redirect: 'follow',
+    })
+    if (!res.ok || !res.body) throw new Error(`download failed: ${res.status} ${res.statusText}`)
+    await pipeline(Readable.fromWeb(res.body), createWriteStream(dest))
+  } finally {
+    clearTimeout(timer)
   }
-  return null
 }
 
-function versionNums(tag) {
-  const [core] = tag.replace(/^v/, '').split('-')
-  return core.split('.').map((n) => parseInt(n, 10) || 0)
+function probeVersion(binary, expected) {
+  const result = spawnSync(binary, ['--version'], {
+    cwd: runtimeDir,
+    encoding: 'utf8',
+    timeout: 15_000,
+    windowsHide: true,
+  })
+  if (result.error || result.status !== 0) throw result.error ?? new Error(result.stderr || 'runtime probe failed')
+  const text = `${result.stdout ?? ''}${result.stderr ?? ''}`
+  const match = text.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)/)
+  if (!match) throw new Error('runtime did not report a parseable version')
+  if (match[1] !== expected) throw new Error(`runtime reports ${match[1]}, lock requires ${expected}`)
 }
 
-function isHigher(a, b) {
-  const va = versionNums(a)
-  const vb = versionNums(b)
-  for (let i = 0; i < 3; i++) {
-    if ((va[i] ?? 0) !== (vb[i] ?? 0)) return (va[i] ?? 0) > (vb[i] ?? 0)
-  }
-  return false
+async function verifyExisting(lock) {
+  if (!existsSync(ompPath)) return false
+  const actual = await sha256Of(ompPath)
+  if (actual !== lock.asset.sha256) return false
+  probeVersion(ompPath, lock.version)
+  const marker = existsSync(markerPath) ? readFileSync(markerPath, 'utf8').trim() : ''
+  if (marker !== lock.version) writeFileSync(markerPath, `${lock.version}\n`)
+  return true
 }
 
 async function main() {
   if (process.platform !== 'win32') {
-    log('not win32; skipping kernel refresh')
+    if (strict) throw new Error('strict VesPi packaging currently supports Windows only')
+    log('not win32; runtime preparation skipped')
     return
   }
 
-  let latest
+  let lock
   try {
-    const releases = await fetchJson(`https://api.github.com/repos/${REPO}/releases?per_page=10`, 15_000)
-    const published = releases.filter((r) => !r.draft)
-    // Same "latest" semantics as the in-app updater: highest version, not API order.
-    const candidates = published.filter((r) => !r.prerelease)
-    latest = (candidates.length ? candidates : published).reduce(
-      (best, r) => (best === null || isHigher(r.tag_name, best.tag_name) ? r : best),
-      null,
-    )
-  } catch (err) {
-    log(`could not reach GitHub (${err.message}); keeping the existing kernel`)
-    return
-  }
-  if (!latest) {
-    log('no published release found; keeping the existing kernel')
+    lock = readLock()
+  } catch (error) {
+    fail('could not read the runtime lock', error)
     return
   }
 
-  const tag = latest.tag_name.replace(/^v/, '')
-  const asset = (latest.assets ?? []).find((a) => a.name === assetName)
-  if (!asset) {
-    log(`release ${tag} has no ${assetName}; keeping the existing kernel`)
-    return
+  try {
+    if (await verifyExisting(lock)) {
+      log(`locked OMP ${lock.version} already verified`)
+      return
+    }
+  } catch (error) {
+    if (!strict) log(`existing runtime failed verification: ${error.message}`)
   }
 
-  const currentTag = existsSync(markerPath) ? readFileSync(markerPath, 'utf8').trim() : ''
-  if (currentTag === tag && existsSync(ompPath)) {
-    log(`kernel already at ${tag}; nothing to do`)
-    return
-  }
-
+  const tag = lock.version.startsWith('v') ? lock.version : `v${lock.version}`
+  const url = `https://github.com/${lock.repository}/releases/download/${tag}/${lock.asset.name}`
   const staged = `${ompPath}.new`
-  log(`downloading OMP ${tag} (${assetName})…`)
+  const backup = `${ompPath}.bak`
+  let backedUp = false
   try {
-    // Integrity anchor: the release's own SHA256SUMS (same GitHub HTTPS origin).
-    const sumsText = await fetchText(
-      `${asset.browser_download_url.slice(0, asset.browser_download_url.lastIndexOf('/') + 1)}SHA256SUMS.txt`,
-      15_000,
-    )
-    const want = expectedHash(sumsText, assetName)
-    if (!want) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}`)
-    await downloadTo(asset.browser_download_url, staged)
-    const got = await sha256Of(staged)
-    if (got !== want) throw new Error(`checksum mismatch (expected ${want.slice(0, 12)}…, got ${got.slice(0, 12)}…)`)
-    let backedUp = false
-    try {
-      if (existsSync(ompPath)) {
-        const backup = `${ompPath}.bak`
-        try { unlinkSync(backup) } catch { /* no previous backup */ }
+    log(`downloading locked OMP ${lock.version} (${lock.asset.name})`)
+    await downloadTo(url, staged)
+    const actual = await sha256Of(staged)
+    if (actual !== lock.asset.sha256) {
+      throw new Error(`checksum mismatch: expected ${lock.asset.sha256}, got ${actual}`)
+    }
+    probeVersion(staged, lock.version)
+
+    if (existsSync(backup)) unlinkSync(backup)
+    if (existsSync(ompPath)) {
+      try {
         renameSync(ompPath, backup)
-        backedUp = true
+      } catch {
+        copyFileSync(ompPath, backup)
+        unlinkSync(ompPath)
       }
-      renameSync(staged, ompPath)
-    } catch (err) {
-      // Replacement died mid-way: put the previous binary back.
-      if (backedUp) {
-        try { if (existsSync(ompPath)) unlinkSync(ompPath) } catch { /* ignore */ }
-        try { renameSync(`${ompPath}.bak`, ompPath) } catch { /* keep erroring below */ }
-      }
-      throw err
+      backedUp = true
     }
-    writeFileSync(markerPath, tag)
-    // Ship the kernel's own MIT license next to the binary (redistribution
-    // requirement). Best-effort: a missing asset never blocks packaging.
     try {
-      const license = (latest.assets ?? []).find((a) => a.name === 'LICENSE')
-      if (license) {
-        writeFileSync(join(runtimeDir, 'LICENSE'), await fetchText(license.browser_download_url, 15_000))
-        log('bundled OMP LICENSE updated')
-      }
-    } catch (err) {
-      log(`could not refresh OMP LICENSE (${err.message}); keeping the existing one`)
+      renameSync(staged, ompPath)
+    } catch {
+      copyFileSync(staged, ompPath)
+      unlinkSync(staged)
     }
-    const mb = Math.round(statSync(ompPath).size / 1024 / 1024)
-    log(`bundled OMP updated to ${tag} (${mb} MB, checksum verified)`)
-  } catch (err) {
-    log(`kernel refresh failed (${err.message}); keeping the existing kernel`)
-    try { unlinkSync(staged) } catch { /* ignore */ }
+    if (process.platform !== 'win32') chmodSync(ompPath, 0o755)
+    writeFileSync(markerPath, `${lock.version}\n`)
+    log(`locked OMP ${lock.version} ready (${Math.round(statSync(ompPath).size / 1024 / 1024)} MB)`)
+  } catch (error) {
+    try { if (existsSync(staged)) unlinkSync(staged) } catch { /* ignore cleanup */ }
+    if (backedUp) {
+      try { if (existsSync(ompPath)) unlinkSync(ompPath) } catch { /* ignore cleanup */ }
+      try { renameSync(backup, ompPath) } catch { /* preserve the original failure */ }
+    }
+    fail('runtime preparation failed', error)
   }
 }
 
-main().catch((err) => {
-  log(`unexpected error (${err.message}); keeping the existing kernel`)
+main().catch((error) => {
+  console.error(`[prepare-omp] ${error instanceof Error ? error.message : String(error)}`)
+  process.exitCode = 1
 })

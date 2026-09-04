@@ -3,7 +3,7 @@ import { createWriteStream, createReadStream } from 'fs'
 import { createHash } from 'crypto'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { chmod, copyFile, mkdir, rename, unlink } from 'fs/promises'
+import { chmod, copyFile, mkdir, mkdtemp, rename, rm, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
@@ -48,16 +48,35 @@ export function parseVersion(version: string): { core: number[]; pre: string } {
  * the same core that has a tag; two prerelease tags compare lexically
  * (alpha < beta < rc).
  */
+function comparePrerelease(a: string, b: string): number {
+  if (a === b) return 0
+  if (!a) return 1
+  if (!b) return -1
+  const left = a.split('.')
+  const right = b.split('.')
+  const length = Math.max(left.length, right.length)
+  for (let i = 0; i < length; i++) {
+    const x = left[i]
+    const y = right[i]
+    if (x === undefined) return -1
+    if (y === undefined) return 1
+    if (x === y) continue
+    const xNumeric = /^\d+$/.test(x)
+    const yNumeric = /^\d+$/.test(y)
+    if (xNumeric && yNumeric) return Number(x) > Number(y) ? 1 : -1
+    if (xNumeric !== yNumeric) return xNumeric ? -1 : 1
+    return x > y ? 1 : -1
+  }
+  return 0
+}
+
 export function isNewerVersion(latest: string, current: string): boolean {
   const a = parseVersion(latest)
   const b = parseVersion(current)
   for (let i = 0; i < 3; i++) {
     if (a.core[i] !== b.core[i]) return a.core[i] > b.core[i]
   }
-  if (a.pre === b.pre) return false
-  if (!a.pre) return true
-  if (!b.pre) return false
-  return a.pre > b.pre
+  return comparePrerelease(a.pre, b.pre) > 0
 }
 
 export function vespiInstallerAssetName(version: string, platform = process.platform, arch = process.arch): string | null {
@@ -166,8 +185,8 @@ async function fetchJson<T>(url: string, timeoutMs: number): Promise<T> {
   })
 }
 
-function pickLatestRelease(releases: GithubRelease[]): GithubRelease | null {
-  const published = releases.filter((r) => !r.draft)
+export function pickLatestRelease(releases: GithubRelease[], includePrerelease = false): GithubRelease | null {
+  const published = releases.filter((r) => !r.draft && (includePrerelease || !r.prerelease))
   if (published.length === 0) return null
   let latest = published[0]
   for (const r of published) {
@@ -367,6 +386,28 @@ export function parseSha256Sum(sumsText: string, assetName: string): string | nu
   return null
 }
 
+export function checksumUrlForAsset(downloadUrl: string): string {
+  const url = new URL(downloadUrl)
+  url.pathname = `${url.pathname.slice(0, url.pathname.lastIndexOf('/') + 1)}SHA256SUMS.txt`
+  url.search = ''
+  url.hash = ''
+  return url.toString()
+}
+
+async function verifyReleaseAsset(downloadUrl: string, filePath: string): Promise<void> {
+  const assetName = decodeURIComponent(new URL(downloadUrl).pathname.split('/').pop() ?? '')
+  if (!assetName) throw new Error('Release asset URL has no filename')
+  const sumsText = (await fetchBytes(checksumUrlForAsset(downloadUrl), UPDATE_CHECK_TIMEOUT_MS)).toString('utf8')
+  const expectedHash = parseSha256Sum(sumsText, assetName)
+  if (!expectedHash) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}; refusing to install`)
+  const actualHash = await sha256OfFile(filePath)
+  if (actualHash !== expectedHash) {
+    throw new Error(
+      `Checksum mismatch for ${assetName} (expected ${expectedHash.slice(0, 12)}…, got ${actualHash.slice(0, 12)}…); refusing to install`,
+    )
+  }
+}
+
 function sameVersion(a: string, b: string): boolean {
   const pa = parseVersion(a)
   const pb = parseVersion(b)
@@ -420,25 +461,16 @@ export async function installKernelUpdate(): Promise<{ ok: true; version: string
       })
     })
 
-    // Fingerprint: the release's own SHA256SUMS.txt is the integrity anchor.
-    // Same HTTPS/GitHub origin as the binary, but a different asset — catches
-    // truncated/corrupted downloads and a swapped binary on a cached mirror.
-    const assetName = kernel.downloadUrl.slice(kernel.downloadUrl.lastIndexOf('/') + 1)
-    const sumsUrl = `${kernel.downloadUrl.slice(0, kernel.downloadUrl.lastIndexOf('/') + 1)}SHA256SUMS.txt`
+    // Fingerprint: every executable must match the release checksum manifest
+    // before it is probed or opened.
     broadcastKernelProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
-    const sumsText = (await fetchBytes(sumsUrl, UPDATE_CHECK_TIMEOUT_MS)).toString('utf8')
-    const expectedHash = parseSha256Sum(sumsText, assetName)
-    if (!expectedHash) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}; refusing to install`)
-    const actualHash = await sha256OfFile(staged)
-    if (actualHash !== expectedHash) {
-      throw new Error(`Kernel checksum mismatch (expected ${expectedHash.slice(0, 12)}…, got ${actualHash.slice(0, 12)}…); refusing to install`)
-    }
+    await verifyReleaseAsset(kernel.downloadUrl, staged)
 
     // Health check: the staged binary must run, and it must report the very
     // version we asked for. Only then is the current kernel moved aside.
     const stagedVersion = await probeBinaryVersion(staged)
-    if (stagedVersion === null) throw new Error('New kernel failed its startup health check; keeping the current version')
-    if (stagedVersion && !sameVersion(stagedVersion, kernel.latestVersion)) {
+    if (!stagedVersion) throw new Error('New kernel did not report a valid version; keeping the current version')
+    if (!sameVersion(stagedVersion, kernel.latestVersion)) {
       throw new Error(`Downloaded binary reports ${stagedVersion} but release is ${kernel.latestVersion}; refusing to install`)
     }
 
@@ -497,7 +529,9 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     return { ok: false, error: '没有找到 Windows 安装包。请打开 GitHub Release 手动下载。' }
   }
   const fileName = vespiInstallerAssetName(vespi.latestVersion) ?? `VesPi-Setup-${vespi.latestVersion}-win-x64.exe`
-  const dest = join(tmpdir(), fileName)
+  const updateDir = await mkdtemp(join(tmpdir(), 'vespi-update-'))
+  const dest = join(updateDir, fileName)
+  let openedInstaller = false
   try {
     broadcastUiProgress({ phase: 'downloading', percent: 0, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
     await downloadToFile(vespi.installerUrl, dest, (received, total) => {
@@ -511,14 +545,20 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
       })
     })
     broadcastUiProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
+    await verifyReleaseAsset(vespi.installerUrl, dest)
     const opened = await shell.openPath(dest)
     if (opened) throw new Error(opened)
+    openedInstaller = true
+    // "done" means the verified installer was launched; installation itself is
+    // owned by Windows and can still be cancelled by the user.
     broadcastUiProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
     return { ok: true, version: vespi.latestVersion }
   } catch (err) {
-    appLog.warn('updates', 'VesPi UI installer download failed', err)
+    appLog.warn('updates', 'VesPi UI installer download or verification failed', err)
     broadcastUiProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: friendlyNetworkError(err) })
     return { ok: false, error: friendlyNetworkError(err) }
+  } finally {
+    if (!openedInstaller) await rm(updateDir, { recursive: true, force: true }).catch(() => {})
   }
 }
 

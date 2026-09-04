@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isNewerVersion, ompAssetName, parseVersion, vespiInstallerAssetName } from './update-handlers'
+import {
+  checksumUrlForAsset,
+  isNewerVersion,
+  ompAssetName,
+  parseSha256Sum,
+  parseVersion,
+  pickLatestRelease,
+  vespiInstallerAssetName,
+} from './update-handlers'
 
 test('parseVersion strips omp/ prefix', () => {
   assert.deepEqual(parseVersion('omp/18.0.11').core, [18, 0, 11])
@@ -23,4 +31,31 @@ test('vespiInstallerAssetName matches the published NSIS filename', () => {
   assert.equal(vespiInstallerAssetName('1.0.4', 'win32', 'x64'), 'VesPi-Setup-1.0.4-win-x64.exe')
   assert.equal(vespiInstallerAssetName('v1.0.4', 'win32', 'x64'), 'VesPi-Setup-1.0.4-win-x64.exe')
   assert.equal(vespiInstallerAssetName('1.0.4', 'linux', 'x64'), null)
+})
+
+test('prerelease comparison follows numeric SemVer identifiers', () => {
+  assert.equal(isNewerVersion('1.0.0-rc.10', '1.0.0-rc.2'), true)
+  assert.equal(isNewerVersion('1.0.0-rc.2', '1.0.0-rc.10'), false)
+  assert.equal(isNewerVersion('1.0.0', '1.0.0-rc.10'), true)
+})
+
+test('release selection excludes prereleases by default', () => {
+  const releases = [
+    { tag_name: 'v1.1.0-rc.1', html_url: '', name: null, draft: false, prerelease: true },
+    { tag_name: 'v1.0.9', html_url: '', name: null, draft: false, prerelease: false },
+    { tag_name: 'v1.0.8', html_url: '', name: null, draft: false, prerelease: false },
+  ]
+  assert.equal(pickLatestRelease(releases)?.tag_name, 'v1.0.9')
+  assert.equal(pickLatestRelease(releases, true)?.tag_name, 'v1.1.0-rc.1')
+})
+
+test('checksum helpers pin the manifest beside the release asset', () => {
+  const url = 'https://github.com/example/app/releases/download/v1.0.0/VesPi-Setup-1.0.0-win-x64.exe?x=1'
+  assert.equal(
+    checksumUrlForAsset(url),
+    'https://github.com/example/app/releases/download/v1.0.0/SHA256SUMS.txt',
+  )
+  const hash = 'a'.repeat(64)
+  assert.equal(parseSha256Sum(`${hash}  VesPi-Setup-1.0.0-win-x64.exe\n`, 'VesPi-Setup-1.0.0-win-x64.exe'), hash)
+  assert.equal(parseSha256Sum(`${hash}  other.exe\n`, 'VesPi-Setup-1.0.0-win-x64.exe'), null)
 })

@@ -2214,22 +2214,55 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // Apply the new name directly to the active session's state + list row
         // so both the Current Session panel and its Recent row update instantly,
         // with no file read or RPC round-trip.
+        //
+        // Edge case: for a brand-new session (first message), session_info_changed
+        // can fire BEFORE the session appears in sessionList (which is populated by
+        // filesystem listing and refreshed on agent_start).  In that case we prepend
+        // a synthetic row so the sidebar shows the session with its correct title
+        // immediately, instead of only appearing after the next list refresh.
         const info = event as { name?: unknown; title?: unknown; sessionId?: unknown }
         const rawName = info.name ?? info.title
         const newName = (typeof rawName === 'string' && rawName.trim()) || null
         set((state) => {
-          const activeFile = state.sessionState?.sessionFile ?? null
+          const st = state.sessionState
+          const activeFile = st?.sessionFile ?? null
+          const hasActiveRow = activeFile
+            ? state.sessionList.some((s) => s.path === activeFile || s.sessionId === st?.sessionId)
+            : false
+          const nextSessionState = st
+            ? {
+                ...st,
+                sessionName: newName,
+                ...(typeof info.sessionId === 'string' ? { sessionId: info.sessionId } : {}),
+              }
+            : st
+          let nextList = state.sessionList
+          if (activeFile && hasActiveRow) {
+            nextList = state.sessionList.map((s) =>
+              s.path === activeFile || s.sessionId === st?.sessionId ? { ...s, name: newName } : s,
+            )
+          } else if (activeFile && st && (st.messageCount ?? 0) > 0) {
+            // Active session has content but isn't in the list yet — insert it
+            // at the top with the newly-set name so the sidebar reflects it now.
+            const ws = state.activeWorkspace
+            nextList = [
+              {
+                path: activeFile,
+                name: newName,
+                preview: null,
+                sessionId: st.sessionId,
+                piSessionId: st.sessionId,
+                lastModified: Date.now(),
+                messageCount: st.messageCount,
+                projectPath: ws?.path ?? '',
+                projectName: ws?.name ?? '',
+              },
+              ...state.sessionList,
+            ]
+          }
           return {
-            sessionState: state.sessionState
-              ? {
-                  ...state.sessionState,
-                  sessionName: newName,
-                  ...(typeof info.sessionId === 'string' ? { sessionId: info.sessionId } : {}),
-                }
-              : state.sessionState,
-            sessionList: activeFile
-              ? state.sessionList.map((s) => (s.path === activeFile ? { ...s, name: newName } : s))
-              : state.sessionList,
+            sessionState: nextSessionState,
+            sessionList: nextList,
           }
         })
         break
