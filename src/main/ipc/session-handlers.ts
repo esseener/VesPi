@@ -3,6 +3,7 @@ import { isDisposableSessionFile, WorkspaceManager } from '../workspace-manager'
 import { engineForSessionPath, getSessionRoots, isWithinSessionRoots } from '../pi-paths'
 import {
   sanitizePath,
+  sessionDirCandidates,
   sessionDirName,
   desanitizeSessionDir,
   isSessionArtifactDir,
@@ -18,6 +19,7 @@ import { activityStatsStore } from '../activity-stats'
 import type { SessionDeleteResult, SessionListItem, SessionRuntimeCloseResult, SessionRuntimeInfo } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { readdir, stat, unlink } from 'fs/promises'
+import { homedir } from 'os'
 import { basename, join, resolve } from 'path'
 import { existsSync } from 'fs'
 import { moveToTrash } from '../session-trash'
@@ -361,10 +363,15 @@ function createListSessions(wm: WorkspaceManager) {
       // desanitized directory name. fillSessionLabels must not overwrite those.
       const workspaceMatched = new Set<SessionEntry>()
       // Precompute workspace match map once (was O(workspaces) per file).
-      // Keys use pathsEqual semantics: case-fold only on win32.
-      const workspaceBySanitized = new Map(
-        wm.getWorkspaces().map((ws) => [workspaceMatchKey(sanitizePath(ws.path)), ws] as const)
-      )
+      // Keys use pathsEqual semantics: case-fold only on win32. Every encoding
+      // OMP may use for a workspace path is registered, so home-relative
+      // session dirs (`-Downloads-proj`) match too.
+      const workspaceBySanitized = new Map<string, { path: string; name: string }>()
+      for (const ws of wm.getWorkspaces()) {
+        for (const candidate of sessionDirCandidates(ws.path, homedir())) {
+          workspaceBySanitized.set(workspaceMatchKey(candidate), ws)
+        }
+      }
       // Pi and OMP each keep their sessions in their own store, so a single
       // root would hide every session started under the other engine.
       for (const root of getSessionRoots()) {
@@ -434,7 +441,7 @@ async function collectSessionFiles(
             workspaceBySanitized.get(workspaceMatchKey(sanitizePath(relativeToRoot)))
           const projectPath = matched
             ? matched.path
-            : desanitizeSessionDir(relativeToRoot)
+            : desanitizeSessionDir(relativeToRoot, homedir())
           const projectName = matched
             ? matched.name
             : projectNameFromPath(projectPath)

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import {
   sanitizePath,
+  sessionDirCandidates,
   sessionDirName,
   desanitizeSessionDir,
   isSessionArtifactDir,
@@ -107,4 +108,32 @@ test('pathsEqual is exact when case-sensitive (Linux/macOS)', () => {
   // Regression guard: must NOT change behavior on case-sensitive systems.
   assert.equal(pathsEqual('/home/alice/App', '/home/alice/app', false), false)
   assert.equal(pathsEqual('/home/alice/app', '/home/alice/app', false), true)
+})
+
+test('sessionDirCandidates registers the home-relative encoding OMP uses', () => {
+  // Observed live: OMP stores C:\Users\Administrator\Downloads\pi测试 under
+  // `-Downloads-pi测试` (relative to home, no -- wrap), NOT the full-path form.
+  // Without this candidate the row loses its workspace and the sidebar's
+  // per-project filter hides it — the "no sessions" bug.
+  const c = sessionDirCandidates('C:\\Users\\Administrator\\Downloads\\pi测试', 'C:\\Users\\Administrator', true)
+  assert.ok(c.includes('--C--Users-Administrator-Downloads-pi测试--'), 'full wrapped form')
+  assert.ok(c.includes('-Downloads-pi测试'), 'home-relative form')
+})
+
+test('sessionDirCandidates skips the home form for paths outside home', () => {
+  const c = sessionDirCandidates('D:\\文件分享系统', 'C:\\Users\\Administrator', true)
+  assert.deepEqual(c, ['--D--文件分享系统--'])
+})
+
+test('sessionDirCandidates is case-insensitive on win32, exact elsewhere', () => {
+  assert.equal(sessionDirCandidates('C:\\USERS\\me\\proj', 'c:\\users\\me', true).includes('-proj'), true)
+  assert.ok(sessionDirCandidates('/home/me/proj', '/home/me', false).includes('-proj'))
+})
+
+test('desanitizeSessionDir decodes a home-relative dir when given the home', () => {
+  assert.equal(desanitizeSessionDir('-Downloads-pi测试', 'C:\\Users\\Administrator'), 'C:\\Users\\Administrator\\Downloads\\pi测试')
+  // Without a home it stays the raw slug (unchanged fallback behavior).
+  assert.equal(desanitizeSessionDir('-Downloads-pi测试'), '-Downloads-pi测试')
+  // The -- wrapped form still decodes as before.
+  assert.equal(desanitizeSessionDir('--D--文件分享系统--', 'C:\\Users\\x'), 'D:\\文件分享系统')
 })

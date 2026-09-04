@@ -103,6 +103,12 @@ export function App(): React.JSX.Element {
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
   const updateCheckFailed = Boolean(updateInfo?.checkError || updateInfo?.kernel.checkError)
+  // Every clause must answer to the X: the available-update clause via
+  // updateDismissed, the transient install clauses via the progress objects,
+  // the failed-check clause via the checkError fields — dismissUpdate clears
+  // all three. (A global !updateDismissed gate would wrongly hide the
+  // "installed" banner, because checkForUpdates re-arms the flag after a
+  // successful kernel install.)
   const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || uiBusy || uiDone || uiFailed || updateCheckFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null

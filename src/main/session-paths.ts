@@ -14,15 +14,46 @@
  * and fall back to `desanitizeSessionDir` only for display.
  */
 
+import { isPathCaseInsensitive } from '../shared/path-compare'
+
 /** Extension of a Pi session file. */
 export const JSONL_EXTENSION = '.jsonl'
-
 /** Encode a real filesystem path the same way Pi names its session directory. */
 export function sanitizePath(p: string): string {
   // Drop a single leading separator so POSIX "/home/x" -> "--home-x--".
   // Windows paths start with a drive letter, so nothing is stripped there.
   const body = p.replace(/^[\\/]/, '').replace(/[\\/:]/g, '-')
   return `--${body}--`
+}
+
+/**
+ * Every directory name OMP may use for a project path.
+ *
+ * OMP does not use one encoding: paths under the user's home directory are
+ * stored relative to home (leading separator kept, no `--` wrap — e.g.
+ * `C:\Users\me\Downloads\proj` -> `-Downloads-proj`), while other paths use
+ * the full drive-qualified wrapped form (`D:\proj` -> `--D--proj--`). Matching
+ * a session directory back to a workspace must try both, or home-relative
+ * projects silently lose their workspace label and vanish from the sidebar's
+ * per-project filter.
+ */
+export function sessionDirCandidates(
+  p: string,
+  home: string,
+  caseInsensitive: boolean = isPathCaseInsensitive(),
+): string[] {
+  const out = [sanitizePath(p)]
+  const stripTrailing = (s: string) => s.replace(/[\\/]+$/, '')
+  const hp = stripTrailing(home)
+  const pp = stripTrailing(p)
+  const underHome =
+    pp.length > hp.length + 1 &&
+    /[\\/]/.test(pp[hp.length]) &&
+    (caseInsensitive ? pp.toLowerCase().startsWith(hp.toLowerCase()) : pp.startsWith(hp))
+  if (underHome) {
+    out.push(pp.slice(hp.length).replace(/[\\/]/g, '-'))
+  }
+  return out
 }
 
 /**
@@ -59,8 +90,15 @@ export function isSessionArtifactDir(dirName: string): boolean {
  * an empty one), otherwise a POSIX path. Keeping decoded paths native means
  * they display correctly and stay valid when reused (e.g. as a workspace path).
  */
-export function desanitizeSessionDir(dirName: string): string {
+export function desanitizeSessionDir(dirName: string, home?: string): string {
   if (!dirName.startsWith('--') || !dirName.endsWith('--')) {
+    // Home-relative OMP name (`-Downloads-proj`): decode against the real home
+    // directory when the caller provides one. Lossy like every other decode —
+    // a `-` may be a literal — but far better than showing the raw slug.
+    if (home && dirName.startsWith('-') && !dirName.startsWith('--')) {
+      const rel = dirName.replace(/-/g, home.includes('\\') ? '\\' : '/')
+      return home.replace(/[\\/]+$/, '') + rel
+    }
     return dirName
   }
   const inner = dirName.slice(2, -2)

@@ -3163,7 +3163,24 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   dismissUiUpdateProgress: () => set({ uiUpdateProgress: null }),
 
-  dismissUpdate: () => set({ updateDismissed: true }),
+  // The banner shows for three independent reasons: an available update
+  // (updateDismissed), a finished/failed install (progress objects), or a
+  // failed check (checkError fields). Dismissing must clear all three or the
+  // X silently does nothing on a "已安装内核" banner. A new install or check
+  // re-populates them, so the banner returns when it should.
+  dismissUpdate: () =>
+    set((state) => ({
+      updateDismissed: true,
+      kernelUpdateProgress: null,
+      uiUpdateProgress: null,
+      updateInfo: state.updateInfo
+        ? {
+            ...state.updateInfo,
+            checkError: undefined,
+            kernel: { ...state.updateInfo.kernel, checkError: undefined },
+          }
+        : state.updateInfo,
+    })),
 
   installUiUpdate: async () => {
     const info = get().updateInfo
@@ -3173,6 +3190,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
     set({
       uiUpdateProgress: { phase: 'checking', percent: 0, receivedBytes: 0, totalBytes: 0 },
+      updateDismissed: false,
     })
     const result = await window.piDesktop.updates.installUi()
     if (result.ok) {
