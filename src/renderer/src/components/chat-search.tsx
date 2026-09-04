@@ -202,6 +202,7 @@ export function ChatSearch({
         ref={inputRef}
         value={query}
         onChange={(e) => setQuery(e.target.value)}
+        onKeyDown={handleKeyDown}
         placeholder={t(language, 'findInPage')}
         className="w-48 bg-transparent px-1 py-0.5 text-base text-primary outline-none placeholder:text-faint"
       />

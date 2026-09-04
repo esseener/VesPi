@@ -1,5 +1,5 @@
 import { existsSync } from 'fs'
-import { join, delimiter as PATH_DELIMITER } from 'path'
+import { join, posix, delimiter as PATH_DELIMITER } from 'path'
 import { spawnSync } from 'child_process'
 import type { CouncilAgentId } from '../shared/council-config'
 import { COUNCIL_AGENT_IDS } from '../shared/council-config'
@@ -39,11 +39,13 @@ export function candidatePaths(id: CouncilAgentId, platform: PlatformInfo): stri
     if (localAppData) out.push(join(localAppData, 'npm', `${base}.cmd`))
     out.push(join('C:\\Program Files', 'nodejs', `${base}.cmd`))
   } else {
-    out.push(join('/opt/homebrew/bin', base))
-    out.push(join('/usr/local/bin', base))
-    out.push(join('/usr/bin', base))
-    out.push(join(home, '.local/bin', base))
-    out.push(join(home, '.npm-global/bin', base))
+    // POSIX layout regardless of the host this pure helper runs on, so the
+    // probe list is testable cross-platform.
+    out.push(posix.join('/opt/homebrew/bin', base))
+    out.push(posix.join('/usr/local/bin', base))
+    out.push(posix.join('/usr/bin', base))
+    out.push(posix.join(home, '.local/bin', base))
+    out.push(posix.join(home, '.npm-global/bin', base))
   }
   return out
 }

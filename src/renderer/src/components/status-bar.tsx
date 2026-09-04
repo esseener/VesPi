@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react'
 import { useAppStore, countPromptsWaitingElsewhere, formatPromptsWaiting } from '../store'
-import { agentEngineLabel } from '../../../shared/agent-engine-label'
 import { clsx } from 'clsx'
 import {
   PanelLeft,
@@ -19,10 +18,6 @@ export function StatusBar(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   const piStatus = useAppStore((state) => state.piStatus)
-  const piPid = useAppStore((state) => state.piPid)
-  // Name the engine that is actually running; the two are not interchangeable
-  // and a user who switched to OMP should not be told Pi is running.
-  const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? 'Pi')
   const sessionStats = useAppStore((state) => state.sessionStats)
   const isStreaming = useAppStore((state) => state.isStreaming)
   const hasChatMessages = useAppStore((state) => state.messages.length > 0 || state.isStreaming)

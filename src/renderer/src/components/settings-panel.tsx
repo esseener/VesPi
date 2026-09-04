@@ -3,9 +3,6 @@ import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/ag
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { clsx } from 'clsx'
 import type {
-  AgentDetectionOptions,
-  AgentEngine,
-  AgentInstallation,
   AppSettings,
   PermissionMode,
   CouncilConfig,
@@ -14,7 +11,7 @@ import type {
   PermissionRulesWorkspaceStatus,
 } from '../../../shared/ipc-contracts'
 import type { ThemeFile } from '../../../shared/theme/theme-file'
-import { Settings, RotateCcw, ChevronDown } from 'lucide-react'
+import { Settings, RotateCcw } from 'lucide-react'
 import { ThemedSelect } from './themed-select'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
@@ -65,19 +62,9 @@ export function SettingsPanel(): React.JSX.Element {
   // what makes edits survive leaving/returning to Settings without saving.
   const draft0 = useAppStore.getState().settingsDraft
 
-  const initialPiPath = draft0.piExecutablePath ?? settings?.piExecutablePath ?? DEFAULT_SETTINGS.piExecutablePath
-  const initialPiEngine = draft0.piEngine ?? settings?.piEngine ?? DEFAULT_SETTINGS.piEngine
-  const [piPath, setPiPath] = useState(initialPiPath)
-  const [piEngine, setPiEngine] = useState<AgentEngine>(initialPiEngine)
-  // The setting above may be 'auto'; this is the engine that actually resolved,
-  // which is what any sentence naming the running agent has to say.
+  // The stored piEngine setting may be 'auto'; this is the engine that actually
+  // resolved, which is what any sentence naming the running agent has to say.
   const runningEngineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
-  const [customAgentPathMode, setCustomAgentPathMode] = useState(() => {
-    const normalized = initialPiPath.trim().toLowerCase()
-    return Boolean(initialPiPath.trim()) && normalized !== 'pi' && normalized !== 'omp'
-  })
-  const [detectedAgentInstalls, setDetectedAgentInstalls] = useState<AgentInstallation[]>([])
-  const [scanningAgentInstalls, setScanningAgentInstalls] = useState(false)
   const [theme, setTheme] = useState(draft0.theme ?? settings?.theme ?? DEFAULT_SETTINGS.theme)
   const [language, setLanguage] = useState<AppLanguage>(draft0.language ?? settings?.language ?? DEFAULT_LANGUAGE)
   const [themeActionError, setThemeActionError] = useState<string | null>(null)
@@ -119,35 +106,6 @@ export function SettingsPanel(): React.JSX.Element {
   // Free-text draft for the timeout field so the user can clear it and type a
   // new value; it is clamped and persisted only on blur / Enter (not per keystroke).
   const [timeoutDraft, setTimeoutDraft] = useState('')
-  const agentScanToken = useRef(0)
-
-  const scanAgentInstallations = useCallback(async (options?: AgentDetectionOptions): Promise<void> => {
-    const token = ++agentScanToken.current
-    setScanningAgentInstalls(true)
-    try {
-      const result = await window.piDesktop.pi.detectInstallations(options)
-      if (token === agentScanToken.current) setDetectedAgentInstalls(result.installations)
-    } catch {
-      if (token === agentScanToken.current) setDetectedAgentInstalls([])
-    } finally {
-      if (token === agentScanToken.current) setScanningAgentInstalls(false)
-    }
-  }, [])
-
-  useEffect(() => () => {
-    agentScanToken.current++
-  }, [])
-
-  // Detect available agent engines on mount. Cached results are fine here —
-  // only the explicit Rescan below needs a fresh look at the disk.
-  useEffect(() => {
-    void scanAgentInstallations()
-  }, [scanAgentInstallations])
-
-  useEffect(() => {
-    const installation = detectedAgentInstalls.find((candidate) => candidate.path === piPath)
-    if (installation && installation.kind === piEngine) setCustomAgentPathMode(false)
-  }, [detectedAgentInstalls, piEngine, piPath])
 
   // Detect available council agents on mount
   useEffect(() => {
@@ -268,12 +226,6 @@ export function SettingsPanel(): React.JSX.Element {
     didInitRef.current = true
     const store = useAppStore.getState()
     const draft = store.settingsDraft
-    const nextPiPath = draft.piExecutablePath ?? settings.piExecutablePath
-    const nextPiEngine = draft.piEngine ?? settings.piEngine
-    setPiPath(nextPiPath)
-    setPiEngine(nextPiEngine)
-    const normalizedPiPath = nextPiPath.trim().toLowerCase()
-    setCustomAgentPathMode(Boolean(nextPiPath.trim()) && normalizedPiPath !== 'pi' && normalizedPiPath !== 'omp')
     setTheme(draft.theme ?? settings.theme)
     setFontSize(draft.fontSize ?? settings.fontSize)
     setTerminalFontSize(draft.terminalFontSize ?? settings.terminalFontSize)
@@ -287,54 +239,6 @@ export function SettingsPanel(): React.JSX.Element {
     setMinimizeToTrayOnClose(draft.minimizeToTrayOnClose ?? settings.minimizeToTrayOnClose)
     setPermissionMode(draft.permissionMode ?? settings.permissionMode)
   }, [settings])
-
-  const setAgentPath = (path: string, custom = true): void => {
-    setPiPath(path)
-    setCustomAgentPathMode(custom)
-    persistSettingPatch({ piExecutablePath: path })
-  }
-
-  const setAgentEngine = (engine: AgentEngine): void => {
-    setPiEngine(engine)
-    persistSettingPatch({ piEngine: engine })
-  }
-
-  const handleAgentSelection = (value: string): void => {
-    if (value === '__auto__') {
-      setAgentPath('pi', false)
-      setAgentEngine('auto')
-      return
-    }
-    if (value === '__custom__') {
-      if (!customAgentPathMode) setAgentPath('', true)
-      return
-    }
-    const installation = detectedAgentInstalls.find((candidate) => candidate.path === value)
-    setAgentPath(value, false)
-    setAgentEngine(installation?.kind ?? (value.toLowerCase() === 'omp' ? 'omp' : 'auto'))
-  }
-
-  const handleSelectPath = async (): Promise<void> => {
-    const path = await window.piDesktop.system.openDialog({ title: 'Select Agent Executable or Directory', mode: 'either' })
-    if (path) {
-      const installation = detectedAgentInstalls.find((candidate) => candidate.path === path)
-      setAgentPath(path)
-      if (installation) setAgentEngine(installation.kind)
-    }
-  }
-
-  const autoAgentSelection = !customAgentPathMode && (piPath.trim().toLowerCase() === 'pi' || piPath.trim() === '')
-  const detectedAgentSelection = !customAgentPathMode && detectedAgentInstalls.some((installation) => installation.path === piPath)
-  const agentSelection = customAgentPathMode
-    ? '__custom__'
-    : autoAgentSelection
-      ? '__auto__'
-      : detectedAgentSelection
-        ? piPath
-        : piPath.trim().toLowerCase() === 'omp' && !detectedAgentInstalls.some((installation) => installation.kind === 'omp')
-          ? 'omp'
-          : '__custom__'
-  const showCustomAgentPath = customAgentPathMode || agentSelection === 'omp'
 
   const resolveEffectiveThemeId = (themeId: string): string => {
     if (themeId !== 'system') return themeId
@@ -547,9 +451,6 @@ export function SettingsPanel(): React.JSX.Element {
       permissionMode: DEFAULT_SETTINGS.permissionMode,
     }
 
-    setPiPath(defaults.piExecutablePath!)
-    setPiEngine(defaults.piEngine!)
-    setCustomAgentPathMode(false)
     setTheme(defaults.theme!)
     setLanguage(defaults.language!)
     setFontSize(defaults.fontSize!)

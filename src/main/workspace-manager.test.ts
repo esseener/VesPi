@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdir, mkdtemp, readFile, writeFile, access } from 'fs/promises'
-import { existsSync } from 'fs'
+import { existsSync, realpathSync } from 'fs'
 import { spawnSync } from 'child_process'
 import { tmpdir } from 'os'
 import { join, resolve } from 'path'
@@ -17,12 +17,18 @@ import { getOmpSessionsRoot, getSessionsRoot } from './pi-paths'
 import { PiRpcManager } from './pi-rpc-manager'
 import { isDisposableSessionFile, MAX_LIVE_SESSION_RUNTIMES, WorkspaceManager } from './workspace-manager'
 
+// On win32 the TMP env var can be an 8.3 short path (C:\Users\ADMINI~1\...),
+// while git reports worktree paths in long form. The containment check in
+// findRelatedWorktree compares them lexically, so normalize the temp root to
+// its real long path once for every fixture.
+const TMP_ROOT = realpathSync.native(tmpdir())
+
 async function freshDataDir(): Promise<void> {
-  configureGuiDataDir(await mkdtemp(join(tmpdir(), 'pi-ws-')))
+  configureGuiDataDir(await mkdtemp(join(TMP_ROOT, 'pi-ws-')))
 }
 
 async function project(): Promise<string> {
-  return mkdtemp(join(tmpdir(), 'pi-proj-'))
+  return mkdtemp(join(TMP_ROOT, 'pi-proj-'))
 }
 
 /**
@@ -36,8 +42,8 @@ async function withSessionStores(
     pi: process.env.PI_CODING_AGENT_DIR,
     omp: process.env.OMP_CODING_AGENT_DIR,
   }
-  process.env.PI_CODING_AGENT_DIR = await mkdtemp(join(tmpdir(), 'pi-agent-'))
-  process.env.OMP_CODING_AGENT_DIR = await mkdtemp(join(tmpdir(), 'omp-agent-'))
+  process.env.PI_CODING_AGENT_DIR = await mkdtemp(join(TMP_ROOT, 'pi-agent-'))
+  process.env.OMP_CODING_AGENT_DIR = await mkdtemp(join(TMP_ROOT, 'omp-agent-'))
   try {
     await fn({ pi: getSessionsRoot(), omp: getOmpSessionsRoot() })
   } finally {

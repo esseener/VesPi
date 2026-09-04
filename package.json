@@ -1,7 +1,7 @@
 {
   "name": "vespi",
-  "version": "1.0.14",
-  "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP) and the Pi coding agent",
+  "version": "1.0.15",
+  "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP)",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
   "author": "VesPi",

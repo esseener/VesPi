@@ -31,16 +31,6 @@ const TOOL_ONE_KEYS: Record<string, MessageKey> = {
   'List files': 'toolListedALocation',
 }
 
-const TOOL_MANY_KEYS: Record<string, MessageKey> = {
-  'Fetch URL': 'toolFetchedNUrls',
-  'Read file': 'toolReadNFiles',
-  'Run command': 'toolRanNCommands',
-  'Edit file': 'toolEditedNFiles',
-  'Write file': 'toolCreatedNFiles',
-  Search: 'toolSearchedNQueries',
-  'List files': 'toolListedNLocations',
-}
-
 export function localizeToolName(language: AppLanguage, name: string): string {
   const label = toolLabel(name)
   const key = TOOL_NAME_KEYS[label]

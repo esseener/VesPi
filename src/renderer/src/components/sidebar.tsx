@@ -9,7 +9,6 @@ import {
   Plus,
   PanelLeftClose,
   Clock,
-  Package,
   Layers,
   ChevronDown,
   Check,
@@ -18,7 +17,6 @@ import {
   Archive,
   Blocks,
   Info,
-  Pencil,
   Workflow as WorkflowIcon,
 } from 'lucide-react'
 
@@ -27,7 +25,6 @@ import { StatusPopover } from './status-popover'
 import { useContextMenu, buildSessionContextMenu, buildWorkspaceContextMenu } from './context-menu'
 import { getSessionEngineLabel, getSessionRowLabels, hasMixedSessionEngines } from './sidebar-session-labels'
 import { ResizeHandle } from './resize-handle'
-import { getSessionTitle } from '../utils/session-title'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import { resolveRunSessionId } from '../utils/workflow-runs'
@@ -286,20 +283,6 @@ export function Sidebar(): React.JSX.Element {
         onRuns: (s) => openWorkflowRunsForSession(resolveRunSessionId(s.piSessionId, s.sessionId) ?? s.sessionId),
       })
     )
-  }
-
-  // Right-click menu for the Current Session panel — same active session, so
-  // just the rename affordance.
-  const handleCurrentSessionRightClick = (e: React.MouseEvent): void => {
-    e.nativeEvent.stopPropagation()
-    showMenu(e, [
-      {
-        id: 'current-session-rename',
-        label: t(language, 'renameEllipsis'),
-        icon: <Pencil size={14} />,
-        action: () => startSessionRename('current'),
-      },
-    ])
   }
 
   const renderSessionRow = (
@@ -669,7 +652,6 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const activateWorkspace = useAppStore((state) => state.activateWorkspace)
   const removeWorkspace = useAppStore((state) => state.removeWorkspace)
   const renameWorkspace = useAppStore((state) => state.renameWorkspace)
-  const changeWorkspaceFolder = useAppStore((state) => state.changeWorkspaceFolder)
   const pendingPromptCounts = useAppStore((state) => state.pendingPromptCounts)
   const workspaceActivity = useAppStore((state) => state.workspaceActivity)
   const { show: showContextMenu, ContextMenuComponent: WorkspaceContextMenu } = useContextMenu()
@@ -705,12 +687,6 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
     setNewName(activeWorkspace?.name ?? '')
     setIsRenaming(true)
     setIsOpen(false)
-  }
-
-  const handleChangeFolder = async () => {
-    if (!activeWorkspace) return
-    const path = await window.piDesktop.system.openDialog({ title: 'Select Workspace Folder' })
-    if (path) await changeWorkspaceFolder(activeWorkspace.id, path)
   }
 
   const handleWorkspaceContextMenu = (e: React.MouseEvent, workspacePath?: string) => {

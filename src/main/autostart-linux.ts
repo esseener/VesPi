@@ -1,5 +1,5 @@
 import { homedir } from 'os'
-import { join } from 'path'
+import { posix } from 'path'
 
 // Pure helpers for the Linux freedesktop autostart entry that implements
 // "Run on startup" on Linux (Electron's setLoginItemSettings is macOS/Windows
@@ -19,8 +19,8 @@ const APP_COMMENT = 'Automatically start Pi Desktop at login'
  * per the freedesktop spec and falling back to `~/.config`.
  */
 export function linuxAutostartPath(env: NodeJS.ProcessEnv = process.env, home: string = homedir()): string {
-  const configHome = env.XDG_CONFIG_HOME?.trim() || join(home, '.config')
-  return join(configHome, 'autostart', LINUX_AUTOSTART_FILENAME)
+  const configHome = env.XDG_CONFIG_HOME?.trim() || posix.join(home, '.config')
+  return posix.join(configHome, 'autostart', LINUX_AUTOSTART_FILENAME)
 }
 
 /**

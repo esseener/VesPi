@@ -1,6 +1,7 @@
 import { test, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import type { PiRpcEvent } from '../../shared/ipc-contracts'
+import { t } from '../../shared/i18n'
 
 // The store only touches window.piDesktop inside actions these tests don't
 // exercise, but the bridge must exist before the module body runs.
@@ -42,10 +43,13 @@ function erroredAssistantMessage(overrides: Record<string, unknown> = {}): Recor
 }
 
 function systemMessages(): string[] {
+  // Render the way message-bubble does: an i18n-keyed notice is re-translated
+  // against the active language, so pin the language here instead of asserting
+  // on the store's default-locale fallback text.
   return useAppStore
     .getState()
     .messages.filter((m) => m.role === 'system')
-    .map((m) => m.content)
+    .map((m) => (m.i18nKey ? t('en', m.i18nKey, m.i18nVars) : m.content))
 }
 
 // A provider that rejects before streaming any tokens (e.g. an HTTP 402)

@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react'
 import { MarkdownRenderer } from './markdown-renderer'
-import { toolLabel } from '../message-grouping'
 import { localizeToolName } from '../tool-status-i18n'
 import { toolCallIconFor } from './tool-call-icon'
 import { useAppStore } from '../store'

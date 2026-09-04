@@ -35,11 +35,7 @@ import { clsx } from 'clsx'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import {
   FolderTree,
-  GitCompare,
-  Globe,
   LayoutPanelLeft,
-  ShieldCheck,
-  SquareTerminal,
   X,
   ChevronDown,
 } from 'lucide-react'
@@ -78,8 +74,6 @@ export function ChatPanel(): React.JSX.Element {
   const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
   const sessionState = useAppStore((state) => state.sessionState)
 
-  const reviewOpen = useAppStore((state) => state.reviewOpen)
-  const terminalOpen = useAppStore((state) => state.terminalOpen)
   const previewTarget = useAppStore((state) => state.previewTarget)
   const fileSearchOpen = useAppStore((state) => state.fileSearchOpen)
   const toggleFileSearch = useAppStore((state) => state.toggleFileSearch)

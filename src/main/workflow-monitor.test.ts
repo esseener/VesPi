@@ -315,9 +315,16 @@ test('the transcript scan is capped, reads the newest sessions first and reports
     assert.equal(detail?.agents[0].transcriptSource, 'persisted-session')
     assert.ok(detail?.agents[0].history.some((entry) => entry.text === 'the repo is scanned'))
 
-    const warning = appLog.getRecent().find(
-      (entry) => entry.level === 'warn' && entry.detail?.includes(fixture.sessionDir)
-    )
+    // appLog stringifies object details as JSON, which escapes backslashes on
+    // win32 — compare the parsed field instead of substring-matching the raw path.
+    const warning = appLog.getRecent().find((entry) => {
+      if (entry.level !== 'warn' || typeof entry.detail !== 'string') return false
+      try {
+        return JSON.parse(entry.detail)?.sessionDir === fixture.sessionDir
+      } catch {
+        return false
+      }
+    })
     assert.ok(warning, 'the truncated scan is surfaced in the app log')
     assert.match(warning.message, new RegExp(`${MAX_TRANSCRIPT_FILES_SCANNED} newest of ${overflow + 1}`))
   } finally {

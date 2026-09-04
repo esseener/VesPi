@@ -20,7 +20,7 @@ async function loadPty(): Promise<typeof import('node-pty')> {
     return pty
   } catch (err) {
     const detail = err instanceof Error ? err.message : String(err)
-    throw new Error(`Terminal native module failed to load: ${detail}`)
+    throw new Error(`Terminal native module failed to load: ${detail}`, { cause: err })
   }
 }
 
