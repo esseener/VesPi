@@ -5,11 +5,12 @@ node_modules/
 .npm/
 jspm_packages/
 docs/superpowers/
+# Promo video working files (frames, renders) — local only
+docs/promo/
 
 # Build outputs
 out/
-release/
-release-*/
+release*/
 dist/
 build/
 .cache/

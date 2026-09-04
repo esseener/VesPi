@@ -1,0 +1,25 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  check:
+    # Windows-only product: the installer, path handling and runtime binary are
+    # all win32, so the gate must run on the platform it ships.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Fetch the OMP binary pinned by resources/omp-runtime-lock.json so
+      # check:release can verify the real bytes against the lock.
+      - run: npm run prepare:runtime:release
+      - run: npm run check
