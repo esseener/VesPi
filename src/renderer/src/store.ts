@@ -721,6 +721,9 @@ function enqueueAttachBackfill(get: () => AppState & AppActions): Promise<void> 
 let sessionListRefreshInFlight = false
 let sessionListRefreshQueued = false
 let sessionListRefreshTimer: ReturnType<typeof setTimeout> | null = null
+// Session file we already scheduled a one-shot "real row replaced the
+// synthesized placeholder" retry for; reset once the file shows up in the list.
+let sessionListRetryFor: string | null = null
 
 /**
  * Adopt an active-workspace change the main process made on its own: creating a
@@ -1697,6 +1700,21 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           ]
         : list
 
+      // The synthesized row means the real file isn't listed yet (OMP flushes
+      // the first message slightly after agent_start). Pull once more shortly
+      // after so the real row — with its preview — replaces the placeholder.
+      // Bounded to one retry per session file; agent_end is the backstop.
+      if (!hasActiveSession && activeHasContent && sessionState?.sessionFile) {
+        if (sessionListRetryFor !== sessionState.sessionFile) {
+          sessionListRetryFor = sessionState.sessionFile
+          setTimeout(() => {
+            void get().refreshSessionList()
+          }, 1200)
+        }
+      } else {
+        sessionListRetryFor = null
+      }
+
       set({ sessionList })
     } catch {
       // Silent failure
@@ -2062,6 +2080,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           , 'success'),
         }))
         void get().refreshSessionStats().then(() => maybeAutoCompact(get))
+        // The turn's messages are flushed to the session file by now, so this
+        // is the reliable moment to surface the row: the agent_start refresh
+        // can race the file write (header-only files are filtered as empty),
+        // and without this the sidebar stays blank until an unrelated refresh.
+        scheduleSessionListRefresh(get)
         get().addTimelineEvent({
           id: generateId(),
           type: 'system',

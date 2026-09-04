@@ -12,7 +12,7 @@
 <p align="center">
   <a href="#中文">中文</a> ·
   <a href="#english">English</a> ·
-  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.16</a>
+  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.17</a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ VesPi 把 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 和 **[Pi
 
 默认跑仓库/安装包里的私有 `omp.exe`（`--profile vespi --mode rpc-ui`）。不需要你自己配 PATH 上的 `omp` 或 `pi`。
 
-当前版本 **[1.0.16](https://github.com/esseener/VesPi/releases/latest)**。
+当前版本 **[1.0.17](https://github.com/esseener/VesPi/releases/latest)**。
 
 ## 界面（本机 VesPi 1.0.1 实拍）
 
@@ -61,6 +61,10 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 - 权限模式 + 规则；工作区信任门闩
 - 插件 / 技能浏览、诊断、主题
 - 双通道更新：界面看本仓库；**更新内核** 从 `can1357/oh-my-pi` 下载，带进度和成功/失败提示
+
+## 1.0.17
+
+彻底修复侧栏会话行不出现：新会话的列表刷新此前只在回合开始时触发一次，而 OMP 把首条消息落盘略晚于该时刻（只有 header 的文件会被当作空会话过滤），竞态失败后就再无任何刷新，导致回合结束后侧栏依旧空白。现在回合结束（agent_end）必定补一次刷新兜底，占位行出现后还会对真实行做一次有界补拉。
 
 ## 1.0.16
 
@@ -129,7 +133,7 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 
 [Releases](https://github.com/esseener/VesPi/releases/latest)
 
-- 安装包：`VesPi-Setup-1.0.16-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
+- 安装包：`VesPi-Setup-1.0.17-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
 
 未签名时 SmartScreen 选「更多信息 → 仍要运行」。
 
@@ -162,7 +166,7 @@ npm run package:win:nsis
 
 Shipped builds run a private `omp.exe` (`--profile vespi --mode rpc-ui`). You do not need a global `omp` / `pi` on PATH.
 
-Current release: **[1.0.16](https://github.com/esseener/VesPi/releases/latest)**.
+Current release: **[1.0.17](https://github.com/esseener/VesPi/releases/latest)**.
 
 Based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). VesPi is the shell; OMP/Pi stay the agent.
 
@@ -174,7 +178,7 @@ While the model is writing, extra text is not sent immediately. **Steer** and **
 
 ## Download
 
-- Installer: `VesPi-Setup-1.0.16-win-x64.exe`
+- Installer: `VesPi-Setup-1.0.17-win-x64.exe`
 
 ## License
 
