@@ -1,7 +1,7 @@
 import { ipcMain } from 'electron'
 import type { ModelsConfig, ModelsProbeRequest, ModelsProbeResult, ModelsReadResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, writeFile, mkdir, rename } from 'fs/promises'
 import { dirname, join } from 'path'
 import { existsSync } from 'fs'
 import { getPiCli } from '../pi-rpc-manager'
@@ -84,12 +84,40 @@ function parseListedModels(payload: unknown, api: string): ListedModel[] {
   return out
 }
 
-export async function probeProviderModels(request: ModelsProbeRequest): Promise<ModelsProbeResult> {
+function isBlockedProbeHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, '')
+  if (host === 'localhost' || host.endsWith('.localhost') || host === '::1' || host === '0.0.0.0') return true
+  if (host === '::' || host === '::ffff:127.0.0.1') return true
+  const ipv4 = host.startsWith('::ffff:') ? host.slice(7) : host
+  const parts = ipv4.split('.').map((part) => Number(part))
+  if (parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+    const [a, b] = parts
+    if (a === 127 || a === 10 || a === 0) return true
+    if (a === 169 && b === 254) return true
+    if (a === 172 && b >= 16 && b <= 31) return true
+    if (a === 192 && b === 168) return true
+    if (a === 100 && b >= 64 && b <= 127) return true
+  }
+  return false
+}
+
+export async function probeProviderModels(request: {
+  baseUrl: string
+  api: string
+  apiKey: string
+}): Promise<ModelsProbeResult> {
   const baseUrl = request.baseUrl.trim()
   if (!baseUrl) return { ok: false, error: 'missing-url' }
   const key = resolveApiKey(request.apiKey)
   if (!key.ok) return { ok: false, error: key.error }
-  const url = new URL(modelsUrl(baseUrl, request.api))
+  let url: URL
+  try {
+    url = new URL(modelsUrl(baseUrl, request.api))
+  } catch {
+    return { ok: false, error: 'invalid-url' }
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') return { ok: false, error: 'invalid-url' }
+  if (isBlockedProbeHost(url.hostname)) return { ok: false, error: 'blocked-host' }
   if (request.api === 'google-generative-ai' && !url.searchParams.has('key')) {
     url.searchParams.set('key', key.value)
   }
@@ -109,6 +137,28 @@ export async function probeProviderModels(request: ModelsProbeRequest): Promise<
   return { ok: true, models: parseListedModels(payload, request.api) }
 }
 
+
+/**
+ * Last-used provider/model from settings, but only if that provider still
+ * exists in models.json. A deleted Claude key must not be passed as
+ * `--provider` — OMP treats unknown providers as a fatal startup error.
+ */
+export function resolvedStartModel(
+  settings: { defaultProvider?: string | null; defaultModel?: string | null },
+  config: ModelsConfig | null | undefined,
+): { provider?: string; model?: string } {
+  const provider = settings.defaultProvider?.trim() || ''
+  const model = settings.defaultModel?.trim() || ''
+  if (!provider || !config?.providers || !(provider in config.providers)) return {}
+  const models = config.providers[provider]?.models ?? []
+  if (model && models.length > 0 && !models.some((item) => item.id === model)) {
+    return { provider }
+  }
+  return {
+    ...(provider ? { provider } : {}),
+    ...(model ? { model } : {}),
+  }
+}
 
 export async function readModelsConfigFile(): Promise<ModelsReadResult> {
   const { file } = modelsConfigPaths()
@@ -158,9 +208,13 @@ export function registerModelsConfigHandlers(): void {
       await writeFile(file, JSON.stringify(config, null, 2) + '\n', 'utf-8')
       // OMP ignores models.json whenever models.yml exists, so a stale yml
       // hides everything the user saves. Mirror the config into OMP's native
-      // format; the Pi engine keeps reading models.json.
+      // format; the Pi engine keeps reading models.json. tmp+rename so a
+      // crash mid-save cannot leave a truncated yml that blocks the next spawn.
       if (getPiCli().kind === 'omp') {
-        await writeFile(modelsYmlPath(dir), buildModelsYml(config as ModelsConfig), 'utf-8')
+        const ymlPath = modelsYmlPath(dir)
+        const tmpPath = `${ymlPath}.tmp`
+        await writeFile(tmpPath, buildModelsYml(config as ModelsConfig), 'utf-8')
+        await rename(tmpPath, ymlPath)
       }
       return { success: true }
     } catch (err) {
@@ -171,11 +225,20 @@ export function registerModelsConfigHandlers(): void {
   ipcMain.handle(IPC_CHANNELS.MODELS_PROBE, async (_event, request: unknown): Promise<ModelsProbeResult> => {
     if (!request || typeof request !== 'object') return { ok: false, error: 'invalid-request' }
     const body = request as Partial<ModelsProbeRequest>
-    if (typeof body.baseUrl !== 'string' || typeof body.api !== 'string' || typeof body.apiKey !== 'string') {
-      return { ok: false, error: 'invalid-request' }
+    let baseUrl = typeof body.baseUrl === 'string' ? body.baseUrl : ''
+    let api = typeof body.api === 'string' ? body.api : ''
+    let apiKey = typeof body.apiKey === 'string' ? body.apiKey : ''
+    if (typeof body.provider === 'string' && body.provider.trim()) {
+      const saved = await readModelsConfigFile()
+      const named = 'config' in saved ? saved.config.providers[body.provider.trim()] : undefined
+      if (!named) return { ok: false, error: 'unknown-provider' }
+      baseUrl = baseUrl || named.baseUrl || ''
+      api = api || named.api || 'openai-completions'
+      apiKey = apiKey || named.apiKey || ''
     }
+    if (!baseUrl || !api || !apiKey) return { ok: false, error: 'invalid-request' }
     try {
-      return await probeProviderModels({ baseUrl: body.baseUrl, api: body.api, apiKey: body.apiKey })
+      return await probeProviderModels({ baseUrl, api, apiKey })
     } catch (err) {
       return { ok: false, error: err instanceof Error ? err.message : String(err) }
     }

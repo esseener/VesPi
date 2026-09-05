@@ -5,7 +5,8 @@ import { toolCallIconFor } from './tool-call-icon'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import { Brain, Bot, Loader2 } from 'lucide-react'
+import { Brain, Loader2 } from 'lucide-react'
+import { AgentBotIcon } from './agent-bot-icon'
 import { clsx } from 'clsx'
 
 interface StreamingBubbleProps {
@@ -46,8 +47,8 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
   return (
     <div className="mb-4 animate-fade-in">
       <div className="flex items-start gap-3">
-        <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-accent-bg">
-          <Bot size={14} className="text-accent-fg animate-pulse" />
+        <div className="flex h-7 w-7 shrink-0 items-center justify-center">
+          <AgentBotIcon size={22} className="agent-live-glyph" />
         </div>
 
         <div className="min-w-0 flex-1">

@@ -949,9 +949,10 @@ import type { CouncilConfig } from './council-config'
 export type ModelsReadResult = { config: ModelsConfigType; path: string } | { error: string; raw: string; path: string }
 
 export interface ModelsProbeRequest {
-  baseUrl: string
-  api: string
-  apiKey: string
+  baseUrl?: string
+  api?: string
+  apiKey?: string
+  provider?: string
 }
 
 export type ModelsProbeResult =

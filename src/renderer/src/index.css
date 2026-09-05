@@ -415,10 +415,34 @@
     animation: stop-breath 1.8s ease-in-out infinite;
   }
 
+  /* Streaming avatar: no plate, no ring — the glyph itself breathes and glows
+     so "the agent is working" reads at a glance. drop-shadow + opacity only,
+     so a long stream stays compositor-only. */
+  @keyframes agent-glow-breath {
+    0%, 100% {
+      opacity: 0.66;
+      filter: drop-shadow(0 0 0 rgba(242, 242, 242, 0));
+    }
+    50% {
+      opacity: 1;
+      filter: drop-shadow(0 0 7px rgba(242, 242, 242, 0.62));
+    }
+  }
+
+  .agent-live-glyph {
+    color: var(--color-accent-fg);
+    animation: agent-glow-breath 1.7s ease-in-out infinite;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .stop-breath-core {
       animation: none;
       opacity: 0.85;
+    }
+
+    .agent-live-glyph {
+      animation: none;
+      opacity: 1;
     }
   }
 

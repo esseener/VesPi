@@ -65,3 +65,12 @@ test('reconcileModelsYml writes atomically (no .tmp left behind)', async () => {
   assert.equal(reconcileModelsYml(dir), true)
   await assert.rejects(() => readFile(join(dir, 'models.yml.tmp'), 'utf-8'))
 })
+
+test('reconcileModelsYml rebuilds a truncated yml even when it is newer', async () => {
+  const dir = await tempAgentDir()
+  await writeFile(join(dir, 'models.json'), JSON.stringify(CONFIG))
+  await new Promise((r) => setTimeout(r, 50))
+  await writeFile(join(dir, 'models.yml'), 'providers:\n  "a6claude5":\n    models:\n')
+  assert.equal(reconcileModelsYml(dir), true)
+  assert.match(await readFile(join(dir, 'models.yml'), 'utf-8'), /- id: "m1"/)
+})

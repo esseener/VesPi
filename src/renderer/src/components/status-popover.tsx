@@ -50,6 +50,7 @@ export function StatusPopover(): React.JSX.Element {
   const piPid = useAppStore((state) => state.piPid)
   const piError = useAppStore((state) => state.piError)
   const [errorCopied, setErrorCopied] = useState(false)
+  const [probeState, setProbeState] = useState<{ busy: boolean; text: string; ok: boolean } | null>(null)
   const sessionState = useAppStore((state) => state.sessionState)
   const sessionStats = useAppStore((state) => state.sessionStats)
   const hasChatMessages = useAppStore((state) => state.messages.length > 0 || state.isStreaming)
@@ -116,6 +117,31 @@ export function StatusPopover(): React.JSX.Element {
   const extensionCommands = commands.filter((c) => c.source === 'extension')
   const promptCommands = commands.filter((c) => c.source === 'prompt')
   const skillCommands = commands.filter((c) => c.source === 'skill')
+
+  const testCurrentProvider = async (): Promise<void> => {
+    const provider = sessionState?.model?.provider
+    if (!provider) {
+      setProbeState({ busy: false, text: t(language, 'probeNeedUrl'), ok: false })
+      return
+    }
+    setProbeState({ busy: true, text: t(language, 'testingProvider'), ok: false })
+    try {
+      const result = await window.piDesktop.models.probe({ provider })
+      if (!result.ok) {
+        const mapped =
+          result.error === 'unknown-provider' ? t(language, 'probeFailed', { error: result.error })
+          : result.error === 'blocked-host' || result.error === 'invalid-url' ? t(language, 'probeBlockedHost')
+          : result.error === 'missing-url' ? t(language, 'probeNeedUrl')
+          : result.error === 'missing-key' ? t(language, 'probeNeedKey')
+          : t(language, 'probeFailed', { error: result.error })
+        setProbeState({ busy: false, text: mapped, ok: false })
+        return
+      }
+      setProbeState({ busy: false, text: t(language, 'connectionOk', { count: String(result.models.length) }), ok: true })
+    } catch (err) {
+      setProbeState({ busy: false, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
+    }
+  }
 
   const statusColor = {
     running: 'bg-success',
@@ -195,7 +221,27 @@ export function StatusPopover(): React.JSX.Element {
                 />
               )}
               {sessionState?.model && (
-                <StatusRow label={t(language, 'provider')} value={sessionState.model.provider} />
+                <StatusRow
+                  label={t(language, 'provider')}
+                  value={
+                    <span className="flex items-center gap-1.5">
+                      <span>{sessionState.model.provider}</span>
+                      <button
+                        type="button"
+                        onClick={() => void testCurrentProvider()}
+                        disabled={probeState?.busy === true}
+                        className="rounded border border-border-strong px-1.5 py-0.5 text-[10px] text-muted hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                      >
+                        {probeState?.busy ? t(language, 'testingProvider') : t(language, 'testConnection')}
+                      </button>
+                    </span>
+                  }
+                />
+              )}
+              {probeState && !probeState.busy && (
+                <div className={clsx('pt-1 text-[11px]', probeState.ok ? 'text-success' : 'text-error')}>
+                  {probeState.text}
+                </div>
               )}
               {sessionState?.thinkingLevel && (
                 <StatusRow

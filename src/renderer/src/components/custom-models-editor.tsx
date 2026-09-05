@@ -166,19 +166,27 @@ export function CustomModelsEditor(): React.JSX.Element {
   const removeModel = (pi: number, mi: number): void =>
     patchProvider(pi, { models: rows[pi].models.filter((_, idx) => idx !== mi) })
 
-  const probeProvider = async (i: number): Promise<void> => {
+  const mapProbeError = (error: string): string => {
+    if (error === 'missing-url') return t(language, 'probeNeedUrl')
+    if (error === 'missing-key') return t(language, 'probeNeedKey')
+    if (error === 'shell-key') return t(language, 'probeShellKey')
+    if (error === 'blocked-host' || error === 'invalid-url') return t(language, 'probeBlockedHost')
+    return t(language, 'probeFailed', { error })
+  }
+
+  const runProbe = async (i: number): Promise<{ ok: true; models: Array<{ id: string; name?: string }> } | { ok: false }> => {
     const row = rows[i]
     if (!row.baseUrl.trim()) {
       setProbeMessage({ index: i, text: t(language, 'probeNeedUrl'), ok: false })
-      return
+      return { ok: false }
     }
     if (!row.apiKey.trim()) {
       setProbeMessage({ index: i, text: t(language, 'probeNeedKey'), ok: false })
-      return
+      return { ok: false }
     }
     if (row.apiKey.trim().startsWith('!')) {
       setProbeMessage({ index: i, text: t(language, 'probeShellKey'), ok: false })
-      return
+      return { ok: false }
     }
     setProbing(i)
     setProbeMessage(null)
@@ -189,31 +197,37 @@ export function CustomModelsEditor(): React.JSX.Element {
         apiKey: row.apiKey,
       })
       if (!result.ok) {
-        const mapped =
-          result.error === 'missing-url' ? t(language, 'probeNeedUrl')
-          : result.error === 'missing-key' ? t(language, 'probeNeedKey')
-          : result.error === 'shell-key' ? t(language, 'probeShellKey')
-          : result.error.startsWith('env-missing:') ? t(language, 'probeFailed', { error: result.error })
-          : t(language, 'probeFailed', { error: result.error })
-        setProbeMessage({ index: i, text: mapped, ok: false })
-        return
+        setProbeMessage({ index: i, text: mapProbeError(result.error), ok: false })
+        return { ok: false }
       }
-      const existing = new Set(row.models.map((m) => m.id.trim()).filter(Boolean))
-      const merged = [...row.models.filter((m) => m.id.trim())]
-      for (const model of result.models) {
-        if (existing.has(model.id)) continue
-        existing.add(model.id)
-        merged.push(model.name ? { id: model.id, name: model.name } : { id: model.id })
-      }
-      patchProvider(i, { models: merged })
-      setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
-      // Fold stays open: the user fetched models to review/edit them, not to
-      // be kicked out of the editor.
+      return result
     } catch (err) {
       setProbeMessage({ index: i, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
+      return { ok: false }
     } finally {
       setProbing(null)
     }
+  }
+
+  const testConnection = async (i: number): Promise<void> => {
+    const result = await runProbe(i)
+    if (!result.ok) return
+    setProbeMessage({ index: i, text: t(language, 'connectionOk', { count: String(result.models.length) }), ok: true })
+  }
+
+  const probeProvider = async (i: number): Promise<void> => {
+    const row = rows[i]
+    const result = await runProbe(i)
+    if (!result.ok) return
+    const existing = new Set(row.models.map((m) => m.id.trim()).filter(Boolean))
+    const merged = [...row.models.filter((m) => m.id.trim())]
+    for (const model of result.models) {
+      if (existing.has(model.id)) continue
+      existing.add(model.id)
+      merged.push(model.name ? { id: model.id, name: model.name } : { id: model.id })
+    }
+    patchProvider(i, { models: merged })
+    setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
   }
 
   const handleSaveProvider = async (i: number): Promise<void> => {
@@ -298,32 +312,22 @@ export function CustomModelsEditor(): React.JSX.Element {
       <div className="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          onClick={() => void probeProvider(pi)}
+          onClick={() => void testConnection(pi)}
           disabled={probing === pi}
           className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
         >
           <RefreshCw size={12} className={probing === pi ? 'animate-spin' : undefined} />
-          {probing === pi ? t(language, 'testingProvider') : t(language, 'testFetchModels')}
+          {probing === pi ? t(language, 'testingProvider') : t(language, 'testConnection')}
         </button>
         <button
           type="button"
-          onClick={() => void handleSaveProvider(pi)}
-          disabled={savingIndex === pi}
+          onClick={() => void probeProvider(pi)}
+          disabled={probing === pi}
           className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
         >
-          <Save size={12} />
-          {savingIndex === pi ? t(language, 'savingProvider') : t(language, 'saveModels')}
+          <Plus size={12} />
+          {t(language, 'testFetchModels')}
         </button>
-        {savedIndex === pi && (
-          <button
-            type="button"
-            onClick={() => restartPi()}
-            className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
-          >
-            <RefreshCw size={12} />
-            {t(language, 'savedRestart')}
-          </button>
-        )}
         {probeMessage?.index === pi && (
           <span className={clsx('text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
             {probeMessage.text}
@@ -403,12 +407,39 @@ export function CustomModelsEditor(): React.JSX.Element {
           </div>
         </div>
       ))}
-      <button
-        onClick={() => addModel(pi)}
-        className="flex items-center gap-1 text-xs text-muted hover:text-primary"
-      >
-        <Plus size={12} /> {t(language, 'addModel')}
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+        <button
+          onClick={() => addModel(pi)}
+          className="flex items-center gap-1 text-xs text-muted hover:text-primary"
+        >
+          <Plus size={12} /> {t(language, 'addModel')}
+        </button>
+        {/* Save sits at the very bottom, after the model rows: the last thing
+            the user edits is a model, so the action must follow the content
+            instead of forcing a scroll back up. */}
+        <button
+          type="button"
+          onClick={() => void handleSaveProvider(pi)}
+          disabled={savingIndex === pi}
+          className="flex items-center gap-1 rounded-md border border-accent-fg/60 bg-accent-bg/40 px-3 py-1.5 text-xs text-primary transition-colors hover:border-accent-fg hover:bg-accent-bg disabled:opacity-50"
+        >
+          <Save size={12} />
+          {savingIndex === pi ? t(language, 'savingProvider') : t(language, 'saveModels')}
+        </button>
+      </div>
+      {savedIndex === pi && (
+        <div className="flex items-center justify-end gap-2 text-[11px] text-success">
+          <span>{t(language, 'savedRestart')}</span>
+          <button
+            type="button"
+            onClick={() => restartPi()}
+            className="flex items-center gap-1 rounded-md border border-border-strong px-2 py-0.5 text-muted transition-colors hover:border-accent-fg hover:text-primary"
+          >
+            <RefreshCw size={11} />
+            {t(language, 'restartKernel')}
+          </button>
+        </div>
+      )}
       {!builtin && (
         <label className="flex items-center gap-2 text-[11px] text-dim">
           <input
@@ -444,6 +475,27 @@ export function CustomModelsEditor(): React.JSX.Element {
               ? t(language, 'providerConfigured', { count: String(row.models.filter((model) => model.id.trim()).length) })
               : t(language, 'providerNeedsKey')}
           </span>
+          {row.baseUrl.trim() && row.apiKey.trim() ? (
+            <span
+              role="button"
+              tabIndex={0}
+              onClick={(event) => {
+                event.stopPropagation()
+                void testConnection(pi)
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  event.stopPropagation()
+                  void testConnection(pi)
+                }
+              }}
+              className="rounded border border-border-strong px-1.5 py-0.5 text-[11px] text-muted hover:border-accent-fg hover:text-primary"
+              title={t(language, 'testConnection')}
+            >
+              {probing === pi ? t(language, 'testingProvider') : t(language, 'testConnection')}
+            </span>
+          ) : null}
           {!builtin && (
             <span
               role="button"
@@ -466,6 +518,11 @@ export function CustomModelsEditor(): React.JSX.Element {
             </span>
           )}
         </button>
+        {!open && probeMessage?.index === pi ? (
+          <div className={clsx('px-3 pb-2 text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
+            {probeMessage.text}
+          </div>
+        ) : null}
         {open ? <div className="px-3 pb-3">{renderEditor(row, pi, builtin)}</div> : null}
       </div>
     )

@@ -624,7 +624,10 @@ export class WorkspaceManager {
   async restartSessionRuntime(runtimeId: string, options: PiStartOptions = {}): Promise<SessionRuntimeInfo> {
     const entry = this.sessionRuntimes.get(runtimeId)
     if (!entry) throw new Error(`Session runtime not found: ${runtimeId}`)
-    entry.manager.stop()
+    // Wait for the old omp.exe to release models.db / WAL locks. A fire-and-
+    // forget kill on Windows lets the next spawn race the dying process and
+    // fail to open the profile — the UI then says it cannot connect to OMP.
+    await entry.manager.stopAndWait()
     return this.startSessionRuntime(runtimeId, options)
   }
 

@@ -26,6 +26,7 @@ import { moveToTrash } from '../session-trash'
 import { assertTrustedSender, isObject, isString } from './validation'
 import { applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
+import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
 import type { IpcContext } from './context'
 
 const MAX_SESSION_LIST = 100
@@ -74,13 +75,14 @@ export function registerSessionHandlers(ctx: IpcContext): void {
 
   const startRuntime = async (runtime: SessionRuntimeInfo, sessionPath?: string): Promise<void> => {
     const settings = await loadAppSettings(workspaceManager)
+    const models = await readModelsConfigFile()
+    const remembered = resolvedStartModel(settings, 'config' in models ? models.config : undefined)
     const workspace = workspaceManager.getWorkspaces().find((item) => item.id === runtime.workspaceId)
     if (!workspace) return
     const options = {
       cwd: workspace.path,
       ...(sessionPath ? { sessionPath } : {}),
-      provider: settings.defaultProvider ?? undefined,
-      model: settings.defaultModel ?? undefined,
+      ...remembered,
     }
     await workspaceManager.startSessionRuntime(runtime.runtimeId, applyPermissionModeToStartOptions(
       sessionPath ? applyResumePreference(options, settings) : options,

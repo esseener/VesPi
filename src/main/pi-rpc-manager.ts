@@ -918,8 +918,8 @@ export class PiRpcManager extends EventEmitter {
     })
   }
 
-  restart(options: PiStartOptions = {}): Promise<PiStatus> {
-    this.kill()
+  async restart(options: PiStartOptions = {}): Promise<PiStatus> {
+    await this.stopAndWait()
     return this.start(options)
   }
 

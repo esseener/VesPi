@@ -3,6 +3,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { isString, isObject, isOptionalBoolean, isOptionalString } from './validation'
 import { validateStartOptions, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
+import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
 import type { WorkspaceTabOptions } from '../../shared/ipc-contracts'
 import { isWithinSessionRoots } from '../pi-paths'
 import { existsSync } from 'fs'
@@ -107,6 +108,8 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
     }
 
     const settings = await loadAppSettings(workspaceManager)
+    const models = await readModelsConfigFile()
+    const remembered = resolvedStartModel(settings, 'config' in models ? models.config : undefined)
     const workspace = await workspaceManager.createWorktreeWorkspace(options)
     // Return the new project tab immediately. Its session runtime starts in the
     // background so the tab/file contents are usable before Pi is ready. A task
@@ -118,8 +121,7 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
         applyResumePreference(
           {
             cwd: workspace.path,
-            provider: settings.defaultProvider ?? undefined,
-            model: settings.defaultModel ?? undefined,
+            ...remembered,
             forkSessionPath: options.forkSessionPath,
           },
           settings

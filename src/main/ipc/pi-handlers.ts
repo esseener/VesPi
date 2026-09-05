@@ -4,6 +4,7 @@ import { access } from 'fs/promises'
 import { isString, isObject } from './validation'
 import { validateStartOptions, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
+import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
 import type { IpcContext } from './context'
 import { detectPiInstallations, getConfiguredEngineKind } from '../pi-rpc-manager'
 
@@ -15,6 +16,8 @@ export function registerPiHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.PI_START, async (_event, options?: unknown) => {
     const opts = validateStartOptions(options)
     const settings = await loadAppSettings(workspaceManager)
+    const models = await readModelsConfigFile()
+    const remembered = resolvedStartModel(settings, 'config' in models ? models.config : undefined)
     const activeWs = workspaceManager.getActiveWorkspace()
     if (!activeWs) throw new Error('No active workspace')
 
@@ -26,12 +29,13 @@ export function registerPiHandlers(ctx: IpcContext): void {
       cwd = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd()
     }
 
-    // Prefer explicit start options, else last model chosen in the GUI.
+    // Prefer explicit start options, else last model chosen in the GUI —
+    // but only if that provider still exists. Unknown `--provider` kills OMP.
     const withDefaults = {
       ...opts,
       cwd,
-      provider: opts.provider ?? settings.defaultProvider ?? undefined,
-      model: opts.model ?? settings.defaultModel ?? undefined,
+      provider: opts.provider ?? remembered.provider,
+      model: opts.model ?? remembered.model,
     }
     await workspaceManager.startPiForWorkspace(
       activeWs.id,
@@ -54,6 +58,8 @@ export function registerPiHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.PI_RESTART, async (_event, options?: unknown) => {
     const opts = validateStartOptions(options)
     const settings = await loadAppSettings(workspaceManager)
+    const models = await readModelsConfigFile()
+    const remembered = resolvedStartModel(settings, 'config' in models ? models.config : undefined)
     const activeWs = workspaceManager.getActiveWorkspace()
     if (!activeWs) throw new Error('No active workspace')
 
@@ -69,7 +75,12 @@ export function registerPiHandlers(ctx: IpcContext): void {
     const runtimeId = workspaceManager.runtimeIdFor(pi)
     const runtime = runtimeId ? workspaceManager.getSessionRuntime(runtimeId) : null
     const startOptions = applyPermissionModeToStartOptions(
-      applyResumePreference({ cwd: activeWs.path, ...opts }, settings),
+      applyResumePreference({
+        cwd: activeWs.path,
+        ...opts,
+        provider: opts.provider ?? remembered.provider,
+        model: opts.model ?? remembered.model,
+      }, settings),
       settings
     )
     if (runtime) {
@@ -77,7 +88,7 @@ export function registerPiHandlers(ctx: IpcContext): void {
       return { status: info.status, pid: info.pid, error: info.error }
     }
 
-    pi.stop()
+    await pi.stopAndWait()
     return pi.start(startOptions)
   })
 

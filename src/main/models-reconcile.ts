@@ -16,13 +16,22 @@ import { vespiProfileAgentDir } from './vespi-runtime'
  * Returns true when the yml was (re)written. tmp+rename keeps a crash from
  * leaving a half-written yml for OMP to read.
  */
+/** A save crash often cuts the file at the last `models:` with no model rows. */
+export function modelsYmlLooksTruncated(yml: string): boolean {
+  const marker = '\n    models:'
+  const lastModels = yml.lastIndexOf(marker)
+  if (lastModels < 0) return false
+  return !/\n\s+- id:/.test(yml.slice(lastModels))
+}
+
 export function reconcileModelsYml(agentDir = vespiProfileAgentDir()): boolean {
   const jsonPath = join(agentDir, 'models.json')
   const ymlPath = join(agentDir, 'models.yml')
   try {
     if (!existsSync(jsonPath)) return false
     const jsonMtime = statSync(jsonPath).mtimeMs
-    if (existsSync(ymlPath) && statSync(ymlPath).mtimeMs >= jsonMtime) return false
+    const ymlLooksTruncated = existsSync(ymlPath) && modelsYmlLooksTruncated(readFileSync(ymlPath, 'utf-8'))
+    if (existsSync(ymlPath) && statSync(ymlPath).mtimeMs >= jsonMtime && !ymlLooksTruncated) return false
     const parsed: unknown = JSON.parse(readFileSync(jsonPath, 'utf-8'))
     if (!parsed || typeof parsed !== 'object' || !('providers' in parsed)) return false
     writeFileSync(`${ymlPath}.tmp`, buildModelsYml(parsed as ModelsConfig), 'utf-8')
