@@ -5,6 +5,10 @@ import type { DisplayMessage } from './store'
 // mirrors toolIcon() so the label and icon stay in sync.
 export function toolLabel(name: string): string {
   const n = name.toLowerCase()
+  // Delegation first: OMP's `hub` / `task` and Pi's `subagent` spawn an agent,
+  // and `task` would otherwise be swallowed by no rule at all while `hub`
+  // reads as a raw tool name in the UI.
+  if (n === 'hub' || n === 'task' || n.startsWith('subagent')) return 'Delegate subagent'
   if (n.includes('bash') || n.includes('shell') || n.includes('exec') || n.includes('terminal')) return 'Run command'
   if (n.includes('search') || n.includes('grep') || n.includes('find')) return 'Search'
   if (n.includes('web') || n.includes('fetch') || n.includes('http') || n.includes('url')) return 'Fetch URL'

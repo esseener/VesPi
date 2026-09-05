@@ -9,6 +9,7 @@ const TOOL_NAME_KEYS: Record<string, MessageKey> = {
   'Write file': 'toolWriteFile',
   'List files': 'toolListFiles',
   'Read file': 'toolReadFile',
+  'Delegate subagent': 'toolDelegate',
 }
 
 const TOOL_ARG_KEYS: Record<string, MessageKey> = {

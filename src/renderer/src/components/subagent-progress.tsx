@@ -1,6 +1,7 @@
 import { useAppStore } from '../store'
 import { useState, useEffect, useMemo } from 'react'
 import { clsx } from 'clsx'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import {
   ChevronDown,
   Loader2,
@@ -111,6 +112,7 @@ function AgentRow({ line }: { line: AgentLine }): React.JSX.Element {
 }
 
 export function SubagentProgress(): React.JSX.Element | null {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const subagentProgress = useAppStore((state) => state.subagentProgress)
   const extensionStatuses = useAppStore((state) => state.extensionStatuses)
 
@@ -182,8 +184,8 @@ export function SubagentProgress(): React.JSX.Element | null {
   const listMaxH = MAX_ROWS * ROW_H
 
   const summary = hasRunning
-    ? `${runningCount} subagent${runningCount === 1 ? '' : 's'} running`
-    : `${totalCount} subagent${totalCount === 1 ? '' : 's'} done`
+    ? t(language, 'subagentRunning', { count: String(runningCount) })
+    : t(language, 'subagentDone', { count: String(totalCount) })
 
   return (
     // Flush to the pill below: top rounded, bottom square so it reads as a cap.

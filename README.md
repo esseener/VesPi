@@ -12,7 +12,7 @@
 <p align="center">
   <a href="#中文">中文</a> ·
   <a href="#english">English</a> ·
-  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.19</a>
+  <a href="https://github.com/esseener/VesPi/releases/latest">下载 1.0.20</a>
 </p>
 
 <p align="center">
@@ -32,7 +32,7 @@ VesPi 把 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 和 **[Pi
 
 默认跑仓库/安装包里的私有 `omp.exe`（`--profile vespi --mode rpc-ui`）。不需要你自己配 PATH 上的 `omp` 或 `pi`。
 
-当前版本 **[1.0.19](https://github.com/esseener/VesPi/releases/latest)**。
+当前版本 **[1.0.20](https://github.com/esseener/VesPi/releases/latest)**。
 
 ## 界面（本机 VesPi 1.0.1 实拍）
 
@@ -61,6 +61,10 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 - 权限模式 + 规则；工作区信任门闩
 - 插件 / 技能浏览、诊断、主题
 - 双通道更新：界面看本仓库；**更新内核** 从 `can1357/oh-my-pi` 下载，带进度和成功/失败提示
+
+## 1.0.20
+
+补齐子智能体文案：输入框上方的进度条改为「N 个子智能体运行中 / 已完成」；`hub` / `task` / `subagent` 派发工具统一显示为「派发子智能体」。
 
 ## 1.0.19
 
@@ -141,7 +145,7 @@ VesPi **不另写一套 Agent 循环**。内核仍是 OMP / Pi：读改文件、
 
 [Releases](https://github.com/esseener/VesPi/releases/latest)
 
-- 安装包：`VesPi-Setup-1.0.19-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
+- 安装包：`VesPi-Setup-1.0.20-win-x64.exe`（推荐，装到 `%LOCALAPPDATA%\Programs\VesPi\`）
 
 未签名时 SmartScreen 选「更多信息 → 仍要运行」。
 
@@ -174,7 +178,7 @@ npm run package:win:nsis
 
 Shipped builds run a private `omp.exe` (`--profile vespi --mode rpc-ui`). You do not need a global `omp` / `pi` on PATH.
 
-Current release: **[1.0.19](https://github.com/esseener/VesPi/releases/latest)**.
+Current release: **[1.0.20](https://github.com/esseener/VesPi/releases/latest)**.
 
 Based on [Pi Desktop](https://github.com/FaqFirebase/pi-desktop) (Apache-2.0). VesPi is the shell; OMP/Pi stay the agent.
 
@@ -186,7 +190,7 @@ While the model is writing, extra text is not sent immediately. **Steer** and **
 
 ## Download
 
-- Installer: `VesPi-Setup-1.0.19-win-x64.exe`
+- Installer: `VesPi-Setup-1.0.20-win-x64.exe`
 
 ## License
 
