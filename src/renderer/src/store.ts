@@ -600,6 +600,10 @@ function generateId(): string {
   return `msg-${Date.now()}-${++messageCounter}`
 }
 
+function looksLikeFilesystemPath(value: string): boolean {
+  return /^[A-Za-z]:[\\/]/.test(value) || value.startsWith('/') || value.startsWith('\\\\')
+}
+
 function currentLanguage(get: () => AppState & AppActions): typeof DEFAULT_LANGUAGE {
   const state = get()
   return state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
@@ -1456,7 +1460,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       return
     }
     // An empty new tab can receive a sessionPath from Pi before the JSONL
-    // exists on disk. Clicking that same tab must not call session:switch.
+    // exists on disk. Clicking that same untitled tab must not call session:switch.
+    // A history row that happens to share no messages yet is a different session
+    // and must still switch.
     const live = Object.values(get().sessionRuntimes).find((runtime) =>
       runtime.sessionPath != null && pathsEqual(runtime.sessionPath, path)
     )
@@ -1464,7 +1470,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       live &&
       live.runtimeId === get().activeSessionRuntimeId &&
       !get().sessionLoading &&
-      get().messages.length === 0
+      get().messages.length === 0 &&
+      !get().sessionList.some((item) => item.path === path && (item.messageCount ?? 0) > 0)
     ) {
       set({ currentView: 'chat' })
       return
@@ -1620,12 +1627,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const matchingWs = workspaces.find((w) => pathsEqual(w.path, projectPath))
       if (matchingWs) {
         if (!(await get().activateWorkspace(matchingWs.id, { awaitingSession: true }))) return
-      } else {
+      } else if (looksLikeFilesystemPath(projectPath)) {
         await get().createWorkspace(session.projectName, projectPath)
         const newWs = get().workspaces.find((w) => pathsEqual(w.path, projectPath))
         if (newWs && !(await get().activateWorkspace(newWs.id, { awaitingSession: true }))) return
       }
+      // A raw session-dir slug (home-relative OMP name) is not a real folder.
+      // Stay on the current workspace and open the file there — hopping would
+      // cancel the switch and leave the empty new-session tab on screen.
     }
+    // After a workspace hop, re-read the active workspace. Main refuses the
+    // switch if cwd and the active workspace disagree.
     // switchSession's working-workspace guard covers the live-turn cases from
     // here on: the turn's own session re-attaches instead of switching, and
     // opening a different session of a mid-turn workspace warns first.
@@ -2398,7 +2410,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }))
     // A newly-created session is intentionally empty. If the empty chat is
     // already on screen, only bind the generated path — reloadActiveSession
-    // would flash a spinner over the same blank view.
+    // would flash a spinner over the same blank view. Opening a historical
+    // session also starts from an empty chat (switchSession cleared it), so
+    // skip this shortcut whenever a session file already exists on disk.
     const current = get()
     if (
       runtime.active &&
@@ -2408,7 +2422,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       (!current.sessionLoading || current.activeSessionRuntimeId === runtime.runtimeId)
     ) {
       const alreadyEmpty = current.messages.length === 0 && !current.isStreaming && !current.sessionLoading
-      if (alreadyEmpty && current.activeSessionRuntimeId === runtime.runtimeId) {
+      const isNewUntitled = alreadyEmpty && current.activeSessionRuntimeId === runtime.runtimeId &&
+        !current.sessionList.some((item) => item.path === runtime.sessionPath)
+      if (isNewUntitled) {
         void get().refreshSessionState()
         return
       }
@@ -2606,7 +2622,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     if (!options?.skipDirtyConfirm && !(await get().confirmDiscardEditorChanges())) return false
     try {
       const workspace = await window.piDesktop.workspace.setActive(workspaceId)
-      sessionLoadGeneration += 1
+      // Opening a historical session from another project calls this with
+      // awaitingSession, then immediately switchSession. Bumping generation
+      // here would cancel that switch and leave the empty new-session tab on
+      // screen — the click looks like a no-op. Standalone tab clicks still
+      // bump so in-flight history loads for the workspace being left die.
+      if (options?.awaitingSession !== true) sessionLoadGeneration += 1
       get().clearMessages()
       // Decide from the runtime snapshots the main process already pushed —
       // one IPC roundtrip total, no serial status probe before first render.
@@ -2970,7 +2991,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   toggleFileSearch: () => {
-    set((state) => ({ fileSearchOpen: !state.fileSearchOpen }))
+    set((state) => ({
+      fileSearchOpen: !state.fileSearchOpen,
+      notePickerOpen: state.fileSearchOpen ? state.notePickerOpen : false,
+    }))
   },
 
   // ─── Session Tags ────────────────────────────────────────────────────
@@ -3150,7 +3174,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   clearPendingInsert: () => set({ pendingInsert: null }),
 
-  setNotePickerOpen: (open) => set({ notePickerOpen: open }),
+  setNotePickerOpen: (open) =>
+    set((state) => ({
+      notePickerOpen: open,
+      fileSearchOpen: open ? false : state.fileSearchOpen,
+    })),
 
   setCommandPalette: (open) => set({ commandPaletteOpen: open }),
   setTaskLauncherOpen: (open) => set({ taskLauncherOpen: open }),

@@ -708,6 +708,7 @@ export function ChatInput(): React.JSX.Element {
             <Paperclip size={15} />
           </button>
           <button
+            data-composer-note
             onClick={() => setNotePickerOpen(true)}
             className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors"
             title={t(language, 'insertNote')}
@@ -716,6 +717,7 @@ export function ChatInput(): React.JSX.Element {
             <StickyNote size={15} />
           </button>
           <button
+            data-composer-search
             onClick={() => toggleFileSearch()}
             className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors"
             title={t(language, 'searchWorkspace')}

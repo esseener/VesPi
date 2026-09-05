@@ -40,6 +40,7 @@ let sessionStateResult: SessionState | null = null
 // What the stubbed session.delete reports. `replacementSessionPath` mirrors
 // the runtime main promoted while closing the deleted session's tab.
 let sessionDeleteResult: SessionDeleteResult = { ok: true, method: 'trash', replacementSessionPath: null }
+let switchDelayMs = 0
 
 // Only sessionFile is read by the code under test; the cast keeps this
 // fixture from churning as SessionState grows fields.
@@ -197,6 +198,7 @@ const piDesktopStub = {
   session: {
     switch: async (path: string) => {
       calls.push(`switch:${path}`)
+      if (switchDelayMs) await new Promise((resolve) => setTimeout(resolve, switchDelayMs))
       return switchResult
     },
     createNew: async () => {
@@ -320,6 +322,7 @@ beforeEach(() => {
   fileSearchHook = null
   sessionStateResult = null
   sessionDeleteResult = { ok: true, method: 'trash', replacementSessionPath: null }
+  switchDelayMs = 0
   useAppStore.setState({
     isStreaming: false,
     streamingContent: '',
@@ -1656,6 +1659,37 @@ function sessionItemFor(workspace: Workspace): SessionListItem {
   }
 }
 
+test('opening a historical session hydrates even if the chat is already empty', async () => {
+  // switchSession clears messages and may finish with sessionLoading=false
+  // while the engine is still starting. When it later reports running, the
+  // empty-chat shortcut must NOT skip getMessages — that left the new-session
+  // tab on screen after clicking a history row.
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE],
+    activeSessionRuntimeId: 'rt-hist',
+    sessionLoading: false,
+    sessionState: null,
+    messages: [],
+    sessionList: [sessionItemFor(WORKSPACE_ONE)],
+  })
+
+  useAppStore.getState().handleSessionRuntime({
+    runtimeId: 'rt-hist',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'target-1',
+    status: 'running',
+    pid: 7,
+    error: null,
+    activity: null,
+    active: true,
+  })
+  await new Promise<void>((resolve) => setImmediate(resolve))
+
+  assert.equal(calls.includes('getMessages'), true)
+})
+
 test('openSessionItem in the active workspace switches straight to the session', async () => {
   workspaceListResult = [WORKSPACE_ONE]
   activeWorkspaceResult = WORKSPACE_ONE
@@ -1686,6 +1720,61 @@ test('openSessionItem auto-switches to the owning workspace first', async () => 
   assert.equal(calls.includes(`setActiveWorkspace:${WORKSPACE_TWO.id}`), true)
   assert.equal(calls.includes(`switch:${SESSION_PATH}`), true)
   assert.equal(useAppStore.getState().currentView, 'chat')
+})
+
+test('openSessionItem still switches after hopping workspaces even if session.switch is slow', async () => {
+  // activateWorkspace used to bump sessionLoadGeneration, which cancelled the
+  // follow-up switchSession and left the empty new-session tab on screen.
+  switchDelayMs = 80
+  workspaceListResult = [WORKSPACE_ONE, WORKSPACE_TWO]
+  activeWorkspaceResult = WORKSPACE_ONE
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE, WORKSPACE_TWO],
+    currentView: 'sessions',
+    sessionRuntimes: {
+      'rt-new': {
+        runtimeId: 'rt-new',
+        workspaceId: WORKSPACE_ONE.id,
+        sessionPath: null,
+        sessionId: null,
+        status: 'running',
+        pid: 1,
+        error: null,
+        activity: null,
+        active: true,
+        closed: false,
+      },
+    },
+    activeSessionRuntimeId: 'rt-new',
+  })
+
+  await useAppStore.getState().openSessionItem(sessionItemFor(WORKSPACE_TWO))
+
+  assert.equal(calls.includes(`setActiveWorkspace:${WORKSPACE_TWO.id}`), true)
+  assert.equal(calls.includes(`switch:${SESSION_PATH}`), true)
+  assert.equal(useAppStore.getState().activeSessionRuntimeId !== 'rt-new', true)
+  assert.equal(useAppStore.getState().currentView, 'chat')
+})
+
+test('openSessionItem does not hop workspaces for a raw session-dir slug', async () => {
+  workspaceListResult = [WORKSPACE_ONE]
+  activeWorkspaceResult = WORKSPACE_ONE
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE],
+    currentView: 'chat',
+  })
+
+  await useAppStore.getState().openSessionItem({
+    ...sessionItemFor(WORKSPACE_ONE),
+    projectPath: '-Downloads-pi测试',
+    projectName: 'pi测试',
+  })
+
+  assert.equal(calls.some((c) => c.startsWith('setActiveWorkspace')), false)
+  assert.equal(calls.some((c) => c.startsWith('createWorkspace')), false)
+  assert.equal(calls.includes(`switch:${SESSION_PATH}`), true)
 })
 
 // ─── Mid-turn re-attach on workspace switch-back ─────────────────────────────

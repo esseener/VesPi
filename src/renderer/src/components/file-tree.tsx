@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback, useMemo } from 'react'
+import { useEffect, useState, useCallback, useMemo, useRef, useLayoutEffect } from 'react'
 import { useAppStore } from '../store'
 import { createDebouncedBuffer } from '../utils/debounced-buffer'
 import { createStaleGuard } from '../utils/stale-guard'
@@ -308,26 +308,60 @@ interface FileSearchProps {
 }
 
 export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Element | null {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [query, setQuery] = useState('')
   const [results, setResults] = useState<FileSearchResult[]>([])
   const [loading, setLoading] = useState(false)
   const [contentMode, setContentMode] = useState(false)
+  const [activeIndex, setActiveIndex] = useState(0)
+  const [anchor, setAnchor] = useState<{ left: number; bottom: number } | null>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setAnchor(null)
+      return
+    }
+    const trigger = document.querySelector<HTMLElement>('[data-composer-search]')
+    if (!trigger) {
+      setAnchor({ left: window.innerWidth / 2 - 224, bottom: 88 })
+      return
+    }
+    const rect = trigger.getBoundingClientRect()
+    const width = 448
+    const left = Math.min(Math.max(12, rect.left), window.innerWidth - width - 12)
+    setAnchor({ left, bottom: window.innerHeight - rect.top + 8 })
+  }, [isOpen])
 
   useEffect(() => {
     if (!isOpen) {
       setQuery('')
       setResults([])
+      setActiveIndex(0)
+      return
     }
+    requestAnimationFrame(() => inputRef.current?.focus())
   }, [isOpen])
 
+  useEffect(() => {
+    if (!isOpen) return
+    const onPointer = (event: MouseEvent): void => {
+      const target = event.target as Node
+      if (panelRef.current?.contains(target)) return
+      if ((event.target as HTMLElement).closest?.('[data-composer-search]')) return
+      onClose()
+    }
+    document.addEventListener('mousedown', onPointer)
+    return () => document.removeEventListener('mousedown', onPointer)
+  }, [isOpen, onClose])
+
   // Close on Escape. Capture phase + stopPropagation so it preempts the
-  // window-level Escape-to-abort handler while the modal is open.
+  // window-level Escape-to-abort handler while the palette is open.
   useEffect(() => {
     if (!isOpen) return
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        // A confirm dialog stacked on top (dirty-editor discard) owns Escape;
-        // swallowing it here would close the palette and leave the dialog.
         if (useAppStore.getState().confirmRequest) return
         e.preventDefault()
         e.stopPropagation()
@@ -341,6 +375,7 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
   useEffect(() => {
     if (!query.trim()) {
       setResults([])
+      setLoading(false)
       return
     }
 
@@ -351,6 +386,7 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
           ? await window.piDesktop.files.searchContent(query)
           : await window.piDesktop.files.search(query)
         setResults(searchResults)
+        setActiveIndex(0)
       } catch {
         setResults([])
       } finally {
@@ -368,87 +404,96 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
       path: result.path,
       relativePath: result.relativePath,
     })
-    // A declined dirty-editor discard keeps the palette open for a re-pick.
-    // onClose is a toggle: only fire it while the palette is still open, or a
-    // palette the user closed during the confirm would pop back up.
     if (ok && useAppStore.getState().fileSearchOpen) onClose()
   }
 
-  if (!isOpen) return null
+  const handleKeyDown = (e: React.KeyboardEvent): void => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setActiveIndex((i) => Math.min(i + 1, Math.max(0, results.length - 1)))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setActiveIndex((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const result = results[activeIndex]
+      if (result) void handleSelect(result)
+    }
+  }
+
+  if (!isOpen || !anchor) return null
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-lg rounded-xl border border-border-strong bg-surface shadow-2xl overflow-hidden">
-        {/* Search input */}
-        <div className="flex items-center border-b border-border px-4 py-3">
-          <Search size={16} className="text-dim shrink-0" />
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder={contentMode ? 'Search file contents...' : 'Search files by name...'}
-            className="flex-1 ml-3 bg-transparent text-sm text-primary placeholder:text-faint outline-none"
-            autoFocus
-          />
-          <button
-            onClick={() => setContentMode(!contentMode)}
-            className={clsx(
-              'rounded px-2 py-0.5 text-[10px] transition-colors',
-              contentMode
-                ? 'bg-accent-bg text-accent-fg'
-                : 'bg-card text-dim hover:text-secondary'
-            )}
-          >
-            {contentMode ? 'CONTENT' : 'FILES'}
-          </button>
-          <button
-            onClick={onClose}
-            className="ml-2 rounded p-1 text-dim hover:text-secondary"
-          >
-            <X size={14} />
-          </button>
-        </div>
-
-        {/* Results */}
-        <div className="max-h-80 overflow-y-auto">
-          {loading ? (
-            <div className="flex items-center justify-center py-8">
-              <Loader2 size={20} className="animate-spin text-dim" />
-            </div>
-          ) : results.length === 0 ? (
-            <div className="py-8 text-center text-xs text-faint">
-              {query.trim() ? 'No results found' : 'Type to search...'}
-            </div>
-          ) : (
-            <div className="py-1">
-              {results.map((result, i) => (
-                <button
-                  key={`${result.path}-${i}`}
-                  onClick={() => void handleSelect(result)}
-                  className="flex w-full items-center gap-3 px-4 py-2 text-left hover:bg-surface-hover transition-colors"
-                >
-                  <FileText size={14} className="shrink-0 text-dim" />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm text-primary truncate">
-                      {result.relativePath}
-                    </div>
-                    {result.matchType === 'content' && result.snippet && (
-                      <div className="text-xs text-dim truncate mt-0.5">
-                        Line {result.line}: {result.snippet}
-                      </div>
-                    )}
-                  </div>
-                </button>
-              ))}
-            </div>
+    <div
+      ref={panelRef}
+      role="listbox"
+      className="fixed z-50 w-[28rem] overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl shadow-black/40 origin-bottom"
+      style={{ left: anchor.left, bottom: anchor.bottom }}
+    >
+      <div className="flex items-center gap-2 border-b border-border px-3 py-2">
+        <Search size={14} className="shrink-0 text-dim" />
+        <input
+          ref={inputRef}
+          type="text"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder={t(language, contentMode ? 'fileSearchByContent' : 'fileSearchByName')}
+          className="flex-1 bg-transparent text-sm text-primary placeholder:text-faint outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => setContentMode(!contentMode)}
+          className={clsx(
+            'rounded px-2 py-0.5 text-[11px] transition-colors',
+            contentMode
+              ? 'bg-accent-bg text-accent-fg'
+              : 'bg-card text-dim hover:text-secondary'
           )}
-        </div>
+        >
+          {t(language, contentMode ? 'fileSearchModeContent' : 'fileSearchModeFiles')}
+        </button>
+      </div>
 
-        {/* Footer */}
-        <div className="border-t border-border px-4 py-2 flex items-center justify-between text-xs text-faint">
-          <span>{results.length} results</span>
-          <span>Esc to close</span>
-        </div>
+      <div className="max-h-64 overflow-y-auto">
+        {loading ? (
+          <div className="flex items-center justify-center py-8">
+            <Loader2 size={18} className="animate-spin text-dim" />
+          </div>
+        ) : results.length === 0 ? (
+          <div className="py-6 text-center text-xs text-faint">
+            {query.trim() ? t(language, 'fileSearchNoResults') : t(language, 'fileSearchEmpty')}
+          </div>
+        ) : (
+          <div className="py-1">
+            {results.map((result, i) => (
+              <button
+                key={`${result.path}-${i}`}
+                onClick={() => void handleSelect(result)}
+                onMouseEnter={() => setActiveIndex(i)}
+                className={clsx(
+                  'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
+                  i === activeIndex ? 'bg-card' : 'hover:bg-surface-hover'
+                )}
+              >
+                <FileText size={14} className="shrink-0 text-dim" />
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm text-primary">{result.relativePath}</div>
+                  {result.matchType === 'content' && result.snippet && (
+                    <div className="mt-0.5 truncate text-xs text-dim">
+                      {t(language, 'fileSearchLine', { n: String(result.line ?? ''), snippet: result.snippet })}
+                    </div>
+                  )}
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-between border-t border-border px-3 py-1.5 text-[10px] text-faint">
+        <span>{t(language, 'fileSearchResultCount', { n: String(results.length) })}</span>
+        <span>{t(language, 'fileSearchHint')}</span>
       </div>
     </div>
   )
