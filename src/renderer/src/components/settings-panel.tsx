@@ -11,7 +11,7 @@ import type {
   PermissionRulesWorkspaceStatus,
 } from '../../../shared/ipc-contracts'
 import type { ThemeFile } from '../../../shared/theme/theme-file'
-import { Settings, RotateCcw } from 'lucide-react'
+import { Settings, RotateCcw, X } from 'lucide-react'
 import { ThemedSelect } from './themed-select'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
@@ -68,6 +68,9 @@ export function SettingsPanel(): React.JSX.Element {
   const [theme, setTheme] = useState(draft0.theme ?? settings?.theme ?? DEFAULT_SETTINGS.theme)
   const [language, setLanguage] = useState<AppLanguage>(draft0.language ?? settings?.language ?? DEFAULT_LANGUAGE)
   const [themeActionError, setThemeActionError] = useState<string | null>(null)
+  // Errors from write-through setting saves (no staged Save button), surfaced at
+  // the top of the panel instead of vanishing into a rejected promise.
+  const [settingsActionError, setSettingsActionError] = useState<string | null>(null)
 
   const [themeEditorState, setThemeEditorState] = useState<{
     baseTheme: ThemeFile
@@ -195,8 +198,17 @@ export function SettingsPanel(): React.JSX.Element {
   const saveCouncil = async (patch: Partial<CouncilConfig>): Promise<void> => {
     if (!settings) return
     const nextCouncil: CouncilConfig = { ...settings.council, ...patch }
-    await window.piDesktop.settings.save({ council: nextCouncil })
-    await loadSettings()
+    try {
+      await window.piDesktop.settings.save({ council: nextCouncil })
+      await loadSettings()
+    } catch (err) {
+      // Five call sites fire this with `void`; a failed write used to leave the
+      // toggle in its new position with nothing said and nothing reloaded.
+      setSettingsActionError(
+        t(language, 'settingsSaveFailed', { detail: err instanceof Error ? err.message : String(err) }),
+      )
+      void loadSettings()
+    }
   }
 
   // Persist a setting immediately. Toggles, selects, and theme picks write
@@ -209,7 +221,14 @@ export function SettingsPanel(): React.JSX.Element {
 
   const persistSettingPatch = (patch: Partial<AppSettings>): void => {
     setSettingsDraft(patch)
-    void persistSetting(patch)
+    void persistSetting(patch).catch((err: unknown) => {
+      // A failed write used to leave the toggle flipped with no rollback and no
+      // message, so the UI claimed a setting that never reached disk.
+      setSettingsActionError(
+        t(language, 'settingsSaveFailed', { detail: err instanceof Error ? err.message : String(err) }),
+      )
+      void loadSettings()
+    })
   }
 
   const previewSettingPatch = (patch: Partial<AppSettings>): void => {
@@ -344,16 +363,22 @@ export function SettingsPanel(): React.JSX.Element {
       danger: true,
     })
     if (!ok) return
-    await window.piDesktop.themes.delete(theme)
-    const { themes, warnings } = await window.piDesktop.themes.list()
-    for (const warning of warnings) {
-      console.warn(warning)
+    try {
+      await window.piDesktop.themes.delete(theme)
+      const { themes, warnings } = await window.piDesktop.themes.list()
+      for (const warning of warnings) {
+        console.warn(warning)
+      }
+      setUserThemes(themes)
+      setTheme('dark')
+      applyTheme('dark')
+      persistSettingPatch({ theme: 'dark' })
+      setThemeActionError(null)
+    } catch (err) {
+      // The delete rejects in the main process for ids that aren't real theme
+      // files — "system" above all. Swallowing it left the button looking dead.
+      setThemeActionError(err instanceof Error ? err.message : String(err))
     }
-    setUserThemes(themes)
-    setTheme('dark')
-    applyTheme('dark')
-    persistSettingPatch({ theme: 'dark' })
-    setThemeActionError(null)
   }
 
   const handleRulesChange = (rules: PermissionRule[]): void => {
@@ -430,6 +455,16 @@ export function SettingsPanel(): React.JSX.Element {
   }
 
   const handleReset = async () => {
+    // Wipes every field on this panel plus both permission-rule drafts in one
+    // click, with no undo — it earns the same confirmation as deleting a theme.
+    const ok = await useAppStore.getState().requestConfirm({
+      title: t(language, 'resetDefaults'),
+      message: t(language, 'resetSettingsConfirm'),
+      confirmLabel: t(language, 'resetDefaults'),
+      danger: true,
+    })
+    if (!ok) return
+
     // Reset only the fields this panel exposes; the rest (council, default
     // model/provider/cwd, collapsed groups) are left as-is by the Partial merge.
     // Values come from the shared DEFAULT_SETTINGS so there's one source of truth.
@@ -489,6 +524,20 @@ export function SettingsPanel(): React.JSX.Element {
             <h1 className="text-lg font-semibold text-primary">{t(language, 'settings')}</h1>
           </div>
         </div>
+
+        {settingsActionError && (
+          <div className="mb-4 flex items-start justify-between gap-3 rounded-md border border-error bg-error-bg/50 px-3 py-2">
+            <p className="text-xs text-error">{settingsActionError}</p>
+            <button
+              type="button"
+              onClick={() => setSettingsActionError(null)}
+              className="shrink-0 text-dim hover:text-primary"
+              aria-label={t(language, 'close')}
+            >
+              <X size={12} />
+            </button>
+          </div>
+        )}
 
         <SettingsSection title={t(language, 'appearance')}>
           <SettingsRow label={t(language, 'language')} description={t(language, 'languageDescription')}>
@@ -564,9 +613,11 @@ export function SettingsPanel(): React.JSX.Element {
                 >
                   {t(language, 'browseGallery')}
                 </button>
-                {!isBuiltinTheme(theme) && (
+                {/* "system" is not a builtin id, so `!isBuiltinTheme` alone showed
+                    a Delete button for it that could never work. */}
+                {isEditableUserTheme && (
                   <button
-                    onClick={handleDeleteTheme}
+                    onClick={() => void handleDeleteTheme()}
                     className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
                   >
                     {t(language, 'delete')}

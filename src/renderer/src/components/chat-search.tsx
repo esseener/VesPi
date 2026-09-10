@@ -189,6 +189,10 @@ export function ChatSearch({
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Escape') {
       e.preventDefault()
+      // Without this the event reaches the window-level listener in
+      // useChatKeyboard, which aborts the in-flight generation — closing the
+      // search bar must not kill the answer behind it.
+      e.stopPropagation()
       onClose()
     } else if (e.key === 'Enter') {
       e.preventDefault()

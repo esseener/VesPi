@@ -2,6 +2,7 @@ import { useAppStore } from '../store'
 import type { CatalogPackage } from '../../../shared/ipc-contracts'
 import { filterCatalog } from '../../../shared/package-filter'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { agentEngineLabel } from '../../../shared/agent-engine-label'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
@@ -19,10 +20,24 @@ import {
   X,
 } from 'lucide-react'
 
+/** Uninstalling used to fire on a single click with no confirmation at all. */
+function confirmPackageRemove(spec: string): Promise<boolean> {
+  const state = useAppStore.getState()
+  const language = state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  return state.requestConfirm({
+    title: t(language, 'uninstallPackage'),
+    message: t(language, 'uninstallPackageConfirm', { name: spec }),
+    confirmLabel: t(language, 'confirmRemove'),
+    danger: true,
+  })
+}
+
 export function PackageBrowser(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const installedPackages = useAppStore((state) => state.installedPackages)
   const catalogPackages = useAppStore((state) => state.catalogPackages)
+  const engine = useAppStore((state) => state.piEngine)
+  const engineLabel = agentEngineLabel(engine) ?? 'Pi'
   const packageLoading = useAppStore((state) => state.packageLoading)
   const catalogLoading = useAppStore((state) => state.catalogLoading)
   const packageNotification = useAppStore((state) => state.packageNotification)
@@ -41,6 +56,7 @@ export function PackageBrowser(): React.JSX.Element {
   )
 
   const [activeTab, setActiveTab] = useState<'installed' | 'catalog'>('installed')
+  const isOmp = engine === 'omp'
 
   // Installed packages are local/fast — load up front so the default
   // Installed tab paints immediately.
@@ -58,7 +74,14 @@ export function PackageBrowser(): React.JSX.Element {
     }
   }, [activeTab, loadCatalog])
 
-  const handleRemove = useCallback((spec: string) => { removePackage(spec) }, [removePackage])
+  const handleRemove = useCallback(
+    (spec: string) => {
+      void confirmPackageRemove(spec).then((ok) => {
+        if (ok) removePackage(spec)
+      })
+    },
+    [removePackage],
+  )
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
@@ -66,10 +89,23 @@ export function PackageBrowser(): React.JSX.Element {
       <div className="border-b border-border px-4 py-3">
         <div className="flex items-center gap-2 mb-3">
           <Package size={16} className="text-muted" />
-          <h2 className="text-sm font-medium text-primary">{t(language, 'extensions')}</h2>
+          <h2 className="text-sm font-medium text-primary">{isOmp ? `${engineLabel} ${t(language, 'extensions')}` : t(language, 'extensions')}</h2>
         </div>
+        {isOmp && (
+          <div className="flex items-center justify-between gap-3 text-[11px] text-faint">
+            <span>{t(language, 'ompPluginProfile', { profile: 'vespi' })}</span>
+            <button
+              type="button"
+              onClick={() => window.piDesktop.system.openExternal('https://github.com/can1357/oh-my-pi')}
+              className="inline-flex shrink-0 items-center gap-1 text-accent-fg hover:underline"
+            >
+              <ExternalLink size={11} />
+              {t(language, 'ompPluginDocs')}
+            </button>
+          </div>
+        )}
 
-        <div className="flex gap-1">
+        {isOmp ? (
           <TabButton
             active={activeTab === 'installed'}
             onClick={() => setActiveTab('installed')}
@@ -77,17 +113,27 @@ export function PackageBrowser(): React.JSX.Element {
             label={t(language, 'installed')}
             count={installedPackages.length}
           />
-          <TabButton
-            active={activeTab === 'catalog'}
-            onClick={() => setActiveTab('catalog')}
-            icon={<Store size={12} />}
-            label={t(language, 'catalog')}
-          />
-        </div>
+        ) : (
+          <>
+            <TabButton
+              active={activeTab === 'installed'}
+              onClick={() => setActiveTab('installed')}
+              icon={<FolderOpen size={12} />}
+              label={t(language, 'installed')}
+              count={installedPackages.length}
+            />
+            <TabButton
+              active={activeTab === 'catalog'}
+              onClick={() => setActiveTab('catalog')}
+              icon={<Store size={12} />}
+              label={t(language, 'catalog')}
+            />
+          </>
+        )}
       </div>
 
       {/* Install bar (isolated: its keystrokes never re-render the tab lists) */}
-      <InstallBar />
+      <InstallBar isOmp={isOmp} />
 
       {/* Notification banner */}
       {packageNotification && (
@@ -120,9 +166,10 @@ export function PackageBrowser(): React.JSX.Element {
             packages={installedPackages}
             loading={packageLoading}
             onRemove={handleRemove}
+            isOmp={isOmp}
           />
         )}
-        {activeTab === 'catalog' && (
+        {!isOmp && activeTab === 'catalog' && (
           <CatalogTab
             packages={catalogPackages}
             loading={catalogLoading}
@@ -139,7 +186,7 @@ export function PackageBrowser(): React.JSX.Element {
 
 // Isolated so typing a package spec only re-renders this small component — it
 // never touches the Installed/Catalog/Skills lists. Install runs only on click.
-function InstallBar(): React.JSX.Element {
+function InstallBar({ isOmp }: { isOmp: boolean }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const installPackage = useAppStore((state) => state.installPackage)
   const [installInput, setInstallInput] = useState('')
@@ -156,6 +203,9 @@ function InstallBar(): React.JSX.Element {
 
   return (
     <div className="border-b border-border px-4 py-3">
+      <p className="mt-1 text-[11px] text-faint">
+        {isOmp ? t(language, 'ompReloadHint') : t(language, 'browseCatalogOrInstall')}
+      </p>
       <div className="flex gap-2">
         <input
           type="text"
@@ -222,10 +272,12 @@ const InstalledTab = memo(function InstalledTab({
   packages,
   loading,
   onRemove,
+  isOmp,
 }: {
   packages: Array<{ name: string; source: string; type: string; version: string | null }>
   loading: boolean
   onRemove: (spec: string) => void
+  isOmp: boolean
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   if (loading) {
@@ -240,8 +292,8 @@ const InstalledTab = memo(function InstalledTab({
     return (
       <div className="flex flex-col items-center justify-center py-12 text-dim">
         <Package size={32} className="mb-3 text-faint" />
-        <p className="text-sm">{t(language, 'noPackagesInstalled')}</p>
-        <p className="mt-1 text-xs text-faint">{t(language, 'browseCatalogOrInstall')}</p>
+        <p className="text-sm">{isOmp ? t(language, 'ompNoPlugins') : t(language, 'noPackagesInstalled')}</p>
+        <p className="mt-1 text-xs text-faint">{isOmp ? t(language, 'ompReloadHint') : t(language, 'browseCatalogOrInstall')}</p>
       </div>
     )
   }

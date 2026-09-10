@@ -62,11 +62,22 @@ export function useContextMenu(): {
   const menuRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLElement | null>(null)
 
+  // Declared before `show`, which calls it when the menu has nothing to render.
+  const hide = useCallback(() => {
+    setState((prev) => ({ ...prev, visible: false }))
+  }, [])
+
   const show = useCallback((e: React.MouseEvent, items: ContextMenuItem[]) => {
     e.preventDefault()
     e.stopPropagation()
     const visibleItems = items.filter((item) => !item.divider || items.length > 1)
-    if (visibleItems.length === 0) return
+    if (visibleItems.length === 0) {
+      // The native menu has already been suppressed by preventDefault above, so
+      // returning without clearing left the *previous* menu frozen on screen
+      // wherever the user right-clicked something with no actions.
+      hide()
+      return
+    }
 
     // Remember the element to restore focus to when the menu closes.
     triggerRef.current = document.activeElement as HTMLElement | null
@@ -85,13 +96,13 @@ export function useContextMenu(): {
     if (y + estimatedHeight > viewportHeight - PADDING) {
       y = viewportHeight - estimatedHeight - PADDING
     }
+    // A menu taller than the viewport would land on a negative top and render
+    // off screen entirely. Pin its top edge so the first item stays reachable
+    // (the container scrolls the rest, see below).
+    y = Math.max(PADDING, y)
 
     setState({ visible: true, x, y, items: visibleItems })
-  }, [])
-
-  const hide = useCallback(() => {
-    setState((prev) => ({ ...prev, visible: false }))
-  }, [])
+  }, [hide])
 
   // Close on click outside
   useEffect(() => {
@@ -104,20 +115,43 @@ export function useContextMenu(): {
     }
 
     const handleEscape = (e: KeyboardEvent) => {
+      if (e.isComposing || e.keyCode === 229) return
       // Escape closes; Tab dismisses so focus isn't trapped behind the menu.
-      if (e.key === 'Escape' || e.key === 'Tab') hide()
+      // stopPropagation keeps a parent Escape handler (closing the panel the
+      // menu sits on) from firing too and shutting two things at once.
+      if (e.key === 'Escape' || e.key === 'Tab') {
+        e.stopPropagation()
+        hide()
+        return
+      }
+      // Arrow-key navigation: focus lands on the first item when the menu opens,
+      // so the keys have to work too. Without this Tab closed the menu instead.
+      if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return
+      const buttons = Array.from(
+        menuRef.current?.querySelectorAll<HTMLButtonElement>('button:not([disabled])') ?? [],
+      )
+      if (buttons.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      const current = buttons.indexOf(document.activeElement as HTMLButtonElement)
+      const next = current === -1
+        ? (e.key === 'ArrowDown' ? 0 : buttons.length - 1)
+        : (current + (e.key === 'ArrowDown' ? 1 : -1) + buttons.length) % buttons.length
+      buttons[next]?.focus()
     }
 
     // Delay to avoid immediate close from the same right-click
     const timer = setTimeout(() => {
       document.addEventListener('click', handleClick)
-      document.addEventListener('keydown', handleEscape)
+      // Capture phase, so the stopPropagation above actually beats any
+      // window-level bubble listener registered elsewhere.
+      document.addEventListener('keydown', handleEscape, true)
     }, 10)
 
     return () => {
       clearTimeout(timer)
       document.removeEventListener('click', handleClick)
-      document.removeEventListener('keydown', handleEscape)
+      document.removeEventListener('keydown', handleEscape, true)
     }
   }, [state.visible, hide])
 
@@ -143,13 +177,27 @@ export function useContextMenu(): {
   }, [state.visible])
 
   const component = state.visible ? (
-    <div
-      ref={menuRef}
-      role="menu"
-      aria-orientation="vertical"
-      className="fixed z-[9999] min-w-[180px] rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40 animate-fade-in"
-      style={{ left: state.x, top: state.y }}
-    >
+    <>
+      {/* Invisible backdrop. Closing on `click` alone let that same click fall
+          through to whatever sat underneath, and a second right-click — which
+          fires no click event — left the old menu up. Catching mousedown here
+          closes the menu and swallows the press. */}
+      <div
+        className="fixed inset-0 z-[9998]"
+        onMouseDown={() => hide()}
+        onContextMenu={(e) => {
+          e.preventDefault()
+          hide()
+        }}
+        aria-hidden
+      />
+      <div
+        ref={menuRef}
+        role="menu"
+        aria-orientation="vertical"
+        className="fixed z-[9999] min-w-[180px] max-h-[70vh] overflow-y-auto rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40 animate-fade-in"
+        style={{ left: state.x, top: state.y }}
+      >
       {state.items.map((item) => {
         if (item.divider) {
           return <div key={item.id} className="my-1 border-t border-border" />
@@ -186,7 +234,8 @@ export function useContextMenu(): {
           </button>
         )
       })}
-    </div>
+      </div>
+    </>
   ) : null
 
   return { show, hide, ContextMenuComponent: component }
@@ -229,7 +278,7 @@ export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenu
     return [
       {
         id: 'cut',
-        label: '剪切',
+        label: t(menuLang(), 'cut'),
         icon: <Scissors size={14} />,
         shortcut: 'Ctrl+X',
         disabled: !hasSelection || active.readOnly || active.disabled,
@@ -241,7 +290,7 @@ export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenu
       },
       {
         id: 'copy',
-        label: '复制',
+        label: t(menuLang(), 'copy'),
         icon: <Copy size={14} />,
         shortcut: 'Ctrl+C',
         disabled: !hasSelection,
@@ -251,7 +300,7 @@ export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenu
       },
       {
         id: 'paste',
-        label: '粘贴',
+        label: t(menuLang(), 'paste'),
         icon: <ClipboardPaste size={14} />,
         shortcut: 'Ctrl+V',
         disabled: active.readOnly || active.disabled,
@@ -267,7 +316,7 @@ export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenu
       },
       {
         id: 'delete',
-        label: '删除',
+        label: t(menuLang(), 'delete'),
         icon: <Trash2 size={14} />,
         shortcut: 'Del',
         disabled: !hasSelection || active.readOnly || active.disabled,
@@ -284,7 +333,7 @@ export function buildDefaultContextMenu(field?: HTMLElement | null): ContextMenu
       },
       {
         id: 'select-all',
-        label: '全选',
+        label: t(menuLang(), 'selectAll'),
         icon: <TextSelect size={14} />,
         shortcut: 'Ctrl+A',
         disabled: !hasValue,

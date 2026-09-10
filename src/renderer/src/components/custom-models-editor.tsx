@@ -100,16 +100,39 @@ export function CustomModelsEditor(): React.JSX.Element {
   const [errors, setErrors] = useState<string[]>([])
   const [savedIndex, setSavedIndex] = useState<number | null>(null)
   const [savingIndex, setSavingIndex] = useState<number | null>(null)
-  const [probing, setProbing] = useState<number | null>(null)
-  const [probeMessage, setProbeMessage] = useState<{ index: number; text: string; ok: boolean } | null>(null)
+  // Keyed by row uid rather than a single index: two rows can be probing at the
+  // same time, and one shared "which index is busy" value meant whichever probe
+  // returned first cleared the other row's spinner.
+  const [probing, setProbing] = useState<Set<string>>(() => new Set())
+  // Keyed by uid, not index: saving or deleting another row while a probe is in
+  // flight reorders the list, and an index-keyed message would render against
+  // whatever row now sits there.
+  const [probeMessage, setProbeMessage] = useState<{ uid: string; text: string; ok: boolean } | null>(null)
   useEffect(() => {
     loadCustomModels()
   }, [loadCustomModels])
 
   const didOpenIncomplete = useRef(false)
+  // Last rows we rendered, keyed by provider key. Saving rebuilds every row with
+  // a fresh uid (draft-* becomes saved:<key>), so the fold state is migrated by
+  // key below — otherwise the row the user just saved collapsed immediately and
+  // took the "saved" confirmation with it.
+  const prevRowsRef = useRef<ProviderRow[]>([])
   useEffect(() => {
     const next = configToRows(customModels)
+    const uidByKey = new Map(prevRowsRef.current.map((r) => [r.key.trim(), r.uid]))
+    prevRowsRef.current = next
     setRows(next)
+    if (uidByKey.size > 0) {
+      setOpenIds((current) => {
+        const migrated = new Set<string>()
+        for (const row of next) {
+          const oldUid = uidByKey.get(row.key.trim())
+          if (current.has(row.uid) || (oldUid && current.has(oldUid))) migrated.add(row.uid)
+        }
+        return migrated
+      })
+    }
     if (didOpenIncomplete.current || !customModels) return
     didOpenIncomplete.current = true
     setOpenIds(new Set(
@@ -122,6 +145,9 @@ export function CustomModelsEditor(): React.JSX.Element {
   const update = (next: ProviderRow[]): void => {
     setRows(next)
     setSavedIndex(null)
+    // Clear stale validation errors as soon as the user edits again — otherwise
+    // a fixed problem kept showing red.
+    setErrors([])
   }
 
   const addProvider = (): void => {
@@ -142,13 +168,24 @@ export function CustomModelsEditor(): React.JSX.Element {
   }
 
   const rowId = (row: ProviderRow): string => row.uid
-  const removeProvider = (i: number): void => {
-    if (isBuiltinProviderKey(rows[i]?.key)) return
+  const removeProvider = async (i: number): Promise<void> => {
+    const row = rows[i]
+    if (!row || isBuiltinProviderKey(row.key)) return
+    // This writes to disk immediately and has no undo, so it gets the same
+    // themed confirmation as deleting a theme or a session.
+    const ok = await useAppStore.getState().requestConfirm({
+      title: t(language, 'removeProvider'),
+      message: t(language, 'removeProviderConfirm', {
+        name: row.key.trim() || t(language, 'addCustomProvider'),
+      }),
+      confirmLabel: t(language, 'confirmRemove'),
+      danger: true,
+    })
+    if (!ok) return
     const next = rows.filter((_, idx) => idx !== i)
     update(next)
-    void saveCustomModels(rowsToConfig(next)).then((result) => {
-      if (!result.ok) setErrors(result.errors ?? [t(language, 'saveFailed')])
-    })
+    const result = await saveCustomModels(rowsToConfig(next))
+    if (!result.ok) setErrors(result.errors ?? [t(language, 'saveFailed')])
   }
 
   const patchProvider = (i: number, patch: Partial<ProviderRow>): void =>
@@ -176,19 +213,21 @@ export function CustomModelsEditor(): React.JSX.Element {
 
   const runProbe = async (i: number): Promise<{ ok: true; models: Array<{ id: string; name?: string }> } | { ok: false }> => {
     const row = rows[i]
+    if (!row) return { ok: false }
+    const uid = row.uid
     if (!row.baseUrl.trim()) {
-      setProbeMessage({ index: i, text: t(language, 'probeNeedUrl'), ok: false })
+      setProbeMessage({ uid, text: t(language, 'probeNeedUrl'), ok: false })
       return { ok: false }
     }
     if (!row.apiKey.trim()) {
-      setProbeMessage({ index: i, text: t(language, 'probeNeedKey'), ok: false })
+      setProbeMessage({ uid, text: t(language, 'probeNeedKey'), ok: false })
       return { ok: false }
     }
     if (row.apiKey.trim().startsWith('!')) {
-      setProbeMessage({ index: i, text: t(language, 'probeShellKey'), ok: false })
+      setProbeMessage({ uid, text: t(language, 'probeShellKey'), ok: false })
       return { ok: false }
     }
-    setProbing(i)
+    setProbing((prev) => new Set(prev).add(uid))
     setProbeMessage(null)
     try {
       const result = await window.piDesktop.models.probe({
@@ -197,37 +236,53 @@ export function CustomModelsEditor(): React.JSX.Element {
         apiKey: row.apiKey,
       })
       if (!result.ok) {
-        setProbeMessage({ index: i, text: mapProbeError(result.error), ok: false })
+        setProbeMessage({ uid, text: mapProbeError(result.error), ok: false })
         return { ok: false }
       }
       return result
     } catch (err) {
-      setProbeMessage({ index: i, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
+      setProbeMessage({ uid, text: t(language, 'probeFailed', { error: err instanceof Error ? err.message : String(err) }), ok: false })
       return { ok: false }
     } finally {
-      setProbing(null)
+      setProbing((prev) => {
+        const next = new Set(prev)
+        next.delete(uid)
+        return next
+      })
     }
   }
 
   const testConnection = async (i: number): Promise<void> => {
+    const uid = rows[i]?.uid
+    if (!uid) return
     const result = await runProbe(i)
     if (!result.ok) return
-    setProbeMessage({ index: i, text: t(language, 'connectionOk', { count: String(result.models.length) }), ok: true })
+    setProbeMessage({ uid, text: t(language, 'connectionOk', { count: String(result.models.length) }), ok: true })
   }
 
   const probeProvider = async (i: number): Promise<void> => {
     const row = rows[i]
+    if (!row) return
+    const uid = row.uid
     const result = await runProbe(i)
     if (!result.ok) return
-    const existing = new Set(row.models.map((m) => m.id.trim()).filter(Boolean))
-    const merged = [...row.models.filter((m) => m.id.trim())]
-    for (const model of result.models) {
-      if (existing.has(model.id)) continue
-      existing.add(model.id)
-      merged.push(model.name ? { id: model.id, name: model.name } : { id: model.id })
-    }
-    patchProvider(i, { models: merged })
-    setProbeMessage({ index: i, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
+    // Merge by uid, from the freshest rows. Patching by index used the rows
+    // captured when the click happened, so saving or deleting another provider
+    // while the probe was in flight wrote the fetched models into the wrong
+    // provider and clobbered what had just been saved.
+    setRows((prev) => {
+      const target = prev.find((r) => r.uid === uid)
+      if (!target) return prev
+      const existing = new Set(target.models.map((m) => m.id.trim()).filter(Boolean))
+      const merged = [...target.models.filter((m) => m.id.trim())]
+      for (const model of result.models) {
+        if (existing.has(model.id)) continue
+        existing.add(model.id)
+        merged.push(model.name ? { id: model.id, name: model.name } : { id: model.id })
+      }
+      return prev.map((r) => (r.uid === uid ? { ...r, models: merged } : r))
+    })
+    setProbeMessage({ uid, text: t(language, 'fetchedModels', { count: String(result.models.length) }), ok: true })
   }
 
   const handleSaveProvider = async (i: number): Promise<void> => {
@@ -313,22 +368,22 @@ export function CustomModelsEditor(): React.JSX.Element {
         <button
           type="button"
           onClick={() => void testConnection(pi)}
-          disabled={probing === pi}
+          disabled={probing.has(row.uid)}
           className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
         >
-          <RefreshCw size={12} className={probing === pi ? 'animate-spin' : undefined} />
-          {probing === pi ? t(language, 'testingProvider') : t(language, 'testConnection')}
+          <RefreshCw size={12} className={probing.has(row.uid) ? 'animate-spin' : undefined} />
+          {probing.has(row.uid) ? t(language, 'testingProvider') : t(language, 'testConnection')}
         </button>
         <button
           type="button"
           onClick={() => void probeProvider(pi)}
-          disabled={probing === pi}
+          disabled={probing.has(row.uid)}
           className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
         >
           <Plus size={12} />
           {t(language, 'testFetchModels')}
         </button>
-        {probeMessage?.index === pi && (
+        {probeMessage?.uid === row.uid && (
           <span className={clsx('text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
             {probeMessage.text}
           </span>
@@ -478,22 +533,32 @@ export function CustomModelsEditor(): React.JSX.Element {
           {row.baseUrl.trim() && row.apiKey.trim() ? (
             <span
               role="button"
-              tabIndex={0}
+              // A span has no native disabled. Without this guard the folded-row
+              // button could be clicked repeatedly and fire concurrent probes.
+              tabIndex={probing.has(id) ? -1 : 0}
+              aria-disabled={probing.has(id)}
               onClick={(event) => {
                 event.stopPropagation()
+                if (probing.has(id)) return
                 void testConnection(pi)
               }}
               onKeyDown={(event) => {
+                if (probing.has(id)) return
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
                   event.stopPropagation()
                   void testConnection(pi)
                 }
               }}
-              className="rounded border border-border-strong px-1.5 py-0.5 text-[11px] text-muted hover:border-accent-fg hover:text-primary"
+              className={clsx(
+                'rounded border border-border-strong px-1.5 py-0.5 text-[11px] text-muted transition-colors',
+                probing.has(id)
+                  ? 'cursor-default opacity-50'
+                  : 'hover:border-accent-fg hover:text-primary',
+              )}
               title={t(language, 'testConnection')}
             >
-              {probing === pi ? t(language, 'testingProvider') : t(language, 'testConnection')}
+              {probing.has(id) ? t(language, 'testingProvider') : t(language, 'testConnection')}
             </span>
           ) : null}
           {!builtin && (
@@ -502,13 +567,13 @@ export function CustomModelsEditor(): React.JSX.Element {
               tabIndex={0}
               onClick={(event) => {
                 event.stopPropagation()
-                removeProvider(pi)
+                void removeProvider(pi)
               }}
               onKeyDown={(event) => {
                 if (event.key === 'Enter' || event.key === ' ') {
                   event.preventDefault()
                   event.stopPropagation()
-                  removeProvider(pi)
+                  void removeProvider(pi)
                 }
               }}
               className="rounded p-1 text-dim hover:bg-surface-hover hover:text-error"
@@ -518,7 +583,7 @@ export function CustomModelsEditor(): React.JSX.Element {
             </span>
           )}
         </button>
-        {!open && probeMessage?.index === pi ? (
+        {!open && probeMessage?.uid === row.uid ? (
           <div className={clsx('px-3 pb-2 text-xs', probeMessage.ok ? 'text-success' : 'text-error')}>
             {probeMessage.text}
           </div>
@@ -551,6 +616,15 @@ export function CustomModelsEditor(): React.JSX.Element {
       <p className="text-xs text-dim">
         {t(language, 'modelsPathHint', { path: customModelsPath ?? '~/.omp/profiles/vespi/agent/models.json' })}
       </p>
+      {/* Errors sit at the top: rendered after the provider list they appeared
+          below the save button they referred to, far off-screen on a long list. */}
+      {errors.length > 0 && (
+        <ul className="space-y-1 rounded-md border border-error bg-error-bg/40 px-3 py-2 text-xs text-error">
+          {errors.map((e, i) => (
+            <li key={i}>• {e}</li>
+          ))}
+        </ul>
+      )}
       <div>
         <div className="mb-2 text-xs font-medium uppercase tracking-wide text-dim">{t(language, 'builtinProviders')}</div>
         <p className="mb-2 text-xs text-faint">{t(language, 'builtinProvidersHint')}</p>
@@ -570,13 +644,6 @@ export function CustomModelsEditor(): React.JSX.Element {
           <Plus size={14} /> {t(language, 'addCustomProvider')}
         </button>
       </div>
-      {errors.length > 0 && (
-        <ul className="space-y-1 text-xs text-error">
-          {errors.map((e, i) => (
-            <li key={i}>• {e}</li>
-          ))}
-        </ul>
-      )}
     </div>
   )
 }

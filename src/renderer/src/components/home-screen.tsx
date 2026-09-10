@@ -160,8 +160,12 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
                   <button
                     key={file.path}
                     onClick={() => void openChangedFiles()}
-                    title={file.path}
-                    className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-secondary transition-colors hover:bg-surface-hover"
+                    // Without a workspace openChangedFiles() bails out silently and
+                    // the click did nothing at all. Stale gitStatus can outlive the
+                    // workspace it came from, so disable instead of dead-clicking.
+                    disabled={!activeWorkspace}
+                    title={activeWorkspace ? file.path : t(language, 'openAProjectFirst')}
+                    className="flex w-full items-center gap-2 px-4 py-1.5 text-left text-xs text-secondary transition-colors hover:bg-surface-hover disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     <span className="shrink-0 rounded bg-card px-1.5 py-0.5 font-mono text-[10px] text-muted">
                       {formatGitStatus(file.status)}

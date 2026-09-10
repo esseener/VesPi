@@ -17,6 +17,7 @@ import {
 } from '../../../shared/ipc-contracts'
 import { formatUntrustedBlock } from '../../../shared/untrusted-data'
 import { rankFileResults } from '../utils/rank-file-results'
+import { ScaledImage } from '../utils/image-thumbnail'
 import {
   BUILTIN_SOURCE,
   filterCommands,
@@ -81,6 +82,10 @@ export function ChatInput(): React.JSX.Element {
   const sendFollowUp = useAppStore((state) => state.sendFollowUp)
   const abort = useAppStore((state) => state.abort)
   const isStreaming = useAppStore((state) => state.isStreaming)
+  // A blocking prompt is on screen. Enter is already suppressed in that state
+  // (see hooks.ts); the send button has to agree, or the same action would work
+  // by mouse and silently fail by keyboard.
+  const awaitingExtensionUi = useAppStore((state) => state.extensionUiRequest !== null)
   const piStatus = useAppStore((state) => state.piStatus)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -139,6 +144,7 @@ export function ChatInput(): React.JSX.Element {
     ta.focus()
     ta.setSelectionRange(caret, caret)
     resizeTextarea(ta)
+    setHasDraft(ta.value.trim().length > 0)
 
     clearPendingInsert()
   }, [pendingInsert, clearPendingInsert, resizeTextarea])
@@ -146,6 +152,19 @@ export function ChatInput(): React.JSX.Element {
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
   const [midTurnDraft, setMidTurnDraft] = useState<string | null>(null)
+  // Whether the composer holds text. The textarea is uncontrolled, so this is
+  // tracked explicitly — it lets the send button disable itself when there is
+  // nothing to send instead of swallowing the click.
+  const [hasDraft, setHasDraft] = useState(false)
+
+  // Staged attachments belong to the conversation they were picked for. This
+  // component isn't remounted when the session changes, so images staged in one
+  // conversation used to follow the user into the next one.
+  const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
+  useEffect(() => {
+    setAttachments([])
+    setAttachError(null)
+  }, [activeSessionRuntimeId])
 
   useEffect(() => {
     if (!isStreaming) setMidTurnDraft(null)
@@ -160,6 +179,7 @@ export function ChatInput(): React.JSX.Element {
     ta.value = ''
     ta.style.height = `${MIN_INPUT_HEIGHT}px`
     setSlashToken(null)
+    setHasDraft(false)
   }, [])
 
   // @-file mention autocomplete. `mention` is the token being typed (null when
@@ -318,6 +338,17 @@ export function ChatInput(): React.JSX.Element {
     if (mode === 'steer') {
       void sendSteer(fullMessage, images.length > 0 ? { images } : undefined)
     } else {
+      // Queued follow-ups go over a text-only IPC, so images can't ride along.
+      // They used to be dropped with no word to the user at all.
+      if (images.length > 0) {
+        useAppStore.getState().addMessage({
+          id: `followup-noimages-${Date.now()}`,
+          role: 'system',
+          content: '',
+          timestamp: Date.now(),
+          i18nKey: 'sysFollowUpNoImages',
+        })
+      }
       void sendFollowUp(fullMessage)
     }
     setMidTurnDraft(null)
@@ -337,6 +368,7 @@ export function ChatInput(): React.JSX.Element {
       ta.value = text
       resizeTextarea(ta)
       ta.setSelectionRange(text.length, text.length)
+      setHasDraft(text.trim().length > 0)
     },
     [resizeTextarea]
   )
@@ -449,7 +481,10 @@ export function ChatInput(): React.JSX.Element {
         </div>
       )}
 
-      <div id="vespi-composer" className="pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors">
+      <div
+        id="vespi-composer"
+        className={`pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
+      >
         {/* Subagent strip sits on the top edge, inset ~5% each side so the pill
             width doesn't look like it grew with the fleet UI. */}
         <div className="pointer-events-auto absolute bottom-full left-[5%] right-[5%] z-20 mb-0">
@@ -500,7 +535,7 @@ export function ChatInput(): React.JSX.Element {
               />
             </div>
             <div className="border-t border-border px-3 py-1 text-[10px] text-faint">
-              ↑↓ navigate · Enter/Tab select · Esc close
+              {t(language, 'mentionSelectHint')}
             </div>
           </div>
         )}
@@ -529,7 +564,7 @@ export function ChatInput(): React.JSX.Element {
               ))}
             </div>
             <div className="border-t border-border px-3 py-1 text-[10px] text-faint">
-              ↑↓ navigate · Enter/Tab insert path · Esc close
+              {t(language, 'mentionInsertHint')}
             </div>
           </div>
         )}
@@ -542,8 +577,9 @@ export function ChatInput(): React.JSX.Element {
                 className="flex items-center gap-1.5 rounded-md border border-border-strong bg-card px-2 py-1 text-xs text-secondary"
               >
                 {att.kind === 'image' ? (
-                  <img
-                    src={`data:${att.image.mimeType};base64,${att.image.data}`}
+                  <ScaledImage
+                    mimeType={att.image.mimeType}
+                    data={att.image.data}
                     alt={att.name}
                     className="h-5 w-5 shrink-0 rounded object-cover"
                   />
@@ -580,6 +616,7 @@ export function ChatInput(): React.JSX.Element {
           onInput={(e) => {
             const target = e.currentTarget
             resizeTextarea(target)
+            setHasDraft(target.value.trim().length > 0)
             // Any real edit ends history navigation; the box is a fresh draft again.
             historyIndex.current = -1
             // Offer command suggestions only while the draft is a bare
@@ -594,6 +631,11 @@ export function ChatInput(): React.JSX.Element {
             setSlashToken(null)
           }}
           onKeyDown={(e) => {
+            // IME guard: while a composition window is open (Chinese / Japanese
+            // input) Enter and the arrows belong to the IME — Enter confirms a
+            // candidate and ↑/↓ step through candidates. Hijacking them here
+            // would both send half-typed messages and break candidate picking.
+            if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
             if (e.ctrlKey && e.key === 'p') {
               e.preventDefault()
               useAppStore.getState().cycleModel()
@@ -738,7 +780,7 @@ export function ChatInput(): React.JSX.Element {
                   resetComposer()
                 }
               }}
-              disabled={isDisabled || isStreaming}
+              disabled={isDisabled || isStreaming || !hasDraft}
               className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors disabled:opacity-50"
               title={isDisabled ? t(language, 'startBeforeCouncil') : t(language, 'planWithCouncil')}
               aria-label={t(language, 'planWithCouncil')}
@@ -782,7 +824,7 @@ export function ChatInput(): React.JSX.Element {
                   handleSend(value)
                 }
               }}
-              disabled={isDisabled}
+              disabled={isDisabled || !hasDraft || awaitingExtensionUi}
               className="hover:bg-highlight-strong flex items-center justify-center rounded-lg p-1.5 text-dim hover:text-secondary transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               title={t(language, 'sendEnter')}
               aria-label={t(language, 'sendMessage')}

@@ -698,6 +698,42 @@ function RunDetail({ run, onBack, onRefresh, onSelectAgent }: {
   )
 }
 
+// Keep at least this many pixels of the panel inside the viewport when dragged.
+const PANEL_VIEWPORT_MARGIN = 24
+
+/**
+ * Bound a drag offset so the panel can never leave the viewport.
+ *
+ * Dragging has no bounds of its own and `offset` outlives closing (the component
+ * returns null rather than unmounting), so a panel dragged off screen came back
+ * off screen with its close and maximize buttons unreachable — no way back short
+ * of restarting the app. Passing `next === current` also nudges an
+ * already-out-of-bounds panel back into view, which is how window resize is
+ * handled below.
+ */
+function clampPanelOffset(
+  rect: DOMRect,
+  current: { x: number; y: number },
+  next: { x: number; y: number },
+): { x: number; y: number } {
+  const deltaX = next.x - current.x
+  const deltaY = next.y - current.y
+  const minDX = PANEL_VIEWPORT_MARGIN - rect.left
+  const maxDX = window.innerWidth - PANEL_VIEWPORT_MARGIN - rect.width - rect.left
+  const minDY = PANEL_VIEWPORT_MARGIN - rect.top
+  const maxDY = window.innerHeight - PANEL_VIEWPORT_MARGIN - rect.height - rect.top
+  // A panel taller/wider than the viewport inverts the range; collapse it so the
+  // clamp still yields a usable number instead of nonsense.
+  const loX = Math.min(minDX, maxDX)
+  const hiX = Math.max(minDX, maxDX)
+  const loY = Math.min(minDY, maxDY)
+  const hiY = Math.max(minDY, maxDY)
+  return {
+    x: current.x + Math.min(Math.max(deltaX, loX), hiX),
+    y: current.y + Math.min(Math.max(deltaY, loY), hiY),
+  }
+}
+
 export function WorkflowNavigator({ embedded = false }: { embedded?: boolean }): React.JSX.Element | null {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const open = useAppStore((state) => state.workflowPanelOpen)
@@ -769,9 +805,32 @@ export function WorkflowNavigator({ embedded = false }: { embedded?: boolean }):
       setDetail(null)
       setSelectedAgent(null)
       setMaximized(false)
+      // Reopen at the default position. A remembered offset that is off screen
+      // is unrecoverable once the panel is back.
+      setOffset({ x: 0, y: 0 })
       return
     }
   }, [open])
+
+  // Shrinking the window can push a perfectly fine offset out of view.
+  useEffect(() => {
+    if (!open) return
+    const onResize = (): void => {
+      const el = panelRef.current
+      if (!el) return
+      const rect = el.getBoundingClientRect()
+      setOffset((prev) => clampPanelOffset(rect, prev, prev))
+    }
+    window.addEventListener('resize', onResize)
+    return () => window.removeEventListener('resize', onResize)
+  }, [open])
+
+  // Declared before the `!open` early return below — hooks must run unconditionally.
+  const clampOffset = useCallback((nextX: number, nextY: number): { x: number; y: number } => {
+    const el = panelRef.current
+    if (!el) return { x: nextX, y: nextY }
+    return clampPanelOffset(el.getBoundingClientRect(), offset, { x: nextX, y: nextY })
+  }, [offset])
 
   useEffect(() => {
     if (!open) {
@@ -819,10 +878,10 @@ export function WorkflowNavigator({ embedded = false }: { embedded?: boolean }):
   const onDrag = (event: React.PointerEvent<HTMLElement>): void => {
     const drag = dragRef.current
     if (!drag || event.pointerId !== drag.pointerId) return
-    setOffset({
-      x: drag.originX + (event.clientX - drag.startX),
-      y: drag.originY + (event.clientY - drag.startY),
-    })
+    setOffset(clampOffset(
+      drag.originX + (event.clientX - drag.startX),
+      drag.originY + (event.clientY - drag.startY),
+    ))
   }
 
   const endDrag = (event: React.PointerEvent<HTMLElement>): void => {

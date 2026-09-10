@@ -248,7 +248,9 @@ export function useChatScroll(active: boolean): {
   )
   const sessionId = useAppStore((state) => state.sessionState?.sessionId ?? null)
   const messages = useAppStore((state) => state.messages)
-  const streamingContent = useAppStore((state) => state.streamingContent)
+  // streamingContent is deliberately NOT hook-subscribed: it changes on every
+  // token, and this hook runs inside ChatPanel, so subscribing would re-render
+  // the whole message list per token. It is tracked imperatively below instead.
   const scrollBottomNonce = useAppStore((state) => state.chatScrollBottomNonce)
 
   const positions = useRef<Map<string, ScrollAnchor>>(new Map())
@@ -265,6 +267,12 @@ export function useChatScroll(active: boolean): {
   // re-renders (e.g. re-showing the panel), so returning to chat doesn't scroll.
   const prevMsgCount = useRef(0)
   const prevStreamLen = useRef(0)
+  // Mirrors for the imperative streaming subscription (store listeners don't
+  // see hook-scope values).
+  const activeRef = useRef(active)
+  activeRef.current = active
+  const autoScrollRef = useRef(autoScroll)
+  autoScrollRef.current = autoScroll
 
   // Whether the viewport is at (or within a hair of) the bottom. `atBottom` (state)
   // drives the jump-to-bottom button; `atBottomRef` is read synchronously in the
@@ -305,15 +313,38 @@ export function useChatScroll(active: boolean): {
     setAtBottom(next)
   }, [])
 
+  // Imperative streaming tracker: keeps prevStreamLen current (even while the
+  // panel is hidden) and follows the stream tail — all without re-rendering
+  // the host component per token. Store listeners run before React commits
+  // the new DOM, so the actual scroll defers to the next animation frame.
+  useEffect(() => {
+    return useAppStore.subscribe((state) => {
+      const len = state.streamingContent.length
+      const grew = len > prevStreamLen.current
+      prevStreamLen.current = len
+      if (!grew) return
+      if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
+      requestAnimationFrame(() => {
+        const el = ref.current
+        if (!el) return
+        if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
+        // A pending restore/forced jump owns the scroll position — don't fight it.
+        if (pendingRestore.current || forceBottom.current) return
+        el.scrollTop = el.scrollHeight
+        syncAtBottom()
+      })
+    })
+  }, [syncAtBottom])
+
   useLayoutEffect(() => {
     const el = ref.current
 
-    // Did content actually grow (new message or streamed text)? Tracked even
-    // while hidden so re-showing the panel isn't mistaken for new content.
+    // Did the message list actually grow (new message)? Tracked even while
+    // hidden so re-showing the panel isn't mistaken for new content. Streamed
+    // text growth is handled by the imperative subscription above.
     const messagesGrew = messages.length > prevMsgCount.current
-    const grew = messagesGrew || streamingContent.length > prevStreamLen.current
+    const grew = messagesGrew
     prevMsgCount.current = messages.length
-    prevStreamLen.current = streamingContent.length
 
     // Defer scrolling while hidden: a display:none element has no layout, so
     // scrollHeight is 0 and any positioning would be wrong.
@@ -389,7 +420,7 @@ export function useChatScroll(active: boolean): {
     }
 
     syncAtBottom()
-  }, [active, sessionId, messages, streamingContent, scrollBottomNonce, autoScroll, syncAtBottom])
+  }, [active, sessionId, messages, scrollBottomNonce, autoScroll, syncAtBottom])
 
   return { scrollRef: ref, onScroll, atBottom, scrollToBottom }
 }
@@ -406,6 +437,12 @@ export function useChatKeyboard(
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // IME guard: while a composition window is open (Chinese / Japanese input),
+      // Enter confirms the candidate and arrows move through candidates. Those
+      // keys belong to the IME, never to us. keyCode 229 is the legacy signal
+      // some IMEs still emit instead of setting isComposing.
+      if (e.isComposing || e.keyCode === 229) return
+
       // Escape: abort streaming
       if (e.key === 'Escape' && isStreaming) {
         e.preventDefault()
@@ -415,6 +452,9 @@ export function useChatKeyboard(
 
       // Enter: send message (without Shift)
       if (e.key === 'Enter' && !e.shiftKey && document.activeElement === inputRef.current) {
+        // A blocking extension prompt is on screen — Enter belongs to it, not to
+        // the composer. Belt-and-braces with the dialog's own autoFocus.
+        if (useAppStore.getState().extensionUiRequest) return
         e.preventDefault()
         const value = inputRef.current?.value.trim()
         if (value) {

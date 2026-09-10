@@ -106,6 +106,15 @@ export function SkillsPanel(): React.JSX.Element {
 
   const onDelete = async (skill: InstalledSkill): Promise<void> => {
     if (busy) return
+    // Deleting removes the skill file with no undo, so it gets the same themed
+    // confirmation as deleting a theme, a session or a note.
+    const ok = await useAppStore.getState().requestConfirm({
+      title: t(language, 'deleteSkill'),
+      message: t(language, 'deleteSkillConfirm', { name: skill.name }),
+      confirmLabel: t(language, 'confirmRemove'),
+      danger: true,
+    })
+    if (!ok) return
     setBusy(true)
     setNotice(null)
     try {

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
@@ -55,11 +55,35 @@ export function WorkspaceTabs(): React.JSX.Element {
   const removeWorkspace = useAppStore((state) => state.removeWorkspace)
   const createWorktreeTab = useAppStore((state) => state.createWorktreeTab)
   const createNewSession = useAppStore((state) => state.createNewSession)
+  const creatingSession = useAppStore((state) => state.creatingSession)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
   // Tab removal confirm. The tab strip is overflow-clipped, so the card is
   // portaled to <body> and pinned under the tab's own rect.
   const [confirmTarget, setConfirmTarget] = useState<{ id: string; left: number; top: number } | null>(null)
+
+  // The popover is positioned from a one-shot snapshot of the tab's coordinates.
+  // Scrolling the tab strip or resizing the window would strand it at stale
+  // coordinates, so dismiss it rather than chase it — and let Esc close it,
+  // which it previously ignored.
+  useEffect(() => {
+    if (!confirmTarget) return
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (e.isComposing || e.keyCode === 229) return
+      e.stopPropagation()
+      setConfirmTarget(null)
+    }
+    const dismiss = (): void => setConfirmTarget(null)
+    window.addEventListener('keydown', onKeyDown, true)
+    window.addEventListener('resize', dismiss)
+    window.addEventListener('scroll', dismiss, true)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
+      window.removeEventListener('resize', dismiss)
+      window.removeEventListener('scroll', dismiss, true)
+    }
+  }, [confirmTarget])
 
   const askRemove = (workspaceId: string, anchor: HTMLElement): void => {
     const rect = anchor.getBoundingClientRect()
@@ -250,11 +274,13 @@ export function WorkspaceTabs(): React.JSX.Element {
         <button
           type="button"
           onClick={() => {
+            if (creatingSession) return
             setWorkflowPanelOpen(false)
             setCurrentView('chat')
             void createNewSession()
           }}
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary"
+          disabled={creatingSession}
+          className="flex h-6 w-6 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary disabled:opacity-50"
           title={`${t(language, 'newSession')} (Ctrl+N)`}
           aria-label={t(language, 'newSession')}
         >

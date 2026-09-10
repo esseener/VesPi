@@ -48,6 +48,8 @@ interface RecentSessionGroup {
   projectName: string
   sessions: SessionListItem[]
   latest: SessionListItem
+  /** Sessions in the project before `sessions` was capped for display. */
+  totalSessions: number
 }
 
 export function Sidebar(): React.JSX.Element {
@@ -65,6 +67,7 @@ export function Sidebar(): React.JSX.Element {
   const globalWorkflowOpen = useGlobalWorkflowOpen()
   const setSessionsScope = useAppStore((state) => state.setSessionsScope)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
+  const creatingSession = useAppStore((state) => state.creatingSession)
   const archivedSessions = useAppStore((state) => state.archivedSessions)
   const archiveSession = useAppStore((state) => state.archiveSession)
   const unarchiveSession = useAppStore((state) => state.unarchiveSession)
@@ -109,6 +112,7 @@ export function Sidebar(): React.JSX.Element {
   const [renameValue, setRenameValue] = useState('')
   const renameCancelRef = useRef(false)
   const [confirmingDeletePath, setConfirmingDeletePath] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const startSessionRename = (where: 'current' | 'recent'): void => {
     renameCancelRef.current = false
@@ -146,7 +150,7 @@ export function Sidebar(): React.JSX.Element {
         }
       }}
       onBlur={finishSessionRename}
-      placeholder="Session name"
+      placeholder={t(language, 'sessionNamePlaceholder')}
       autoFocus
       className="min-w-0 flex-1 rounded border border-border-strong bg-card px-2 py-0.5 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none"
     />
@@ -187,6 +191,9 @@ export function Sidebar(): React.JSX.Element {
         projectPath: displayPath,
         projectName: folderName,
         sessions: sorted.slice(0, MAX_SESSIONS_PER_GROUP),
+        // Kept so the badge can report the real size: showing the capped count
+        // made a 20-session project read as "12" with no hint of the rest.
+        totalSessions: sorted.length,
         latest,
       })
     }
@@ -224,6 +231,17 @@ export function Sidebar(): React.JSX.Element {
   // Gated on every known session, not on one section's slice, so the same chat
   // carries the same tag in Recent, in a folder group and under Archived.
   const showEngineTags = useMemo(() => hasMixedSessionEngines(sessionList), [sessionList])
+
+  // Runtime lookup by session path. renderSessionRow runs once per visible
+  // row; scanning Object.values(sessionRuntimes) per row is O(rows×runtimes)
+  // and re-runs on every store emission, so index once by normalized path.
+  const runtimeBySessionPath = useMemo(() => {
+    const map = new Map<string, (typeof sessionRuntimes)[string]>()
+    for (const item of Object.values(sessionRuntimes)) {
+      if (item.sessionPath) map.set(pathGroupKey(item.sessionPath), item)
+    }
+    return map
+  }, [sessionRuntimes])
 
   const recentSessionsForWorkspace = useMemo(() => {
     if (!activeWorkspace?.path) return []
@@ -294,7 +312,7 @@ export function Sidebar(): React.JSX.Element {
     // tags/archive registry key). The stem suffix IS the UUID, so it is a
     // safe fallback when a row's header is unreadable.
     const workflowSessionId = resolveRunSessionId(session.piSessionId, session.sessionId) ?? session.sessionId
-    const runtime = Object.values(sessionRuntimes).find((item) => item.sessionPath && pathsEqual(item.sessionPath, session.path))
+    const runtime = runtimeBySessionPath.get(pathGroupKey(session.path))
     const isActive = sessionState?.sessionFile === session.path || runtime?.runtimeId === activeSessionRuntimeId
     const nested = options?.nested ?? false
     const engineLabel = showEngineTags ? getSessionEngineLabel(session) : null
@@ -333,6 +351,11 @@ export function Sidebar(): React.JSX.Element {
               <div className="mt-0.5 text-[11px] leading-snug text-error">
                 {t(language, 'deleteSessionInline', { name: labels.title })}
               </div>
+              {deleteError && (
+                <div className="mt-1 break-words rounded border border-error bg-error-bg/60 px-1.5 py-1 text-[11px] text-error">
+                  {deleteError}
+                </div>
+              )}
               <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
                 <button
                   type="button"
@@ -343,7 +366,7 @@ export function Sidebar(): React.JSX.Element {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setConfirmingDeletePath(null)}
+                  onClick={() => { setConfirmingDeletePath(null); setDeleteError(null) }}
                   className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
                 >
                   {t(language, 'cancel')}
@@ -351,8 +374,17 @@ export function Sidebar(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => {
-                    void deleteSession(session)
-                    setConfirmingDeletePath(null)
+                    // Only close on success. A session still being written is
+                    // locked on Windows and the delete fails — closing here made
+                    // that look like it had worked while the row stayed put.
+                    void deleteSession(session).then((result) => {
+                      if (result.ok) {
+                        setConfirmingDeletePath(null)
+                        setDeleteError(null)
+                      } else {
+                        setDeleteError(result.error || t(language, 'sysDeleteError', { detail: 'unknown error' }))
+                      }
+                    })
                   }}
                   className="rounded-md border border-error bg-transparent px-1.5 py-0.5 text-[11px] text-error transition-colors hover:border-error-hover"
                 >
@@ -451,8 +483,19 @@ export function Sidebar(): React.JSX.Element {
           <span className="min-w-0 flex-1 truncate text-xs font-medium">
             {group.projectName}
           </span>
-          <span className="shrink-0 text-[10px] text-faint">
+          <span
+            className="shrink-0 text-[10px] text-faint"
+            title={
+              group.totalSessions > count
+                ? t(language, 'sessionCountTruncated', {
+                    shown: String(count),
+                    total: String(group.totalSessions),
+                  })
+                : undefined
+            }
+          >
             {count}
+            {group.totalSessions > count && <span className="text-dim">/{group.totalSessions}</span>}
           </span>
         </button>
 
@@ -522,7 +565,7 @@ export function Sidebar(): React.JSX.Element {
           <button
             type="button"
             onClick={() => void startNewSession()}
-            disabled={!activeWorkspace}
+            disabled={!activeWorkspace || creatingSession}
             className="group flex w-full items-center gap-2 rounded-sm border border-border-strong bg-transparent px-2 py-1.5 text-xs font-medium text-primary transition-colors hover:border-accent-fg hover:text-accent-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus disabled:cursor-not-allowed disabled:opacity-50"
             title={activeWorkspace ? t(language, 'startNewSession') : t(language, 'openAProjectFirst')}
           >
@@ -678,7 +721,16 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const [confirmingRemoveId, setConfirmingRemoveId] = useState<string | null>(null)
 
   const handleRename = async () => {
-    if (!activeWorkspace || !newName.trim()) return
+    // Leaving the editor open on a blank submit stranded the input box with no
+    // visible way out except Esc. Treat it as a cancel.
+    if (!newName.trim()) {
+      setIsRenaming(false)
+      return
+    }
+    if (!activeWorkspace) {
+      setIsRenaming(false)
+      return
+    }
     await renameWorkspace(activeWorkspace.id, newName.trim())
     setIsRenaming(false)
   }
@@ -723,7 +775,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
           onClick={() => setIsOpen(!isOpen)}
           onDoubleClick={startRenaming}
           onContextMenu={handleWorkspaceContextMenu}
-          title="Click to switch · double-click to rename · right-click for options"
+          title={t(language, 'workspaceRowHint')}
           className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-xs text-primary hover:bg-highlight transition-colors"
         >
           <div className="flex min-w-0 items-center gap-2 text-left">
@@ -845,8 +897,8 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
                     setConfirmingRemoveId(ws.id)
                   }}
                   className="rounded-sm p-1 text-faint opacity-0 transition-all group-hover:opacity-100 hover:text-error"
-                  title="Remove workspace"
-                  aria-label="Remove workspace"
+                  title={t(language, 'removeWorkspace')}
+                  aria-label={t(language, 'removeWorkspace')}
                 >
                   <Trash2 size={11} />
                 </button>

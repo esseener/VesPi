@@ -260,7 +260,9 @@ function TreeNodeComponent({
       className={clsx(
         'flex w-full items-center gap-1.5 py-0.5 px-2 text-sm transition-colors',
         isSelected
-          ? 'bg-transparent text-primary'
+          ? // A transparent background made the selected file nearly impossible
+            // to spot — only the text brightened, and only slightly.
+            'bg-accent-bg/60 text-primary'
           : 'text-muted hover:bg-surface-hover/50 hover:text-secondary'
       )}
       style={{ paddingLeft: `${depth * 12 + 20}px` }}

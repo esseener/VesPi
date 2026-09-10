@@ -35,12 +35,20 @@ export function ModelSetupScreen(): React.JSX.Element {
     void loadCustomModels()
   }, [loadCustomModels])
 
+  // Depend on the individual fields, not the `configured` object:
+  // firstConfiguredChatModel() returns a fresh object literal on every render,
+  // so depending on it re-ran this effect each render and reset whatever the
+  // user was typing, making the fields impossible to edit.
+  const configuredProvider = configured?.provider
+  const configuredBaseUrl = configured?.baseUrl
+  const configuredModelId = configured?.modelId
+
   useEffect(() => {
-    if (!configured) return
-    setProvider(configured.provider)
-    setBaseUrl(configured.baseUrl)
-    setModelId(configured.modelId)
-  }, [configured])
+    if (!configuredProvider || !configuredBaseUrl || !configuredModelId) return
+    setProvider(configuredProvider)
+    setBaseUrl(configuredBaseUrl)
+    setModelId(configuredModelId)
+  }, [configuredProvider, configuredBaseUrl, configuredModelId])
 
   const probe = async (): Promise<void> => {
     if (!baseUrl.trim() || !apiKey.trim()) {

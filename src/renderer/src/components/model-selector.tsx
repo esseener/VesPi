@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useAppStore } from '../store'
 import type { ModelInfo } from '../../../shared/ipc-contracts'
 import { filterModels } from '../utils/model-search'
@@ -45,7 +45,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
     setError(null)
   }
 
-  const loadModels = async (): Promise<void> => {
+  const loadModels = useCallback(async (): Promise<void> => {
     setLoading(true)
     setError(null)
     try {
@@ -60,11 +60,11 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       }
     } catch {
       setModels([])
-      setError('Could not load models')
+      setError(t(language, 'modelListFailed'))
     } finally {
       setLoading(false)
     }
-  }
+  }, [language])
 
   const open = async (): Promise<void> => {
     if (isOpen) {
@@ -80,7 +80,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   useEffect(() => {
     if (!isOpen || piStatus !== 'running') return
     void loadModels()
-  }, [isOpen, piStatus])
+  }, [isOpen, piStatus, loadModels])
 
   useEffect(() => {
     if (!isOpen) return

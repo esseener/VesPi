@@ -96,26 +96,26 @@ export function DiagnosticsPanel(): React.JSX.Element {
         ) : loadError !== null ? (
           <div className="flex flex-col items-center justify-center py-12 text-dim">
             <AlertTriangle size={32} className="mb-3 text-warning" />
-            <p className="text-sm text-secondary">Couldn't build the report</p>
+            <p className="text-sm text-secondary">{t(language, 'diagnosticsBuildFailed')}</p>
             <p className="mt-1 max-w-md break-words px-4 text-center text-xs text-faint">{loadError}</p>
             <button
               onClick={() => void load()}
               className="mt-3 rounded bg-card px-3 py-1 text-xs text-secondary transition-colors hover:bg-surface-hover"
             >
-              Retry
+              {t(language, 'retry')}
             </button>
           </div>
         ) : report ? (
           <div className="mx-auto max-w-3xl space-y-6">
-            <DiagSection title="Application">
-              <DiagRow label="App version" value={report.app.version} />
+            <DiagSection title={t(language, 'diagnosticsApplication')}>
+              <DiagRow label={t(language, 'diagAppVersion')} value={report.app.version} />
               <DiagRow label="Electron" value={report.app.electron} />
               <DiagRow label="Chromium" value={report.app.chrome} />
               <DiagRow label="Node" value={report.app.node} />
-              <DiagRow label="Platform" value={report.app.platform} />
+              <DiagRow label={t(language, 'diagPlatform')} value={report.app.platform} />
             </DiagSection>
 
-            <DiagSection title={`${engineLabel} Binary`}>
+            <DiagSection title={t(language, 'diagnosticsBinary', { engine: engineLabel })}>
               {report.piBinary.failureReason && (
                 <div className="mb-2 whitespace-pre-wrap rounded-md border border-border bg-error-bg px-3 py-2 text-xs text-error">
                   {report.piBinary.failureReason}
@@ -123,32 +123,32 @@ export function DiagnosticsPanel(): React.JSX.Element {
               )}
               {report.piBinary.rejectedOverride && (
                 <div className="mb-2 rounded-md border border-border bg-warning-bg px-3 py-2 text-xs text-warning">
-                  Configured path ignored (does not exist): {report.piBinary.rejectedOverride}
+                  {t(language, 'diagConfiguredPathIgnored', { path: report.piBinary.rejectedOverride })}
                 </div>
               )}
               <DiagRow
-                label="Binary found"
-                value={report.piBinary.found ? 'yes' : 'no'}
+                label={t(language, 'diagBinaryFound')}
+                value={report.piBinary.found ? t(language, 'diagYes') : t(language, 'diagNo')}
                 tone={report.piBinary.found ? 'ok' : 'fail'}
               />
-              <DiagRow label={`${engineLabel} version`} value={report.piVersion ?? 'unknown'} tone={report.piVersion ? 'plain' : 'warn'} />
-              <DiagRow label="Script" value={report.piBinary.script} mono />
-              <DiagRow label="Resolution source" value={report.piBinary.source} />
+              <DiagRow label={t(language, 'diagEngineVersion', { engine: engineLabel })} value={report.piVersion ?? t(language, 'diagUnknown')} tone={report.piVersion ? 'plain' : 'warn'} />
+              <DiagRow label={t(language, 'diagScript')} value={report.piBinary.script} mono />
+              <DiagRow label={t(language, 'diagResolutionSource')} value={report.piBinary.source} />
               {report.piBinary.useNode && (
                 <DiagRow
-                  label="Node binary"
+                  label={t(language, 'diagNodeBinary')}
                   value={report.piBinary.nodeBinary}
                   mono
                   tone={report.piBinary.nodeFound ? 'plain' : 'fail'}
                 />
               )}
-              <DiagRow label="Needs shell" value={report.piBinary.needsShell ? 'yes' : 'no'} />
-              <DiagRow label="PATH entries searched" value={String(report.piBinary.pathEntryCount)} />
+              <DiagRow label={t(language, 'diagNeedsShell')} value={report.piBinary.needsShell ? t(language, 'diagYes') : t(language, 'diagNo')} />
+              <DiagRow label={t(language, 'diagPathEntries')} value={String(report.piBinary.pathEntryCount)} />
             </DiagSection>
 
-            <DiagSection title="Workspaces">
+            <DiagSection title={t(language, 'workspaces')}>
               {report.workspaces.length === 0 ? (
-                <p className="text-xs text-dim">No workspaces.</p>
+                <p className="text-xs text-dim">{t(language, 'noWorkspaces')}</p>
               ) : (
                 report.workspaces.map((ws) => (
                   <div key={ws.id} className="flex items-center gap-2 py-1 text-xs">
@@ -165,7 +165,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
               )}
             </DiagSection>
 
-            <DiagSection title="Providers">
+            <DiagSection title={t(language, 'provider')}>
               {report.providersError ? (
                 <div className="flex items-center gap-2 text-xs text-warning">
                   <AlertTriangle size={13} className="shrink-0" />
@@ -199,7 +199,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
               )}
             </DiagSection>
 
-            <DiagSection title="Permissions">
+            <DiagSection title={t(language, 'permissions')}>
               <DiagRow label="Mode" value={report.permissions.mode} />
               <DiagRow
                 label="Global rules"
@@ -231,7 +231,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
               )}
             </DiagSection>
 
-            <DiagSection title="Storage">
+            <DiagSection title={t(language, 'diagnosticsStorage')}>
               <DiagRow label="GUI data dir" value={report.storage.guiDataDir} mono />
               <DiagRow label="Settings file" value={report.storage.settingsPath} mono />
               <DiagRow
@@ -242,7 +242,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
               />
             </DiagSection>
 
-            <DiagSection title="Recent Errors">
+            <DiagSection title={t(language, 'diagnosticsRecentErrors')}>
               {report.recentErrors.length === 0 ? (
                 <p className="text-xs text-dim">No warnings or errors recorded this run.</p>
               ) : (

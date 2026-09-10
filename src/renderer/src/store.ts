@@ -58,6 +58,7 @@ import type {
   SessionRuntimeInfo,
   SessionLaunchTaskOptions,
   SessionDeleteResult,
+  LiveTurnSnapshot,
 } from '../../shared/ipc-contracts'
 
 import { DEFAULT_LANGUAGE, t, type MessageKey } from '../../shared/i18n'
@@ -187,9 +188,16 @@ function workspaceHasLivePi(
   runtimes: Record<string, SessionRuntimeInfo>,
   workspaceId: string
 ): boolean {
-  return Object.values(runtimes).some(
-    (runtime) => runtime.workspaceId === workspaceId && runtime.active && runtime.status === 'running'
-  )
+  return activeRuntimeForWorkspace(runtimes, workspaceId)?.status === 'running'
+}
+
+function activeRuntimeForWorkspace(
+  runtimes: Record<string, SessionRuntimeInfo>,
+  workspaceId: string
+): SessionRuntimeInfo | null {
+  return Object.values(runtimes).find(
+    (runtime) => runtime.workspaceId === workspaceId && runtime.active
+  ) ?? null
 }
 
 // ─── Store Shape ─────────────────────────────────────────────────────────────
@@ -416,6 +424,8 @@ interface AppActions {
 
   // Session
   createNewSession: () => Promise<void>
+  /** True while a new-session request is in flight; used to debounce the button. */
+  creatingSession: boolean
   launchTask: (options: SessionLaunchTaskOptions) => Promise<boolean>
   closeSessionTab: (runtimeId: string) => Promise<void>
   switchSession: (path: string, projectPath?: string) => Promise<void>
@@ -427,8 +437,9 @@ interface AppActions {
    */
   openSessionItem: (session: SessionListItem) => Promise<void>
   reloadActiveSession: (options?: { refreshList?: boolean }) => Promise<void>
-  refreshSessionState: () => Promise<void>
-  refreshSessionStats: () => Promise<void>
+  refreshSessionState: (generation?: number, runtimeId?: string | null) => Promise<void>
+  refreshSessionStats: (generation?: number, runtimeId?: string | null) => Promise<void>
+  restoreLiveTurnSnapshot: (runtimeId?: string, generation?: number) => Promise<void>
   refreshSessionList: () => Promise<void>
   setSessionName: (name: string) => Promise<void>
   loadForkMessages: () => Promise<void>
@@ -643,6 +654,10 @@ function normalizePiCommands(raw: unknown): PiCommand[] {
 // Bumps on every session switch / explicit reload so in-flight getMessages
 // results from a previous switch are dropped instead of fighting the UI.
 let sessionLoadGeneration = 0
+// Set while a "new session" request is in flight. The generation counter above
+// only discards a stale *result*; this blocks the second IPC from ever being
+// sent, which is what double-clicking Ctrl+N used to do.
+let sessionCreateInFlight = false
 
 const AUTO_COMPACT_PERCENT = 80
 let autoCompactInFlight = false
@@ -893,6 +908,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   streamingThinking: '',
   streamingToolCalls: new Map(),
   isStreaming: false,
+  creatingSession: false,
   completionChimeAt: 0,
   sessionLoading: false,
 
@@ -1125,6 +1141,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   sendSteer: async (message, options) => {
     try {
+      // A queued steer is the user's own message: render the bubble at send
+      // time like sendPrompt does. The kernel only replays it as message_start
+      // when the queue is actually processed, so without a local bubble the
+      // text would stay invisible (and the echo would swallow the replay).
+      get().addMessage({
+        id: generateId(),
+        role: 'user',
+        content: message,
+        timestamp: Date.now(),
+      })
       recordLocalEcho(message)
       await window.piDesktop.commands.steer(message, options?.images)
     } catch (err) {
@@ -1134,6 +1160,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   sendFollowUp: async (message) => {
     try {
+      // Same as sendSteer: render the queued follow-up immediately instead of
+      // waiting for the kernel to process the queue (which may never happen
+      // if the turn ends before the queue drains).
+      get().addMessage({
+        id: generateId(),
+        role: 'user',
+        content: message,
+        timestamp: Date.now(),
+      })
       recordLocalEcho(message)
       await window.piDesktop.commands.followUp(message)
     } catch (err) {
@@ -1289,6 +1324,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // ─── Session ──────────────────────────────────────────────────────────
 
   createNewSession: async () => {
+    // Two rapid clicks used to spawn two runtimes and two empty tabs.
+    if (sessionCreateInFlight) return
+    sessionCreateInFlight = true
+    set({ creatingSession: true })
     const gen = ++sessionLoadGeneration
     try {
       // A new session owns a new Pi process. Never stop or warn about the
@@ -1336,6 +1375,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     } catch (err) {
       if (gen !== sessionLoadGeneration) return
       get().addMessage(notice('sysNewSessionError', { detail: errDetail(err) }))
+    } finally {
+      sessionCreateInFlight = false
+      set({ creatingSession: false })
     }
   },
 
@@ -1543,7 +1585,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // every per-turn field. Armed first, both flags die before the first
         // await — the reply then streams into a chat that looks idle and the
         // turn end commits only the post-switch suffix as a truncated message.
-        if (reattaching) set({ isStreaming: true, reattachedMidTurn: true })
+        if (reattaching) {
+          set({ isStreaming: true, reattachedMidTurn: true })
+          // Show the in-progress stream state (partial text + tool calls) that
+          // this renderer never saw while the turn ran elsewhere.
+          void get().restoreLiveTurnSnapshot(runtime?.runtimeId, gen)
+        }
         scheduleSessionListRefresh(get)
       } catch (err) {
         if (gen !== sessionLoadGeneration) return
@@ -1570,8 +1617,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       get().clearMessages()
       set({ sessionLoading: true })
     }
-    void get().refreshSessionState()
-    if (!alreadyEmpty) void get().refreshSessionStats()
+    const runtimeId = get().activeSessionRuntimeId
+    void get().refreshSessionState(gen, runtimeId)
+    if (!alreadyEmpty) void get().refreshSessionStats(gen, runtimeId)
 
     try {
       const response = await window.piDesktop.session.getMessages()
@@ -1647,9 +1695,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     get().setCurrentView('chat')
   },
 
-  refreshSessionState: async () => {
+  refreshSessionState: async (generation, runtimeId) => {
+    const targetGeneration = generation ?? sessionLoadGeneration
+    const targetRuntimeId = runtimeId === undefined ? get().activeSessionRuntimeId : runtimeId
     try {
       const response = await window.piDesktop.session.getState()
+      if (
+        targetGeneration !== sessionLoadGeneration ||
+        (targetRuntimeId !== null && get().activeSessionRuntimeId !== targetRuntimeId)
+      ) return
       if (response && typeof response === 'object') {
         const resp = response as { success?: boolean; data?: SessionState }
         if (resp.success && resp.data) {
@@ -1661,9 +1715,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
-  refreshSessionStats: async () => {
+  refreshSessionStats: async (generation, runtimeId) => {
+    const targetGeneration = generation ?? sessionLoadGeneration
+    const targetRuntimeId = runtimeId === undefined ? get().activeSessionRuntimeId : runtimeId
     try {
       const response = await window.piDesktop.session.getStats()
+      if (
+        targetGeneration !== sessionLoadGeneration ||
+        (targetRuntimeId !== null && get().activeSessionRuntimeId !== targetRuntimeId)
+      ) return
       if (response && typeof response === 'object') {
         const resp = response as { success?: boolean; data?: SessionStats }
         if (resp.success && resp.data) {
@@ -1672,6 +1732,48 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
     } catch {
       // Silent failure
+    }
+  },
+
+  restoreLiveTurnSnapshot: async (runtimeId, generation) => {
+    const targetRuntimeId = runtimeId ?? get().activeSessionRuntimeId
+    const targetGeneration = generation ?? sessionLoadGeneration
+    if (!targetRuntimeId) return
+    try {
+      const snapshot = (await window.piDesktop.session.getLiveTurn(targetRuntimeId)) as LiveTurnSnapshot | null
+      if (!snapshot) return
+      const state = get()
+      if (
+        targetGeneration !== sessionLoadGeneration ||
+        state.activeSessionRuntimeId !== targetRuntimeId ||
+        !state.reattachedMidTurn ||
+        !state.isStreaming
+      ) return
+      if (
+        state.streamingContent !== '' ||
+        state.streamingThinking !== '' ||
+        state.streamingToolCalls.size > 0
+      ) return
+      set({
+        streamingContent: snapshot.streamingContent ?? '',
+        streamingThinking: snapshot.streamingThinking ?? '',
+        streamingToolCalls: new Map(
+          (snapshot.streamingToolCalls ?? []).map((tc) => [
+            tc.id,
+            {
+              name: tc.name,
+              args: tc.args ?? '',
+              isExecuting: tc.isExecuting,
+              startedAt: tc.startedAt ?? 0,
+              ...(tc.result !== undefined ? { result: tc.result } : {}),
+              ...(tc.isError !== undefined ? { isError: tc.isError } : {}),
+              ...(tc.durationMs !== undefined ? { durationMs: tc.durationMs } : {}),
+            },
+          ])
+        ),
+      })
+    } catch {
+      // Non-fatal: the next stream event (or the turn-end backfill) catches up.
     }
   },
 
@@ -1761,17 +1863,33 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   forkFrom: async (entryId) => {
     if (!(await get().confirmSessionChange('fork'))) return
-    const result = (await window.piDesktop.session.fork(entryId)) as { success?: boolean } | null
-    if (result?.success) {
-      await get().reloadActiveSession()
+    try {
+      const result = (await window.piDesktop.session.fork(entryId)) as { success?: boolean; error?: string } | null
+      if (result?.success) {
+        await get().reloadActiveSession()
+      } else {
+        // Not every message id is a fork point. Say so, and point at the
+        // Branches panel, instead of leaving the button looking broken.
+        get().addMessage(notice('sysForkError', { detail: result?.error || 'unknown error' }))
+      }
+    } catch (err) {
+      get().addMessage(notice('sysForkError', { detail: errDetail(err) }))
     }
   },
 
   cloneBranch: async () => {
     if (!(await get().confirmSessionChange('clone'))) return
-    const result = (await window.piDesktop.session.clone()) as { success?: boolean } | null
-    if (result?.success) {
-      await get().reloadActiveSession()
+    try {
+      const result = (await window.piDesktop.session.clone()) as { success?: boolean; error?: string } | null
+      if (result?.success) {
+        await get().reloadActiveSession()
+      } else {
+        // Matches forkFrom: cloning can fail (e.g. no active session), and
+        // staying silent made the button look broken.
+        get().addMessage(notice('sysCloneError', { detail: result?.error || 'unknown error' }))
+      }
+    } catch (err) {
+      get().addMessage(notice('sysCloneError', { detail: errDetail(err) }))
     }
   },
 
@@ -1897,6 +2015,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       set({ terminalOpen: true, chatSidePanel: get().chatSidePanel === 'terminal' ? null : get().chatSidePanel })
       return true
     }
+    // NOTE: deliberately does not clear `previewTarget`. Callers such as
+    // openFileFromChat set the preview first and then close a 'diff' panel to
+    // make room for it, so clearing here would delete the preview it was asked
+    // to show. The user-facing "close the side panel" buttons in chat-panel
+    // clear the preview themselves.
     set({ chatSidePanel: panel, reviewOpen: panel === 'review' ? true : panel === null ? false : get().reviewOpen })
     return true
   },
@@ -2656,9 +2779,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // A turn may already be running here (that is what the sidebar dot
         // advertised). Arm the mid-turn attach so the next turn boundary
         // backfills the prefix the stream buffers never saw.
-        const activity = get().workspaceActivity[workspaceId]?.state
+        const activeRuntime = activeRuntimeForWorkspace(get().sessionRuntimes, workspaceId)
+        const activity = activeRuntime?.activity ?? get().workspaceActivity[workspaceId]?.state
         if (activity === 'working' || activity === 'needs-approval') {
           set({ isStreaming: true, reattachedMidTurn: true })
+          void get().restoreLiveTurnSnapshot(get().activeSessionRuntimeId ?? undefined, sessionLoadGeneration)
         }
       }
       return true
@@ -2727,9 +2852,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // without this the chat looks idle while Pi is mid-response. Show the
         // working indicator and mark the attach so the next turn boundary
         // backfills from the session (the stream buffers missed the prefix).
-        const activity = get().workspaceActivity[workspaceId]?.state
+        const activeRuntime = activeRuntimeForWorkspace(get().sessionRuntimes, workspaceId)
+        const activity = activeRuntime?.activity ?? get().workspaceActivity[workspaceId]?.state
         if (activity === 'working' || activity === 'needs-approval') {
           set({ isStreaming: true, reattachedMidTurn: true })
+          void get().restoreLiveTurnSnapshot(get().activeSessionRuntimeId ?? undefined, sessionLoadGeneration)
         }
       } else if (get().piStatus !== 'running') {
         // Idle workspace: the empty new-session view renders instantly. No
@@ -2804,8 +2931,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       await window.piDesktop.workspace.rename(workspaceId, name)
       await get().loadWorkspaces()
       await get().refreshSessionList()
-    } catch {
-      // Silent failure
+    } catch (err) {
+      // Renaming writes workspaces.json. Failing quietly left the input closed
+      // and the old name in place, so it read as a successful rename.
+      get().addMessage(notice('sysRenameWorkspaceError', { detail: errDetail(err) }))
     }
   },
 
@@ -2857,7 +2986,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const result = await window.piDesktop.packages.install(spec)
       if (result.success) {
         await get().loadInstalledPackages()
-        set({ packageNotification: { type: 'success', message: `Installed ${spec}. Restart Pi to load it.` } })
+        set({ packageNotification: {
+          type: 'success',
+          message: t(
+            currentLanguage(get),
+            get().piEngine === 'omp' ? 'ompPackageInstalled' : 'packageInstalled',
+            { spec },
+          ),
+        } })
       } else {
         set({ packageNotification: { type: 'error', message: result.output || 'Install failed' } })
       }
@@ -2874,7 +3010,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const result = await window.piDesktop.packages.remove(spec)
       if (result.success) {
         await get().loadInstalledPackages()
-        set({ packageNotification: { type: 'success', message: `Removed ${spec}` } })
+        set({ packageNotification: { type: 'success', message: t(currentLanguage(get), 'packageRemoved', { spec }) } })
       } else {
         set({ packageNotification: { type: 'error', message: result.output || 'Remove failed' } })
       }
@@ -3125,6 +3261,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
             await get().createNewSession()
           }
         }
+      } else {
+        // On Windows a session the engine is still writing to is locked, so the
+        // move-to-trash fails and unlink throws EBUSY. Say so instead of
+        // returning quietly — the UI used to read that as success.
+        get().addMessage(notice('sysDeleteError', { detail: result.error || 'unknown error' }))
       }
       return result
     } catch (err) {
@@ -3148,20 +3289,34 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   saveNote: async (input) => {
-    const note = await window.piDesktop.notes.create(input)
-    set((state) => ({ notes: [...state.notes, note] }))
+    try {
+      const note = await window.piDesktop.notes.create(input)
+      set((state) => ({ notes: [...state.notes, note] }))
+    } catch (err) {
+      get().addMessage(notice('sysNoteSaveError', { detail: errDetail(err) }))
+    }
   },
 
   updateNote: async (id, patch) => {
-    const updated = await window.piDesktop.notes.update(id, patch)
-    set((state) => ({
-      notes: state.notes.map((n) => (n.id === id ? updated : n)),
-    }))
+    try {
+      const updated = await window.piDesktop.notes.update(id, patch)
+      set((state) => ({
+        notes: state.notes.map((n) => (n.id === id ? updated : n)),
+      }))
+    } catch (err) {
+      get().addMessage(notice('sysNoteSaveError', { detail: errDetail(err) }))
+    }
   },
 
   deleteNote: async (id) => {
-    await window.piDesktop.notes.remove(id)
-    set((state) => ({ notes: state.notes.filter((n) => n.id !== id) }))
+    try {
+      await window.piDesktop.notes.remove(id)
+      set((state) => ({ notes: state.notes.filter((n) => n.id !== id) }))
+    } catch (err) {
+      // The row was only dropped locally on success, so a failed delete now
+      // leaves the note in place and says why instead of vanishing silently.
+      get().addMessage(notice('sysNoteDeleteError', { detail: errDetail(err) }))
+    }
   },
 
   insertPrompt: (text, replace = false) =>

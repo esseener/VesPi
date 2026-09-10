@@ -17,6 +17,19 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
   const [error, setError] = useState<string | null>(null)
   const [feedback, setFeedback] = useState<string | null>(null)
 
+  // Esc closes the commit/PR dialog — it had no keyboard way out at all.
+  useEffect(() => {
+    if (!dialog) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      if (event.isComposing || event.keyCode === 229) return
+      event.stopPropagation()
+      setDialog(null)
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [dialog])
+
   const refresh = useCallback(async (): Promise<void> => {
     try {
       setStatus(await window.piDesktop.git.status())
@@ -172,7 +185,16 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
         {(error || feedback) && <span className={clsx('basis-full truncate text-[10px]', error ? 'text-error' : 'text-success')} role="status" title={error ?? feedback ?? undefined}>{error ?? feedback}</span>}
       </div>
       {dialog && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" role="presentation">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4"
+          role="presentation"
+          onMouseDown={(event) => {
+            // The backdrop previously did nothing: clicking beside the dialog was
+            // indistinguishable from a dead click. Only react to the backdrop
+            // itself, never to a press that started inside the form.
+            if (event.target === event.currentTarget) setDialog(null)
+          }}
+        >
           <form
             className="w-full max-w-lg rounded-lg border border-border-strong bg-surface p-4 shadow-2xl"
             onSubmit={(event) => {

@@ -8,6 +8,22 @@ import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 const GLOBAL_SCOPE = 'global'
 
+/**
+ * Deleting a note used to go through window.confirm, whose buttons are always in
+ * the OS language — "OK"/"Cancel" in the middle of an otherwise localised UI.
+ * Route it through the app's themed dialog like every other destructive action.
+ */
+function confirmNoteDelete(): Promise<boolean> {
+  const state = useAppStore.getState()
+  const language = state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  return state.requestConfirm({
+    title: t(language, 'noteDelete'),
+    message: t(language, 'noteDeleteConfirm'),
+    confirmLabel: t(language, 'confirmRemove'),
+    danger: true,
+  })
+}
+
 /** Split a free-text tag field into normalized tag tokens. */
 function parseTags(raw: string): string[] {
   return [...new Set(
@@ -200,7 +216,7 @@ export function NotesPanel(): React.JSX.Element {
                 </button>
                 <button
                   onClick={() => {
-                    if (window.confirm(t(language, 'noteDeleteConfirm'))) void deleteNote(note.id)
+                    void confirmNoteDelete().then((ok) => { if (ok) void deleteNote(note.id) })
                   }}
                   className="rounded p-1 text-dim hover:text-error transition-colors"
                   title={t(language, 'noteDelete')}
@@ -272,7 +288,7 @@ function NoteReadView({
           </button>
           <button
             onClick={() => {
-              if (window.confirm(t(language, 'noteDeleteConfirm'))) onDelete()
+              void confirmNoteDelete().then((ok) => { if (ok) onDelete() })
             }}
             className="rounded p-1 text-dim hover:text-error transition-colors"
             title={t(language, 'noteDelete')}
@@ -421,7 +437,7 @@ function NoteForm({
         {onDelete && (
           <button
             onClick={() => {
-              if (window.confirm(t(language, 'noteDeleteConfirm'))) void onDelete()
+              void confirmNoteDelete().then((ok) => { if (ok) void onDelete() })
             }}
             className="ml-auto flex items-center gap-1 rounded-md px-3 py-1.5 text-sm text-error hover:bg-error-bg transition-colors"
           >

@@ -7,7 +7,7 @@ import { ChatInput } from './chat-input'
 import { ChatProjectPicker } from './chat-project-picker'
 import { CouncilPanels } from './council-panels'
 import { MessageBubble, ToolGroupBubble } from './message-bubble'
-import { StreamingBubble } from './streaming-bubble'
+import { ActiveStreamingBubble } from './streaming-bubble'
 import { ChatSearch } from './chat-search'
 import { ResizeHandle } from './resize-handle'
 import {
@@ -64,9 +64,9 @@ export function ChatPanel(): React.JSX.Element {
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const streamingContent = useAppStore((state) => state.streamingContent)
-  const streamingThinking = useAppStore((state) => state.streamingThinking)
-  const streamingToolCalls = useAppStore((state) => state.streamingToolCalls)
+  // NOTE: streamingContent/streamingThinking/streamingToolCalls are deliberately
+  // NOT subscribed here — ActiveStreamingBubble subscribes them itself so a
+  // per-token update only re-renders that subtree, not the whole message list.
   const piStatus = useAppStore((state) => state.piStatus)
   const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? 'Pi')
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -82,6 +82,18 @@ export function ChatPanel(): React.JSX.Element {
   // round-trip). Widths stay local — resetting them on remount is benign.
   const sidePanel = useAppStore((state) => state.chatSidePanel)
   const setSidePanel = useAppStore((state) => state.setChatSidePanel)
+  const setPreviewTarget = useAppStore((state) => state.setPreviewTarget)
+
+  // Closing the panel from the UI has to drop the preview target too: the panel
+  // is shown whenever `sidePanel !== null || previewTarget !== null`, so a
+  // lingering preview made every close button look dead — the panel stayed put
+  // and the toolbar toggle stayed lit. setChatSidePanel deliberately doesn't do
+  // this itself, because openFileFromChat sets the preview *first* and then
+  // closes a conflicting diff pane to make room for it.
+  const closeSidePanel = useCallback((): void => {
+    void setPreviewTarget(null)
+    void setSidePanel(null)
+  }, [setPreviewTarget, setSidePanel])
   const [sidePanelWidth, setSidePanelWidth] = useState(DEFAULT_SIDE_PANEL_WIDTH)
   const [filePaneWidth, setFilePaneWidth] = useState(DEFAULT_FILE_PANE_WIDTH)
 
@@ -190,7 +202,7 @@ export function ChatPanel(): React.JSX.Element {
               <ToolbarButton
                 icon={<LayoutPanelLeft size={13} />}
                 active={showSidePanel}
-                onClick={() => void setSidePanel(showSidePanel ? null : 'picker')}
+                onClick={() => (showSidePanel ? closeSidePanel() : void setSidePanel('picker'))}
                 title={showSidePanel ? t(language, 'closeSideTabs') : t(language, 'openSideTabs')}
               />
             </div>
@@ -284,13 +296,7 @@ export function ChatPanel(): React.JSX.Element {
                               />
                             )
                           )}
-                          {isStreaming && (
-                            <StreamingBubble
-                              content={streamingContent}
-                              thinking={streamingThinking}
-                              toolCalls={streamingToolCalls}
-                            />
-                          )}
+                          <ActiveStreamingBubble />
                         </div>
                       </NowContext.Provider>
                     )}
@@ -400,7 +406,7 @@ export function ChatPanel(): React.JSX.Element {
             </div>
             {!showPicker && (
               <button
-                onClick={() => void setSidePanel(null)}
+                onClick={closeSidePanel}
                 className="absolute top-1 right-1 z-10 rounded p-1 text-faint hover:text-muted"
                 title={t(language, 'openSideTabs')}
               >

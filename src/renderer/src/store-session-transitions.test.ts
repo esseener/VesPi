@@ -1,12 +1,15 @@
 import { test, before, beforeEach } from 'node:test'
 import assert from 'node:assert/strict'
 import type { PiExtensionUiRequest, SessionDeleteResult, SessionListItem, SessionRuntimeInfo, SessionState, Workspace } from '../../shared/ipc-contracts'
+import type { LiveTurnSnapshot } from '../../shared/ipc-contracts'
 import type { PreviewTarget } from './store'
 
 // Each recorded call is appended to `calls`, so tests can assert both that a
 // session change reached Pi and that nothing reached Pi when it was declined.
 const calls: string[] = []
 let switchResult: { success?: boolean; error?: string } | SessionRuntimeInfo | null = { success: true }
+// Snapshot the stubbed session.getLiveTurn reports; null means "no live turn".
+let liveTurnResult: LiveTurnSnapshot | null = null
 // Non-null makes the stubbed pi.getStatus reject, simulating a main-side
 // failure AFTER a workspace switch has already committed.
 let getStatusFailure: string | null = null
@@ -237,6 +240,7 @@ const piDesktopStub = {
     },
     getState: async () => ({ success: true, data: sessionStateResult }),
     getStats: async () => ({ success: true, data: null }),
+    getLiveTurn: async () => liveTurnResult,
     list: async () => [],
   },
 }
@@ -310,6 +314,7 @@ beforeEach(() => {
     answerPoll = null
   }
   switchResult = { success: true }
+  liveTurnResult = null
   getStatusFailure = null
   piStatusResult = 'stopped'
   setActiveFailure = null
@@ -524,6 +529,84 @@ test('switchSession clears streaming state even when Pi refuses the switch', asy
     true,
     'the refusal reason must be shown to the user'
   )
+})
+
+// Main tags a live turn's runtime with activity 'working' (agent_start wiring),
+// so switching onto a busy session must arm the mid-turn attach instead of
+// leaving the composer looking idle while the turn keeps running.
+test('switchSession onto a working runtime arms the mid-turn streaming state', async () => {
+  switchResult = {
+    runtimeId: 'rt-live',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 7,
+    error: null,
+    activity: 'working',
+    active: true,
+  }
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+
+  const state = useAppStore.getState()
+  assert.equal(state.isStreaming, true, 'a live turn must keep the composer streaming')
+  assert.equal(state.reattachedMidTurn, true, 'the next turn boundary must backfill the missed prefix')
+})
+
+// Re-attaching to a busy session must also restore what was already streamed
+// before the switch (the kernel only reports committed messages via
+// get_messages, so without the live-turn snapshot the chat stays blank until
+// the next event).
+test('switchSession onto a working runtime restores the in-progress turn snapshot', async () => {
+  switchResult = {
+    runtimeId: 'rt-live',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 7,
+    error: null,
+    activity: 'working',
+    active: true,
+  }
+  liveTurnResult = {
+    streamingContent: 'building…',
+    streamingThinking: 'planning the build',
+    streamingToolCalls: [
+      { id: 'tc-1', name: 'bash', args: '{"cmd":"build"}', isExecuting: true, startedAt: 0 },
+    ],
+  }
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  // The snapshot restore is fire-and-forget inside switchSession; let it land.
+  await new Promise((resolve) => setTimeout(resolve, 0))
+
+  const state = useAppStore.getState()
+  assert.equal(state.streamingContent, 'building…', 'the partial text must render immediately')
+  assert.equal(state.streamingThinking, 'planning the build')
+  assert.equal(state.streamingToolCalls.size, 1)
+  assert.equal(state.streamingToolCalls.get('tc-1')?.name, 'bash')
+  assert.equal(state.streamingToolCalls.get('tc-1')?.isExecuting, true)
+})
+
+test('restoreLiveTurnSnapshot ignores a stale snapshot once deltas are flowing', async () => {
+  liveTurnResult = { streamingContent: 'stale prefix', streamingThinking: '', streamingToolCalls: [] }
+  useAppStore.setState({ reattachedMidTurn: true, isStreaming: true, streamingContent: 'fresh delta' })
+
+  await useAppStore.getState().restoreLiveTurnSnapshot()
+
+  const state = useAppStore.getState()
+  assert.equal(state.streamingContent, 'fresh delta', 'in-flight deltas must not be clobbered')
+})
+
+test('restoreLiveTurnSnapshot is a no-op when the turn already ended', async () => {
+  liveTurnResult = { streamingContent: 'stale', streamingThinking: '', streamingToolCalls: [] }
+  useAppStore.setState({ reattachedMidTurn: false, isStreaming: false })
+
+  await useAppStore.getState().restoreLiveTurnSnapshot()
+
+  assert.equal(useAppStore.getState().streamingContent, '')
 })
 
 test('createNewSession starts an independent runtime without warning', async () => {

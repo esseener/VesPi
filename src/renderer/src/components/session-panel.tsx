@@ -21,6 +21,7 @@ export function SessionPanel(): React.JSX.Element {
   const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
   const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
   const createNewSession = useAppStore((state) => state.createNewSession)
+  const creatingSession = useAppStore((state) => state.creatingSession)
   const refreshSessionList = useAppStore((state) => state.refreshSessionList)
   const archivedSessions = useAppStore((state) => state.archivedSessions)
   const showArchived = useAppStore((state) => state.showArchived)
@@ -137,8 +138,13 @@ export function SessionPanel(): React.JSX.Element {
               {t(language, 'refresh')}
             </button>
             <button
-              onClick={createNewSession}
-              className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
+              onClick={() => void createNewSession()}
+              // Without a workspace the IPC throws and the error lands in the
+              // chat view, which isn't even on screen here — so it read as a
+              // dead button. `creatingSession` debounces double clicks.
+              disabled={!activeWorkspace || creatingSession}
+              title={activeWorkspace ? undefined : t(language, 'openAProjectFirst')}
+              className="flex items-center gap-1.5 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
             >
               <Plus size={14} />
               {t(language, 'newSession')}
@@ -320,7 +326,15 @@ export function SessionPanel(): React.JSX.Element {
                         <SessionEntry
                           key={session.path}
                           session={session}
-                          isActive={sessionState?.sessionFile === session.path || sessionRuntimes[activeSessionRuntimeId ?? '']?.sessionPath === session.path}
+                          isActive={(() => {
+                            // pathsEqual, not ===: on Windows a drive-letter case
+                            // difference made the current session lose its
+                            // highlight (and kept its group from auto-expanding).
+                            const activePath =
+                              sessionState?.sessionFile ??
+                              sessionRuntimes[activeSessionRuntimeId ?? '']?.sessionPath
+                            return !!activePath && pathsEqual(activePath, session.path)
+                          })()}
                           showEngineTag={showEngineTags}
                           onSelect={() => handleSwitchSession(session)}
                         />
@@ -373,6 +387,7 @@ function SessionEntry({
   const [menuOpen, setMenuOpen] = useState(false)
   const [menuPosition, setMenuPosition] = useState<MenuPosition | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const menuButtonRef = useRef<HTMLButtonElement>(null)
   const menuPopupRef = useRef<HTMLDivElement>(null)
@@ -444,16 +459,31 @@ function SessionEntry({
 
   const handleDelete = async () => {
     setBusy(true)
+    setDeleteError(null)
     try {
-      await deleteSession(session)
+      const result = await deleteSession(session)
+      // A session the engine is still writing to is locked on Windows, so the
+      // delete can fail. Keep the confirmation open and say why — dismissing it
+      // here made a failed delete look like it had succeeded.
+      if (!result.ok) {
+        setDeleteError(result.error || t(language, 'sysDeleteError', { detail: 'unknown error' }))
+        return
+      }
+      setConfirmingDelete(false)
     } finally {
       setBusy(false)
-      setConfirmingDelete(false)
     }
   }
 
   const { show: showCtx, ContextMenuComponent: RowMenu } = useContextMenu()
   const handleRightClick = (e: React.MouseEvent): void => {
+    // Let the native editing menu through inside text fields. This handler is
+    // bound to the whole row, which contains the tag <input>; hijacking it there
+    // replaced paste/select-all with "Open / Archive / Delete".
+    const target = e.target
+    if (target instanceof HTMLElement && target.closest('input, textarea, [contenteditable="true"]')) {
+      return
+    }
     // Stop the document-level default menu from also firing
     e.nativeEvent.stopPropagation()
     showCtx(
@@ -631,6 +661,11 @@ function SessionEntry({
               name: getSessionTitle(session.name, session.sessionId, session.preview),
             })}
           </div>
+          {deleteError && (
+            <div className="mt-1 break-words rounded border border-error bg-error-bg/60 px-1.5 py-1 text-error">
+              {deleteError}
+            </div>
+          )}
           <div className="mt-1.5 flex flex-wrap items-center justify-end gap-1">
             <button
               type="button"
@@ -640,14 +675,15 @@ function SessionEntry({
               {t(language, 'openRecycleBin')}
             </button>
             <button
-              onClick={() => setConfirmingDelete(false)}
+              onClick={() => { setConfirmingDelete(false); setDeleteError(null) }}
               className="rounded px-2 py-0.5 text-muted hover:text-primary"
             >
               {t(language, 'cancel')}
             </button>
             <button
-              onClick={handleDelete}
-              className="rounded-md border border-error bg-transparent px-2 py-0.5 text-error transition-colors hover:border-error-hover"
+              onClick={() => void handleDelete()}
+              disabled={busy}
+              className="rounded-md border border-error bg-transparent px-2 py-0.5 text-error transition-colors hover:border-error-hover disabled:opacity-50"
             >
               {t(language, 'confirmRemove')}
             </button>

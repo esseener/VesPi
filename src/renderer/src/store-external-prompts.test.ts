@@ -121,19 +121,20 @@ test('steering prompt echo during streaming is deduped', async () => {
   await useAppStore.getState().sendSteer('change course')
   useAppStore.getState().handlePiEvent(userMessageStart('change course'))
 
-  assert.deepEqual(userBubbles(), [])
+  assert.deepEqual(userBubbles(), ['change course'])
   assert.equal(externalPromptEvents(), 0)
 })
 
-// sendSteer/sendFollowUp never rendered bubbles; their echoes must not start
-// rendering them as external prompts now.
-test('sendSteer and sendFollowUp echoes render nothing', async () => {
+// sendSteer/sendFollowUp render their bubble at send time (the kernel only
+// replays the queued message as message_start later, if at all), so the echo
+// must be swallowed rather than rendered a second time.
+test('sendSteer and sendFollowUp render their bubble; echoes dedupe', async () => {
   await useAppStore.getState().sendSteer('quiet steer')
   await useAppStore.getState().sendFollowUp('quiet follow-up')
   useAppStore.getState().handlePiEvent(userMessageStart('quiet steer'))
   useAppStore.getState().handlePiEvent(userMessageStart('quiet follow-up'))
 
-  assert.deepEqual(useAppStore.getState().messages, [])
+  assert.deepEqual(userBubbles(), ['quiet steer', 'quiet follow-up'])
   assert.equal(externalPromptEvents(), 0)
 })
 

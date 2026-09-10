@@ -34,10 +34,14 @@ export function Timeline(): React.JSX.Element {
   const switchSession = useAppStore((state) => state.switchSession)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
+  // currentSessionFile is a dependency on purpose: this panel stays mounted
+  // (app.tsx renders it by view, not by session), so without it the branch list
+  // kept showing the *previous* session's fork points after switching — and
+  // clicking Fork would have branched the wrong session.
   useEffect(() => {
     loadForkMessages()
     loadLineage()
-  }, [loadForkMessages, loadLineage])
+  }, [loadForkMessages, loadLineage, currentSessionFile])
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">

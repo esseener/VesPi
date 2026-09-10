@@ -44,6 +44,7 @@ export function StatusPopover(): React.JSX.Element {
   const [skills, setSkills] = useState<InstalledSkill[]>([])
   const [mcpServers, setMcpServers] = useState<McpServer[]>([])
   const [loading, setLoading] = useState(false)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   const piStatus = useAppStore((state) => state.piStatus)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -72,17 +73,21 @@ export function StatusPopover(): React.JSX.Element {
 
     const loadData = async () => {
       setLoading(true)
+      setLoadError(null)
       try {
         const [cmds, skls, mcp] = await Promise.all([
-          window.piDesktop.piCommands.list().catch(() => []),
-          window.piDesktop.skills.list().catch(() => []),
-          window.piDesktop.mcpServers.list().catch(() => []),
+          window.piDesktop.piCommands.list(),
+          window.piDesktop.skills.list(),
+          window.piDesktop.mcpServers.list(),
         ])
         setCommands(cmds as CommandInfo[])
         setSkills(skls as InstalledSkill[])
         setMcpServers(mcp as McpServer[])
-      } catch {
-        // Silent failure
+      } catch (err) {
+        // Each list used to swallow its own failure, so a load error rendered as
+        // the empty state — "no extensions or skills" — and looked like a fact
+        // about the install rather than a failure to read it.
+        setLoadError(err instanceof Error ? err.message : String(err))
       } finally {
         setLoading(false)
       }
@@ -427,8 +432,16 @@ export function StatusPopover(): React.JSX.Element {
               </div>
             )}
 
+            {/* Load failure — distinct from "nothing installed" */}
+            {!loading && loadError !== null && (
+              <div className="px-1 py-4 text-center text-xs text-error">
+                {t(language, 'statusLoadFailed')}
+                <div className="mt-1 break-words text-[10px] text-faint">{loadError}</div>
+              </div>
+            )}
+
             {/* Empty state */}
-            {!loading && commands.length === 0 && skills.length === 0 && (
+            {!loading && loadError === null && commands.length === 0 && skills.length === 0 && (
               <div className="py-6 text-center text-xs text-faint">
                 {t(language, 'noExtensionsOrSkills')}
               </div>

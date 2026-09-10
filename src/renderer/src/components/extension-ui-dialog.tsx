@@ -170,9 +170,13 @@ function ConfirmDialog({
           <p className="mb-4 whitespace-pre-line text-sm text-muted">{request.message}</p>
         )}
         <div className="flex justify-end gap-2">
+          {/* Focus starts on deny: the composer keeps keyboard focus otherwise,
+              so Enter would send the draft instead of answering the prompt. Of
+              the two answers, the safe one should be the one a stray Enter hits. */}
           <button
+            autoFocus
             onClick={onDeny}
-            className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
+            className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-fg"
           >
             {t(language, 'cancel')}
           </button>
@@ -357,11 +361,55 @@ function DialogOverlay({
     return () => observer.disconnect()
   }, [anchor])
 
+  // Esc closes the prompt. Registered on the capture phase so it beats the
+  // window-level bubble listener in useChatKeyboard, which would otherwise
+  // treat Escape as "abort streaming" at the same time.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent): void => {
+      if (e.key !== 'Escape') return
+      if (e.isComposing || e.keyCode === 229) return
+      e.preventDefault()
+      e.stopPropagation()
+      onCancel()
+    }
+    window.addEventListener('keydown', onKeyDown, true)
+    return () => window.removeEventListener('keydown', onKeyDown, true)
+  }, [onCancel])
+
   if (anchor === 'composer' && host) {
+    // The backdrop lives inside the host rather than on document.body: the host
+    // sits in a z-60 stacking context, so a body-level backdrop at z-50 would
+    // paint *under* the composer and leave clicks falling through to the
+    // conversation below. Being a sibling here puts it above the app chrome but
+    // below the dialog box (z-10), which is exactly the behaviour we want.
     return createPortal(
-      <div className="overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl animate-fade-in">
-        {children}
-      </div>,
+      <>
+        {/* Sized in viewport units and centred on the host, NOT `fixed inset-0`:
+            #vespi-composer uses backdrop-blur-sm, and a non-none backdrop-filter
+            makes the element a containing block for fixed descendants — inset-0
+            would resolve against the composer's box (~one bar tall) instead of
+            the viewport. That left clicks falling through to the conversation
+            below (the thing this backdrop exists to stop) while covering the
+            composer itself, where a stray click silently answered the prompt
+            with a permanent deny. */}
+        <div
+          className="absolute animate-fade-in"
+          style={{
+            top: '50%',
+            left: '50%',
+            width: '400vw',
+            height: '400vh',
+            transform: 'translate(-50%, -50%)',
+            zIndex: 0,
+          }}
+          onClick={onCancel}
+          onContextMenu={(e) => e.preventDefault()}
+          aria-hidden
+        />
+        <div className="relative z-10 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl animate-fade-in">
+          {children}
+        </div>
+      </>,
       host
     )
   }

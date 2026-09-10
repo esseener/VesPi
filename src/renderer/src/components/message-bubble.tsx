@@ -1,4 +1,4 @@
-import { memo, useState, useRef } from 'react'
+import { memo, useMemo, useState, useRef } from 'react'
 import { useAppStore, type DisplayMessage } from '../store'
 import { modelDisplayName } from '../../../shared/models-config'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
@@ -21,6 +21,7 @@ import { useContextMenu, buildMessageContextMenu } from './context-menu'
 import { localizeToolCallLabel, localizeToolGroupTitle } from '../tool-status-i18n'
 import { DEFAULT_LANGUAGE, t, isMessageKey } from '../../../shared/i18n'
 import { RelativeTime } from '../utils/relative-time'
+import { ScaledImage } from '../utils/image-thumbnail'
 import { clsx } from 'clsx'
 import {
   Copy,
@@ -65,7 +66,10 @@ function MessageBubbleImpl({
 
   const handleSaveEdit = async () => {
     if (editContent.trim() !== message.content) {
-      // Resend the edited message
+      // sendPrompt() bails out while a turn is running. Closing the editor here
+      // used to discard the rewrite with no feedback at all — keep it open so
+      // the text survives and the user can retry once the turn ends.
+      if (useAppStore.getState().isStreaming) return
       await useAppStore.getState().sendPrompt(editContent.trim())
     }
     setIsEditing(false)
@@ -76,15 +80,10 @@ function MessageBubbleImpl({
   }
 
   const handleBranch = () => {
-    const preview = `${message.content.slice(0, 100)}${message.content.length > 100 ? '...' : ''}`
-    useAppStore.getState().addMessage({
-      id: `branch-${Date.now()}`,
-      role: 'system',
-      content: preview,
-      timestamp: Date.now(),
-      i18nKey: 'sysBranchedFrom',
-      i18nVars: { preview },
-    })
+    // Really fork. This used to only insert a "branched from here" system line
+    // while creating no branch at all. Message ids come from the session entry
+    // records, which is the same id space forkFrom() expects.
+    void useAppStore.getState().forkFrom(message.id)
   }
 
   const handleExport = () => {
@@ -206,6 +205,9 @@ function UserMessage({
   onExport: () => void
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  // Subscribed here (not in MessageBubbleImpl) so assistant bubbles don't
+  // re-render on every stream start/stop — only user messages use this.
+  const isStreaming = useAppStore((state) => state.isStreaming)
   const editRef = useRef<HTMLTextAreaElement>(null)
 
   if (isEditing) {
@@ -223,9 +225,27 @@ function UserMessage({
               t.style.height = 'auto'
               t.style.height = `${Math.min(t.scrollHeight, 192)}px`
             }}
+            onKeyDown={(e) => {
+              // IME guard: Enter belongs to the candidate window while composing.
+              if (e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return
+              if (e.key === 'Escape') {
+                // Esc previously did nothing here, stranding the user in the editor.
+                e.preventDefault()
+                e.stopPropagation()
+                onCancelEdit()
+                return
+              }
+              // Match the composer: Enter resends, Shift+Enter inserts a newline.
+              if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault()
+                e.stopPropagation()
+                onSaveEdit()
+              }
+            }}
             autoFocus
           />
           <div className="flex items-center justify-end gap-1 mt-1">
+            <span className="mr-auto text-[10px] text-faint">{t(language, 'newlineHint')}</span>
             <button
               onClick={onCancelEdit}
               className="rounded px-2 py-1 text-xs text-muted hover:text-primary transition-colors"
@@ -234,7 +254,9 @@ function UserMessage({
             </button>
             <button
               onClick={onSaveEdit}
-              className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary"
+              disabled={isStreaming}
+              title={isStreaming ? t(language, 'actionWaitForTurn') : undefined}
+              className="flex items-center gap-1 rounded-md border border-border-strong bg-transparent px-2 py-1 text-xs text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:cursor-not-allowed disabled:opacity-40"
             >
               <Send size={10} />
               {t(language, 'actionSend')}
@@ -257,8 +279,9 @@ function UserMessage({
                   className="overflow-hidden rounded-md border border-white/20 bg-black/10"
                   title={attachment.name}
                 >
-                  <img
-                    src={`data:${attachment.mimeType};base64,${attachment.data}`}
+                  <ScaledImage
+                    mimeType={attachment.mimeType}
+                    data={attachment.data}
                     alt={attachment.name}
                     className="h-16 w-16 object-cover"
                   />
@@ -273,10 +296,20 @@ function UserMessage({
           hover row must never stretch the user bubble beyond its text. */}
       <div className="mt-1 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
         <ActionButton icon={<Copy size={11} />} onClick={onCopy} title={t(language, 'actionCopy')} />
-        <ActionButton icon={<Edit3 size={11} />} onClick={onEdit} title={t(language, 'actionEditResend')} />
+        <ActionButton
+          icon={<Edit3 size={11} />}
+          onClick={onEdit}
+          title={isStreaming ? t(language, 'actionWaitForTurn') : t(language, 'actionEditResend')}
+          disabled={isStreaming}
+        />
         <ActionButton icon={<GitBranch size={11} />} onClick={onBranch} title={t(language, 'actionBranchHere')} />
         {onRetry && (
-          <ActionButton icon={<RotateCcw size={11} />} onClick={() => onRetry(message.id)} title={t(language, 'actionRetry')} />
+          <ActionButton
+            icon={<RotateCcw size={11} />}
+            onClick={() => onRetry(message.id)}
+            title={isStreaming ? t(language, 'actionWaitForTurn') : t(language, 'actionRetry')}
+            disabled={isStreaming}
+          />
         )}
         <ActionButton icon={<Download size={11} />} onClick={onExport} title={t(language, 'actionExport')} />
       </div>
@@ -571,9 +604,17 @@ function ToolCallBadge({
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   // Edit diffs open expanded so the change is visible without a second result pill.
-  const edits = toolLabel(toolCall.name) === 'Edit file' ? parseEdits(toolCall.arguments) : null
-  const stats = edits ? editStats(edits) : null
-  const editFile = edits ? toolCallFile(toolCall.name, toolCall.arguments) : null
+  // Memoized: badges re-render on every streaming token, and parseEdits runs a
+  // full JSON parse of the tool arguments each time without it.
+  const edits = useMemo(
+    () => (toolLabel(toolCall.name) === 'Edit file' ? parseEdits(toolCall.arguments) : null),
+    [toolCall.name, toolCall.arguments]
+  )
+  const stats = useMemo(() => (edits ? editStats(edits) : null), [edits])
+  const editFile = useMemo(
+    () => (edits ? toolCallFile(toolCall.name, toolCall.arguments) : null),
+    [edits, toolCall.name, toolCall.arguments]
+  )
   const editLang = editFile ? getCodeEditorLanguageName(editFile) : 'plain text'
   const [expanded, setExpanded] = useState(() => Boolean(edits))
 
@@ -680,9 +721,13 @@ function DiffLines({
   lang: string
   kind: 'add' | 'remove'
 }): React.JSX.Element | null {
+  // Memoized: without this every parent re-render re-ran the Lezer parse.
+  const html = useMemo(
+    () => (text === '' ? null : highlightCodeToHtml(text, lang)),
+    [text, lang]
+  )
+  const lines = useMemo(() => (html ?? text).split('\n'), [html, text])
   if (text === '') return null
-  const html = highlightCodeToHtml(text, lang)
-  const lines = (html ?? text).split('\n')
   const rowBg = kind === 'add' ? 'bg-success-bg' : 'bg-error-bg'
   const markColor = kind === 'add' ? 'text-success' : 'text-error'
   const sign = kind === 'add' ? '+ ' : '- '
@@ -705,6 +750,7 @@ function DiffLines({
 // ─── Tool Result Message ─────────────────────────────────────────────────────
 
 function ToolResultMessage({ message }: { message: DisplayMessage }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   // Collapsed by default — tool results can be huge and otherwise dominate the
   // scrollback. Mirrors ToolCallBadge's expand/collapse affordance.
   const [expanded, setExpanded] = useState(false)
@@ -747,8 +793,8 @@ function ToolResultMessage({ message }: { message: DisplayMessage }): React.JSX.
               <button
                 onClick={() => setExpanded(false)}
                 className="absolute right-8 top-1.5 rounded p-1 text-dim transition-colors hover:text-secondary"
-                title="Collapse"
-                aria-label="Collapse"
+                title={t(language, 'collapse')}
+                aria-label={t(language, 'collapse')}
               >
                 <ChevronDown size={12} />
               </button>
@@ -811,7 +857,8 @@ function CodeResultView({
   const clipped = content.length > MAX_CODE_RESULT_CHARS
   const clippedContent = clipped ? content.slice(0, MAX_CODE_RESULT_CHARS) : content
   // Peel off Pi's "[N more lines in file…]" footer so it renders as a note, not code.
-  const { code, note } = splitReadTruncationNote(clippedContent)
+  // Memoized so parent re-renders don't re-scan the whole payload.
+  const { code, note } = useMemo(() => splitReadTruncationNote(clippedContent), [clippedContent])
 
   return (
     // The first line doubles as a collapse trigger (a large click target, like the
@@ -952,16 +999,19 @@ function ActionButton({
   onClick,
   title,
   label,
+  disabled,
 }: {
   icon: React.ReactNode
   onClick: () => void
   title: string
   label?: string
+  disabled?: boolean
 }): React.JSX.Element {
   return (
     <button
       onClick={onClick}
-      className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
+      disabled={disabled}
+      className="flex items-center gap-1 rounded px-1.5 py-1 text-xs text-dim transition-colors enabled:hover:bg-surface-hover enabled:hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
       title={title}
       aria-label={title}
     >
