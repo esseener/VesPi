@@ -151,6 +151,14 @@
     opacity: 1;
   }
 
+  /* Keyboard focus was invisible app-wide: only 9 of ~272 buttons wrote their
+     own focus-visible rule, so tabbing showed nothing. One global rule covers
+     everything, and :focus-visible keeps the ring off for mouse clicks. */
+  :focus-visible {
+    outline: 2px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+
   .markdown-body {
     font-family: 'Inter Variable', 'OpenMoji Color', system-ui, sans-serif;
     font-size: 0.9375rem;
@@ -404,6 +412,63 @@
     -webkit-background-clip: text;
     color: transparent;
     animation: fleet-shimmer 1.4s linear infinite;
+  }
+
+  @keyframes composer-border-flow {
+    from { background-position: 0% 50%; }
+    to { background-position: 200% 50%; }
+  }
+
+  /* Decorative border-only sweep. The fixed inset and pointer-events rule keep
+     the textarea, popups, and toolbar layout unchanged. */
+  #vespi-composer::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-border-strong) 45%, transparent) 35%,
+      color-mix(in srgb, var(--color-accent-fg) 70%, transparent) 50%,
+      color-mix(in srgb, var(--color-border-strong) 45%, transparent) 65%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: composer-border-flow 8s linear infinite;
+  }
+
+  #vespi-composer.composer-streaming::before {
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
+      var(--color-accent-fg) 50%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation-duration: 1.15s;
+  }
+
+  #vespi-composer > :not(.absolute) {
+    position: relative;
+    z-index: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    #vespi-composer::before,
+    #vespi-composer.composer-streaming::before {
+      animation: none;
+      background: var(--color-border-strong);
+    }
   }
 
   @keyframes stop-breath {

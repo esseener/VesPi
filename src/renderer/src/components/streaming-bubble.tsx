@@ -26,6 +26,20 @@ interface StreamingBubbleProps {
   >
 }
 
+/**
+ * Store-connected wrapper. The three streaming slices change on every token;
+ * subscribing here (instead of in ChatPanel) confines the resulting re-render
+ * to this subtree instead of repainting the whole message list per token.
+ */
+export function ActiveStreamingBubble(): React.JSX.Element | null {
+  const isStreaming = useAppStore((state) => state.isStreaming)
+  const content = useAppStore((state) => state.streamingContent)
+  const thinking = useAppStore((state) => state.streamingThinking)
+  const toolCalls = useAppStore((state) => state.streamingToolCalls)
+  if (!isStreaming) return null
+  return <StreamingBubble content={content} thinking={thinking} toolCalls={toolCalls} />
+}
+
 export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbleProps): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const thinkingEnabled = useAppStore(

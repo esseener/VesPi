@@ -1,6 +1,7 @@
-import { useState } from 'react'
+import { memo, useMemo, useState } from 'react'
 import { clsx } from 'clsx'
 import ReactMarkdown from 'react-markdown'
+import type { Components } from 'react-markdown'
 import remarkGfm from 'remark-gfm'
 import { useContextMenu, buildCodeBlockContextMenu, buildLinkContextMenu } from './context-menu'
 import { CopyButton } from './copy-button'
@@ -9,23 +10,30 @@ import { splitReadTruncationNote } from '../message-grouping'
 import { looksLikeFilePath, openFileFromChat } from './chat-file-link'
 import { ErrorBoundary } from './error-boundary'
 import { Code2, Eye } from 'lucide-react'
+import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 interface MarkdownRendererProps {
   content: string
 }
 
-export function MarkdownRenderer({ content }: MarkdownRendererProps): React.JSX.Element {
+// Module-level so every render of every bubble passes the SAME array identity —
+// react-markdown treats a fresh plugins list as new config and re-parses.
+const REMARK_PLUGINS = [remarkGfm]
+
+export const MarkdownRenderer = memo(function MarkdownRenderer({
+  content,
+}: MarkdownRendererProps): React.JSX.Element {
   const { show, ContextMenuComponent } = useContextMenu()
 
-  return (
-    <ErrorBoundary
-      fallback={<pre className="whitespace-pre-wrap break-words text-secondary">{content}</pre>}
-    >
-      <ReactMarkdown
-        remarkPlugins={[remarkGfm]}
-        components={{
+  // The `components` map closes over `show`, so it can only change when the
+  // context-menu callback does. Without useMemo every parent re-render built a
+  // new object, defeating react-markdown's internal memoization and forcing a
+  // full re-parse of the markdown on every streaming token.
+  const components = useMemo(
+    (): Components => ({
           // Links — right-click for context menu
-          a: ({ href, children, ...props }) => (
+          a: ({ href, children, ...props }: React.ComponentPropsWithoutRef<'a'>) => (
             <a
               {...props}
               href={href}
@@ -47,7 +55,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): React.JSX.
           ),
 
           // Code blocks — right-click to copy
-          pre: (props) => {
+          pre: (props: React.ComponentPropsWithoutRef<'pre'>) => {
             const p = props as Record<string, unknown>
             const children = p.children as React.ReactNode
             const codeText = extractCodeText(children)
@@ -75,7 +83,7 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): React.JSX.
           },
 
           // Inline code — right-click to copy
-          code: (props) => {
+          code: (props: React.ComponentPropsWithoutRef<'code'>) => {
             const p = props as Record<string, unknown>
             const children = p.children as React.ReactNode
             const className = p.className as string | undefined
@@ -136,19 +144,26 @@ export function MarkdownRenderer({ content }: MarkdownRendererProps): React.JSX.
           },
 
           // Tables
-          table: ({ children, ...props }) => (
+          table: ({ children, ...props }: React.ComponentPropsWithoutRef<'table'>) => (
             <div className="overflow-x-auto">
               <table {...props}>{children}</table>
             </div>
           ),
-        }}
-      >
+    }),
+    [show]
+  )
+
+  return (
+    <ErrorBoundary
+      fallback={<pre className="whitespace-pre-wrap break-words text-secondary">{content}</pre>}
+    >
+      <ReactMarkdown remarkPlugins={REMARK_PLUGINS} components={components}>
         {content}
       </ReactMarkdown>
       {ContextMenuComponent}
     </ErrorBoundary>
   )
-}
+})
 
 /**
  * True when `text` is a self-contained SVG document — an optional XML prolog or
@@ -167,6 +182,9 @@ function isRenderableSvg(text: string): boolean {
  * from model/tool output can't run code or phone home.
  */
 function SvgBlock({ raw }: { raw: string }): React.JSX.Element {
+  const language = useAppStore(
+    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  )
   const [showSource, setShowSource] = useState(false)
   const src = `data:image/svg+xml;utf8,${encodeURIComponent(raw)}`
 
@@ -191,8 +209,8 @@ function SvgBlock({ raw }: { raw: string }): React.JSX.Element {
               'rounded p-1 transition-colors',
               !showSource ? 'bg-card text-primary' : 'text-dim hover:bg-surface-hover/50 hover:text-secondary'
             )}
-            title="Render SVG"
-            aria-label="Render SVG"
+            title={t(language, 'renderSvg')}
+            aria-label={t(language, 'renderSvg')}
           >
             <Eye size={14} />
           </button>

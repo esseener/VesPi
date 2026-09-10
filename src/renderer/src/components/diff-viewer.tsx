@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { clsx } from 'clsx'
@@ -35,6 +35,11 @@ interface DiffFileBlock {
 interface DiffViewerProps {
   onClose?: () => void
 }
+
+// A single file's diff can be tens of thousands of rows (generated files,
+// lockfiles, vendored code). Rendering every <tr> at once freezes the panel,
+// so long diffs collapse to a preview with an explicit expand affordance.
+const DIFF_RENDER_THRESHOLD = 2000
 
 export function DiffViewer({ onClose }: DiffViewerProps = {}): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -184,6 +189,24 @@ function DiffFileEntry({
   const codeFontSize = useAppStore(
     (state) => state.settingsDraft.codeEditorFontSize ?? state.settings?.codeEditorFontSize ?? DEFAULT_SETTINGS.codeEditorFontSize
   )
+  const language = useAppStore(
+    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  )
+  const [showAll, setShowAll] = useState(false)
+
+  const totalLines = useMemo(() => file.hunks.reduce((n, h) => n + h.length, 0), [file.hunks])
+  const capped = !showAll && totalLines > DIFF_RENDER_THRESHOLD
+  const visibleHunks = useMemo(() => {
+    if (!capped) return file.hunks
+    const out: DiffLine[][] = []
+    let remaining = DIFF_RENDER_THRESHOLD
+    for (const hunk of file.hunks) {
+      if (remaining <= 0) break
+      out.push(hunk.slice(0, remaining))
+      remaining -= hunk.length
+    }
+    return out
+  }, [capped, file.hunks])
 
   return (
     <div className="rounded-lg border border-border overflow-hidden">
@@ -216,11 +239,20 @@ function DiffFileEntry({
         <div className="border-t border-border overflow-x-auto">
           <table className="font-jetbrains w-full" style={{ fontSize: `${codeFontSize}px` }}>
             <tbody>
-              {file.hunks.map((hunk, hunkIdx) => (
+              {visibleHunks.map((hunk, hunkIdx) => (
                 <DiffHunk key={hunkIdx} lines={hunk} />
               ))}
             </tbody>
           </table>
+          {capped && (
+            <button
+              type="button"
+              className="m-2 rounded px-2 py-1 text-xs text-accent-fg hover:bg-surface-hover/50"
+              onClick={() => setShowAll(true)}
+            >
+              {t(language, 'showAllLines', { count: String(totalLines) })}
+            </button>
+          )}
         </div>
       )}
     </div>
