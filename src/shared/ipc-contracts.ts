@@ -37,6 +37,7 @@ export const IPC_CHANNELS = {
   SESSION_GET_STATE: 'session:get-state',
   SESSION_GET_MESSAGES: 'session:get-messages',
   SESSION_GET_STATS: 'session:get-stats',
+  SESSION_GET_LIVE_TURN: 'session:get-live-turn',
   SESSION_SET_NAME: 'session:set-name',
   SESSION_EXPORT_HTML: 'session:export-html',
   SESSION_GET_FORK_MESSAGES: 'session:get-fork-messages',
@@ -235,6 +236,34 @@ export interface SessionRuntimeInfo extends PiStatus {
   active: boolean
   /** Main emitted marker telling the renderer to remove this closed tab. */
   closed?: boolean
+}
+
+/**
+ * One in-progress tool call as it appears in the renderer's stream buffers.
+ * Mirrors the shape the renderer keeps so a re-attached session can restore
+ * its live turn without re-parsing kernel events.
+ */
+export interface LiveTurnToolCall {
+  id: string
+  name: string
+  args: string
+  isExecuting: boolean
+  startedAt: number
+  result?: string
+  isError?: boolean
+  durationMs?: number
+}
+
+/**
+ * Snapshot of a session's CURRENT in-progress assistant turn, maintained
+ * main-side from every runtime's streaming events. Kernel `get_messages` only
+ * returns committed messages, so without this a session re-attached mid-turn
+ * would show nothing until the next event arrives.
+ */
+export interface LiveTurnSnapshot {
+  streamingContent: string
+  streamingThinking: string
+  streamingToolCalls: LiveTurnToolCall[]
 }
 
 export interface SessionRuntimeCloseResult {

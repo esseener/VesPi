@@ -2,6 +2,8 @@ import { ipcMain, type IpcMainInvokeEvent } from 'electron'
 import { createExtensionUiRouter, wireExtensionUiIpc } from './extension-ui-ipc'
 import { WorkspaceManager } from './workspace-manager'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
+import type { LiveTurnSnapshot } from '../shared/ipc-contracts'
+import { createLiveTurnTracker } from './live-turn-tracker'
 import { createIpcContext } from './ipc/context'
 import { assertTrustedSender } from './ipc/validation'
 import { registerPiHandlers } from './ipc/pi-handlers'
@@ -94,5 +96,19 @@ export function registerIpcHandlers(
   // WorkspaceManager only watches the active workspace, so no filtering here.
   workspaceManager.onFileChange((event) => {
     ctx.broadcast(IPC_CHANNELS.EVENT_FILE_CHANGE, event)
+  })
+
+  // ─── Live In-Progress Turn Snapshots ────────────────────────────────────
+  //
+  // Every manager feeds the tracker (the router receives their events too, but
+  // only forwards the active one's). When the renderer re-attaches a session
+  // mid-turn it asks for the snapshot and restores the partial content + tool
+  // calls instead of waiting for the next event.
+  const liveTurnTracker = createLiveTurnTracker()
+  workspaceManager.onPiManager((manager) => liveTurnTracker.attachManager(manager))
+  ipcMain.handle(IPC_CHANNELS.SESSION_GET_LIVE_TURN, (_event, runtimeId: unknown): LiveTurnSnapshot | null => {
+    if (typeof runtimeId !== 'string') return null
+    const pi = workspaceManager.getPiManagerForRuntime(runtimeId)
+    return pi ? liveTurnTracker.snapshotFor(pi) : null
   })
 }

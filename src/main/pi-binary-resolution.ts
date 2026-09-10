@@ -1,4 +1,4 @@
-import { basename, dirname, join, posix as posixPath } from 'path'
+import { basename, dirname, join, posix as posixPath, resolve } from 'path'
 
 import { buildNpmPrefixCommand, escapeCmdSpawn } from './cmd-escape'
 import { VESPI_PRIVATE_OMP_REL } from '../shared/vespi'
@@ -371,6 +371,13 @@ function privateOmpCandidates(deps: ResolutionDeps): string[] {
     out.push(join(dirname(appPath), VESPI_PRIVATE_OMP_REL))
     out.push(join(dirname(appPath), 'resources', VESPI_PRIVATE_OMP_REL))
   }
+  // Dev builds run from the repository or desktop package directory, where the
+  // bundled kernel lives outside the Electron executable's directory.
+  out.push(
+    resolve(process.cwd(), VESPI_PRIVATE_OMP_REL),
+    resolve(process.cwd(), '..', VESPI_PRIVATE_OMP_REL),
+    resolve(process.cwd(), '..', '..', VESPI_PRIVATE_OMP_REL),
+  )
   return [...new Set(out.filter(Boolean))]
 }
 

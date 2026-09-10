@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "1.0.20",
+  "version": "1.0.22",
   "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP)",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
@@ -34,8 +34,8 @@
     "dev:hot": "electron-vite dev",
     "build": "electron-vite build",
     "preview": "electron-vite preview",
-    "test": "tsx --test \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
-    "test:coverage": "tsx --test --experimental-test-coverage \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
+    "test": "tsx --test --test-concurrency=1 \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
+    "test:coverage": "tsx --test --test-concurrency=1 --experimental-test-coverage \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint src bin scripts resources && node scripts/check-semantic-colors.mjs",
     "check:release": "node scripts/check-release-consistency.mjs",

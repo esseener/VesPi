@@ -113,6 +113,7 @@ interface PiDesktopAPI {
     getState(): Promise<unknown>
     getMessages(): Promise<unknown>
     getStats(): Promise<unknown>
+    getLiveTurn(runtimeId?: string): Promise<unknown>
     setName(name: string): Promise<unknown>
     exportHtml(outputPath?: string): Promise<unknown>
     getForkMessages(): Promise<unknown>
@@ -395,6 +396,7 @@ const api: PiDesktopAPI = {
     getState: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_STATE),
     getMessages: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_MESSAGES),
     getStats: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_STATS),
+    getLiveTurn: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_LIVE_TURN, runtimeId),
     setName: (name) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SET_NAME, name),
     exportHtml: (outputPath) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_EXPORT_HTML, outputPath),
     getForkMessages: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_FORK_MESSAGES),

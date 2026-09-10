@@ -1,12 +1,12 @@
 {
   "$schema": "./omp-runtime-lock.schema.json",
   "repository": "can1357/oh-my-pi",
-  "version": "18.1.10",
+  "version": "18.1.13",
   "checksumAsset": "SHA256SUMS.txt",
   "assets": {
     "win32-x64": {
       "name": "omp-windows-x64.exe",
-      "sha256": "00b25bb0ad2992d252326a7ecea2527cfb85019b4a6d24a67842cf3712cd6625"
+      "sha256": "5d75a584acd1d8775d2ea6a14c3ea0dbdf8eb71a54bdab6ae7f38ab971aef877"
     }
   }
 }

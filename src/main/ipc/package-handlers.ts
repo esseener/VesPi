@@ -1,5 +1,5 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS } from '../../shared/ipc-contracts'
+import { IPC_CHANNELS, type InstalledPackage } from '../../shared/ipc-contracts'
 import { isValidPackageSpec } from '../../shared/package-spec'
 import { fetchPackageCatalog } from '../package-catalog'
 import { readFile } from 'fs/promises'
@@ -9,6 +9,7 @@ import { assertTrustedSender, isString } from './validation'
 import { runPiCli } from './run-pi-cli'
 import { getPiCli } from '../pi-rpc-manager'
 import type { IpcContext } from './context'
+import { ompPluginArgs, ompPluginDirectory, parseOmpPluginList } from '../omp-plugins'
 
 export function registerPackageHandlers(ctx: IpcContext): void {
   const { workspaceManager } = ctx
@@ -21,7 +22,9 @@ export function registerPackageHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.PACKAGE_LIST_INSTALLED, async () => {
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
-    return listInstalledPackages(cwd, activeEngine())
+    const engine = activeEngine()
+    if (engine === 'omp') return listOmpPlugins(cwd)
+    return listPiPackages(cwd)
   })
 
   ipcMain.handle(IPC_CHANNELS.PACKAGE_INSTALL, async (event, packageSpec: unknown) => {
@@ -30,7 +33,7 @@ export function registerPackageHandlers(ctx: IpcContext): void {
     if (!isValidPackageSpec(packageSpec)) throw new Error('Invalid package specification')
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
-    return installPackage(packageSpec, cwd)
+    return installPackage(packageSpec, cwd, activeEngine())
   })
 
   ipcMain.handle(IPC_CHANNELS.PACKAGE_REMOVE, async (event, packageSpec: unknown) => {
@@ -39,7 +42,7 @@ export function registerPackageHandlers(ctx: IpcContext): void {
     if (!isValidPackageSpec(packageSpec)) throw new Error('Invalid package specification')
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
-    return removePackage(packageSpec, cwd)
+    return removePackage(packageSpec, cwd, activeEngine())
   })
 
   ipcMain.handle(IPC_CHANNELS.PACKAGE_UPDATE, async (event, packageSpec?: unknown) => {
@@ -49,7 +52,7 @@ export function registerPackageHandlers(ctx: IpcContext): void {
     }
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
-    return updatePackage(isString(packageSpec) ? packageSpec : undefined, cwd)
+    return updatePackage(isString(packageSpec) ? packageSpec : undefined, cwd, activeEngine())
   })
 
   ipcMain.handle(IPC_CHANNELS.PACKAGE_CATALOG_FETCH, async (_event, query?: unknown) => {
@@ -59,35 +62,34 @@ export function registerPackageHandlers(ctx: IpcContext): void {
 
 // ─── Package Management ──────────────────────────────────────────────────────
 
-interface InstalledPackage {
+interface PiInstalledPackage {
   name: string
   source: string
-  type: string
+  type: InstalledPackage['type']
   version: string | null
   path: string
 }
 
-async function listInstalledPackages(cwd: string, engine: 'pi' | 'omp'): Promise<InstalledPackage[]> {
-  try {
-    const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
-    const agentRoot = engine === 'omp' ? join(homeDir, '.omp', 'agent') : join(homeDir, '.pi', 'agent')
-    const globalSettingsPath = join(agentRoot, 'settings.json')
-    const projectSettingsPath = engine === 'omp'
-      ? join(cwd, '.omp', 'settings.json')
-      : join(cwd, '.pi', 'settings.json')
-
-    const packages: InstalledPackage[] = []
-    const globalPackages = await readPackagesFromSettings(globalSettingsPath)
-    packages.push(...globalPackages.map((p) => ({ ...p, scope: 'global' })))
-    const projectPackages = await readPackagesFromSettings(projectSettingsPath)
-    packages.push(...projectPackages.map((p) => ({ ...p, scope: 'project' })))
-    return packages
-  } catch {
-    return []
-  }
+async function listOmpPlugins(cwd: string): Promise<InstalledPackage[]> {
+  const result = await runPiCli(ompPluginArgs('list'), cwd, 30_000, 'omp')
+  if (!result.success) return []
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
+  return parseOmpPluginList(result.output, ompPluginDirectory(homeDir))
 }
 
-async function readPackagesFromSettings(settingsPath: string): Promise<InstalledPackage[]> {
+async function listPiPackages(cwd: string): Promise<InstalledPackage[]> {
+  const homeDir = process.env.HOME ?? process.env.USERPROFILE ?? ''
+  const globalSettingsPath = join(homeDir, '.pi', 'agent', 'settings.json')
+  const projectSettingsPath = join(cwd, '.pi', 'settings.json')
+  const packages: InstalledPackage[] = []
+  const globalPackages = await readPackagesFromSettings(globalSettingsPath)
+  packages.push(...globalPackages.map((p) => ({ ...p, scope: 'global' })))
+  const projectPackages = await readPackagesFromSettings(projectSettingsPath)
+  packages.push(...projectPackages.map((p) => ({ ...p, scope: 'project' })))
+  return packages
+}
+
+async function readPackagesFromSettings(settingsPath: string): Promise<PiInstalledPackage[]> {
   try {
     if (!existsSync(settingsPath)) return []
     const content = await readFile(settingsPath, 'utf-8')
@@ -139,14 +141,20 @@ function extractVersion(source: string): string | null {
   return match ? match[1] : null
 }
 
-async function installPackage(spec: string, cwd: string): Promise<{ success: boolean; output: string }> {
-  return runPiCli(['install', spec], cwd, 120_000)
+async function installPackage(spec: string, cwd: string, engine: 'pi' | 'omp'): Promise<{ success: boolean; output: string }> {
+  return engine === 'omp'
+    ? runPiCli(ompPluginArgs('install', spec), cwd, 120_000, 'omp')
+    : runPiCli(['install', spec], cwd, 120_000, 'pi')
 }
 
-async function removePackage(spec: string, cwd: string): Promise<{ success: boolean; output: string }> {
-  return runPiCli(['remove', spec], cwd, 30_000)
+async function removePackage(spec: string, cwd: string, engine: 'pi' | 'omp'): Promise<{ success: boolean; output: string }> {
+  return engine === 'omp'
+    ? runPiCli(ompPluginArgs('uninstall', spec), cwd, 30_000, 'omp')
+    : runPiCli(['remove', spec], cwd, 30_000, 'pi')
 }
 
-async function updatePackage(spec: string | undefined, cwd: string): Promise<{ success: boolean; output: string }> {
-  return runPiCli(spec ? ['update', spec] : ['update'], cwd, 120_000)
+async function updatePackage(spec: string | undefined, cwd: string, engine: 'pi' | 'omp'): Promise<{ success: boolean; output: string }> {
+  return engine === 'omp'
+    ? runPiCli(ompPluginArgs('upgrade', spec), cwd, 120_000, 'omp')
+    : runPiCli(spec ? ['update', spec] : ['update'], cwd, 120_000, 'pi')
 }

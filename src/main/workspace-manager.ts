@@ -489,6 +489,11 @@ export class WorkspaceManager {
     return entry ? this.snapshotRuntime(entry) : null
   }
 
+  /** Resolve a session runtime's Pi manager without changing active bindings. */
+  getPiManagerForRuntime(runtimeId: string): PiRpcManager | null {
+    return this.sessionRuntimes.get(runtimeId)?.manager ?? null
+  }
+
   getSessionRuntimeForPath(sessionPath: string): SessionRuntimeInfo | null {
     const runtimeId = this.runtimeBySessionPath.get(pathGroupKey(sessionPath))
     return runtimeId ? this.getSessionRuntime(runtimeId) : null

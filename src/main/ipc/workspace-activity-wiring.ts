@@ -1,6 +1,6 @@
 import { ipcMain, Notification, type BrowserWindow } from 'electron'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
-import type { PiProcessStatus, WorkspaceActivationIntent } from '../../shared/ipc-contracts'
+import type { PiProcessStatus, SessionRuntimeActivity, WorkspaceActivationIntent } from '../../shared/ipc-contracts'
 import {
   createWorkspaceActivityTracker,
   type WorkspaceActivityNotification,
@@ -128,17 +128,31 @@ export function wireWorkspaceActivity(
         ...(runtimeId ? { runtimeId } : {}),
       }
     }
+    // Keep each session runtime's own activity in sync with its turn, so a
+    // session:switch response reports 'working' for a live turn and the
+    // renderer can re-arm its streaming state when re-attaching mid-turn.
+    // (Without this the per-runtime activity stayed null for every normal
+    // session — only launch-task runtimes got a value.)
+    const markRuntimeActivity = (target: { runtimeId?: string }, activity: SessionRuntimeActivity | null): void => {
+      if (target.runtimeId) workspaceManager.setSessionRuntimeActivity(target.runtimeId, activity)
+    }
     manager.on('agent_start', () => {
       const id = workspaceIdOf()
       if (id) tracker.handleAgentStart(id, sessionTarget())
+      markRuntimeActivity(sessionTarget(), 'working')
     })
     manager.on('agent_end', () => {
       const id = workspaceIdOf()
       if (id) tracker.handleAgentEnd(id, sessionTarget())
+      markRuntimeActivity(sessionTarget(), 'completed')
     })
     manager.on('status-change', (status: PiProcessStatus) => {
       const id = workspaceIdOf()
       if (id) tracker.handleStatusChange(id, status, sessionTarget())
+      // A stopped/errored process has no turn to show; clear the marker so a
+      // stale 'working'/'completed' cannot linger on an idle or dead tab.
+      if (status === 'error') markRuntimeActivity(sessionTarget(), 'failed')
+      else if (status === 'stopped') markRuntimeActivity(sessionTarget(), null)
     })
     // Only unexpected death emits 'exit' (deliberate stop() detaches
     // listeners first) — this is what distinguishes a crash from a stop.

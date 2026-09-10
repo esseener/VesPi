@@ -221,6 +221,14 @@ const RESOLUTION_DEPS: ResolutionDeps = {
 }
 
 
+function refreshResolutionDepsEnv(): void {
+  RESOLUTION_DEPS.env = {
+    ...process.env,
+    VESPI_APP_PATH: process.execPath,
+    VESPI_RESOURCES_PATH: typeof process.resourcesPath === 'string' ? process.resourcesPath : '',
+  }
+}
+
 const FS_ACCESS_ERROR_CODES = new Set(['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP'])
 
 function isFsAccessError(err: unknown): boolean {
@@ -328,6 +336,7 @@ const INSTALLATION_CACHE_TTL_MS = 30_000
  * protocol/tool surface.
  */
 export function setPiExecutableOverride(raw: string | undefined | null, engine: PiEngine = 'auto'): void {
+  refreshResolutionDepsEnv()
   const home = process.env.HOME ?? process.env.USERPROFILE ?? ''
   const next = normalizeOverride(raw, home)
   if (next === configuredOverride && engine === configuredEngine && cachedResolution) return
@@ -340,6 +349,7 @@ export function setPiExecutableOverride(raw: string | undefined | null, engine: 
 
 
 function getResolution(): PiResolution {
+  refreshResolutionDepsEnv()
   if (cachedResolution) return cachedResolution
   const resolution = resolvePiBinary(RESOLUTION_DEPS, configuredOverride, configuredEngine)
   // Adopt the login shell's PATH process-wide so Pi itself — and every helper
@@ -368,6 +378,7 @@ export function getPiResolution(): PiResolution {
  * Rescan button into a spinner that can never report a new install.
  */
 export function detectPiInstallations(force = false): AgentInstallation[] {
+  refreshResolutionDepsEnv()
   const cached = detectedInstallationsCache
   if (!force && cached && Date.now() - cached.at < INSTALLATION_CACHE_TTL_MS) {
     return cached.value.map((item) => ({ ...item }))
@@ -473,7 +484,8 @@ export function getConfiguredEngineKind(): AgentEngineKind {
  * Each engine's resolution is cached under its own key and cleared with the
  * configured one.
  */
-function getPiCliForEngine(engine: AgentEngineKind): PiCli {
+export function getPiCliForEngine(engine: AgentEngineKind): PiCli {
+  refreshResolutionDepsEnv()
   const configured = getPiCli()
   // The configured resolution already targets this engine, including any
   // executable path the user set for it.
