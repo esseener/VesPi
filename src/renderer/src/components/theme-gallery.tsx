@@ -122,6 +122,8 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') {
         // Escape backs out of the detail view first, then closes the modal.
+        // stopPropagation keeps the tool panel behind it from closing too.
+        event.stopPropagation()
         if (detail) setDetail(null)
         else onClose()
       }

@@ -15,6 +15,7 @@ import { formatRelativeTime } from '../utils/format-relative-time'
 import { formatIpcError } from '../utils/ipc-error'
 import { CopyButton } from './copy-button'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 
 
 type RowTone = 'ok' | 'warn' | 'fail' | 'plain'
@@ -37,6 +38,8 @@ const KEY_STATE_LABELS: Record<string, { label: string; tone: RowTone }> = {
 }
 
 export function DiagnosticsPanel(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const [report, setReport] = useState<DiagnosticsReport | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)

@@ -6,6 +6,7 @@ import { agentEngineLabel } from '../../../shared/agent-engine-label'
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { clsx } from 'clsx'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 import {
   Package,
   Search,
@@ -33,6 +34,8 @@ function confirmPackageRemove(spec: string): Promise<boolean> {
 }
 
 export function PackageBrowser(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const installedPackages = useAppStore((state) => state.installedPackages)
   const catalogPackages = useAppStore((state) => state.catalogPackages)
@@ -166,6 +169,7 @@ export function PackageBrowser(): React.JSX.Element {
             packages={installedPackages}
             loading={packageLoading}
             onRemove={handleRemove}
+            onBrowseCatalog={() => setActiveTab('catalog')}
             isOmp={isOmp}
           />
         )}
@@ -272,11 +276,13 @@ const InstalledTab = memo(function InstalledTab({
   packages,
   loading,
   onRemove,
+  onBrowseCatalog,
   isOmp,
 }: {
   packages: Array<{ name: string; source: string; type: string; version: string | null }>
   loading: boolean
   onRemove: (spec: string) => void
+  onBrowseCatalog: () => void
   isOmp: boolean
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -294,6 +300,17 @@ const InstalledTab = memo(function InstalledTab({
         <Package size={32} className="mb-3 text-faint" />
         <p className="text-sm">{isOmp ? t(language, 'ompNoPlugins') : t(language, 'noPackagesInstalled')}</p>
         <p className="mt-1 text-xs text-faint">{isOmp ? t(language, 'ompReloadHint') : t(language, 'browseCatalogOrInstall')}</p>
+        {/* The copy tells the user to browse the catalog, so give them the
+            button instead of leaving them to hunt for the tab. */}
+        {!isOmp && (
+          <button
+            type="button"
+            onClick={onBrowseCatalog}
+            className="mt-3 rounded-md border border-accent-fg bg-transparent px-3 py-1 text-xs text-accent-fg transition-colors hover:bg-accent-bg/20"
+          >
+            {t(language, 'browseCatalog')}
+          </button>
+        )}
       </div>
     )
   }

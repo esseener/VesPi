@@ -5,6 +5,7 @@ import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel } from '../utils/kernel-update-progress'
 import type { DiagnosticsReport } from '../../../shared/ipc-contracts'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 
 function platformLabel(platform: string | undefined, arch: string | undefined): string {
   if (!platform) return '—'
@@ -26,6 +27,8 @@ function kernelLabel(version: string | null | undefined): string {
 }
 
 export function AboutPanel(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const updateInfo = useAppStore((state) => state.updateInfo)
   const checkForUpdates = useAppStore((state) => state.checkForUpdates)

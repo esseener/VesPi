@@ -10,6 +10,7 @@ import {
   GitCompare,
   AlertTriangle,
   Settings as SettingsIcon,
+  Stethoscope,
   Play,
 } from 'lucide-react'
 import { useAppStore } from '../store'
@@ -262,13 +263,24 @@ function PiErrorBanner(): React.JSX.Element | null {
         <div className="mt-0.5 text-error/80">{piError}</div>
         <div className="mt-1 text-xs text-error/70">{t(language, 'checkPath', { engine: engineLabel })}</div>
       </div>
-      <button
-        onClick={() => setCurrentView('settings')}
-        className="flex shrink-0 items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
-      >
-        <SettingsIcon size={12} />
-        {t(language, 'settings')}
-      </button>
+      <div className="flex shrink-0 gap-1.5">
+        {/* A failed kernel is exactly what the diagnostics panel exists for —
+            settings alone leaves the user without the log and health readout. */}
+        <button
+          onClick={() => setCurrentView('diagnostics')}
+          className="flex items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
+        >
+          <Stethoscope size={12} />
+          {t(language, 'diagnostics')}
+        </button>
+        <button
+          onClick={() => setCurrentView('settings')}
+          className="flex shrink-0 items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
+        >
+          <SettingsIcon size={12} />
+          {t(language, 'settings')}
+        </button>
+      </div>
     </div>
   )
 }

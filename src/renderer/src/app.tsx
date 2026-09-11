@@ -256,7 +256,6 @@ export function App(): React.JSX.Element {
                 {currentView === 'sessions' && <SessionPanel />}
                 {currentView === 'timeline' && <Timeline />}
                 {currentView === 'packages' && <PackageBrowser />}
-                {currentView === 'skills' && <PackageBrowser />}
                 {currentView === 'diff' && <DiffViewer />}
                 {currentView === 'notes' && <NotesPanel />}
                 {currentView === 'diagnostics' && <DiagnosticsPanel />}

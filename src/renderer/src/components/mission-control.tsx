@@ -9,6 +9,7 @@ import { canResumeRun } from '../utils/workflow-runs'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import type { SessionRuntimeInfo, WorkflowRunSummary } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 
 export function MissionControl(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -22,6 +23,7 @@ export function MissionControl(): React.JSX.Element {
   const activateWorkspace = useAppStore((state) => state.activateWorkspace)
   const switchSession = useAppStore((state) => state.switchSession)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const setTaskLauncherOpen = useAppStore((state) => state.setTaskLauncherOpen)
   const openWorkflowRunsForWorkspace = useAppStore((state) => state.openWorkflowRunsForWorkspace)
   const [controlBusy, setControlBusy] = useState<string | null>(null)
@@ -52,10 +54,16 @@ export function MissionControl(): React.JSX.Element {
     setControlError(null)
     try {
       const result = await window.piDesktop.workflows.control(run.workspaceId, run.runId, 'resume')
-      if (!result.ok) setControlError(`Could not proceed with ${run.workflowName}: ${result.reason ?? 'control unavailable'}`)
+      if (!result.ok)
+        setControlError(
+          t(language, 'mcControlFailed', {
+            name: run.workflowName,
+            reason: result.reason ?? t(language, 'mcControlUnavailable'),
+          })
+        )
       else await refreshWorkflowRuns()
     } catch {
-      setControlError(`Could not proceed with ${run.workflowName}. Open the run for details.`)
+      setControlError(t(language, 'mcControlFailedHint', { name: run.workflowName }))
     } finally {
       setControlBusy(null)
     }
@@ -121,7 +129,19 @@ export function MissionControl(): React.JSX.Element {
         <section className="mb-6">
           <SectionHeading title={t(language, 'liveSessions')} count={runtimes.length} />
           {runtimes.length === 0 ? (
-            <EmptyState>{t(language, 'noLiveSessions')}</EmptyState>
+            <EmptyState
+              action={
+                <button
+                  type="button"
+                  onClick={() => setCurrentView('chat')}
+                  className="rounded-md border border-border-strong bg-transparent px-2.5 py-0.5 text-[11px] text-muted transition-colors hover:text-primary"
+                >
+                  {t(language, 'newSession')}
+                </button>
+              }
+            >
+              {t(language, 'noLiveSessions')}
+            </EmptyState>
           ) : (
             <div className="grid gap-2 md:grid-cols-2">
               {runtimes.map((runtime) => {
@@ -131,7 +151,7 @@ export function MissionControl(): React.JSX.Element {
                   : undefined
                 const title = session
                   ? getSessionTitle(session.name, session.sessionId, session.preview)
-                  : runtime.sessionId ?? 'Starting session'
+                  : runtime.sessionId ?? t(language, 'mcStartingSession')
                 const canOpen = !!runtime.sessionPath && !!workspace
                 return (
                   <div key={runtime.runtimeId} className="flex items-center gap-3 rounded-lg border border-border bg-surface/50 px-3 py-3">
@@ -156,7 +176,7 @@ export function MissionControl(): React.JSX.Element {
                             onClick={() => void reviewRuntime(runtime)}
                             className="rounded border border-accent/40 px-2 py-1 text-[10px] text-accent-fg transition-colors hover:bg-accent-bg/20"
                           >
-                            Review
+                            {t(language, 'mcReview')}
                           </button>
                         )}
                       </div>
@@ -180,8 +200,19 @@ export function MissionControl(): React.JSX.Element {
             </button>
           </div>
           {recentRuns.length === 0 ? (
-            <EmptyState>{t(language, 'noWorkflowRuns')}</EmptyState>
-
+            <EmptyState
+              action={
+                <button
+                  type="button"
+                  onClick={refreshWorkflowRuns}
+                  className="rounded-md border border-border-strong bg-transparent px-2.5 py-0.5 text-[11px] text-muted transition-colors hover:text-primary"
+                >
+                  {t(language, 'refresh')}
+                </button>
+              }
+            >
+              {t(language, 'noWorkflowRuns')}
+            </EmptyState>
           ) : (
             <>
               {controlError && <div className="mb-2 rounded border border-error/40 bg-error-bg/20 px-3 py-2 text-[11px] text-error" role="status">{controlError}</div>}
@@ -215,6 +246,7 @@ function WorkflowRow({
   onResume: () => void
   resumeBusy: boolean
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const Icon = run.status === 'completed'
     ? CheckCircle2
     : run.status === 'failed' || run.status === 'aborted'
@@ -249,10 +281,10 @@ function WorkflowRow({
           onClick={onResume}
           disabled={resumeBusy}
           className="flex shrink-0 items-center gap-1 rounded border border-success/40 px-2 py-1 text-[10px] font-medium text-success transition-colors hover:bg-success-bg/20 disabled:cursor-not-allowed disabled:opacity-50"
-          title={run.status === 'paused' ? 'Proceed with this workflow' : 'Retry this workflow'}
+          title={run.status === 'paused' ? t(language, 'mcProceedTooltip') : t(language, 'mcRetryTooltip')}
         >
           {resumeBusy ? <Loader2 size={11} className="animate-spin" /> : <Play size={11} />}
-          {run.status === 'paused' ? 'Proceed' : 'Retry'}
+          {run.status === 'paused' ? t(language, 'mcProceed') : t(language, 'mcRetry')}
         </button>
       )}
     </div>
@@ -268,8 +300,13 @@ function SectionHeading({ title, count }: { title: string; count: number }): Rea
   )
 }
 
-function EmptyState({ children }: { children: React.ReactNode }): React.JSX.Element {
-  return <div className="rounded-lg border border-dashed border-border px-4 py-5 text-center text-xs text-faint">{children}</div>
+function EmptyState({ children, action }: { children: React.ReactNode; action?: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border px-4 py-5 text-center text-xs text-faint">
+      <span>{children}</span>
+      {action}
+    </div>
+  )
 }
 
 function runtimeState(runtime: SessionRuntimeInfo): string {

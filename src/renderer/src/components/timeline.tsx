@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useAppStore } from '../store'
 import { getSessionTitle } from '../utils/session-title'
 import type { TimelineEvent as StoreTimelineEvent } from '../../../shared/ipc-contracts'
@@ -20,8 +20,11 @@ import {
 } from 'lucide-react'
 import type { LineageNode } from '../../../shared/session-lineage'
 import { DEFAULT_LANGUAGE, t, isMessageKey } from '../../../shared/i18n'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 
 export function Timeline(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const timelineEvents = useAppStore((state) => state.timelineEvents)
   const clearTimeline = useAppStore((state) => state.clearTimeline)
   const forkMessages = useAppStore((state) => state.forkMessages)
@@ -33,6 +36,7 @@ export function Timeline(): React.JSX.Element {
   const currentSessionFile = useAppStore((state) => state.sessionState?.sessionFile ?? null)
   const switchSession = useAppStore((state) => state.switchSession)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  const [confirmClear, setConfirmClear] = useState(false)
 
   // currentSessionFile is a dependency on purpose: this panel stays mounted
   // (app.tsx renders it by view, not by session), so without it the branch list
@@ -74,10 +78,10 @@ export function Timeline(): React.JSX.Element {
                 <button
                   onClick={() => forkFrom(fp.entryId)}
                   className="flex shrink-0 items-center gap-1 rounded px-2 py-0.5 text-[11px] text-dim opacity-0 transition-opacity group-hover:opacity-100 hover:bg-elevated hover:text-primary"
-                  title="Fork a new session from this message"
+                  title={t(language, 'timelineForkTooltip')}
                 >
                   <GitFork size={11} />
-                  Fork
+                  {t(language, 'timelineFork')}
                 </button>
               </div>
             ))}
@@ -86,7 +90,7 @@ export function Timeline(): React.JSX.Element {
         {lineage.length > 0 && (
           <div className="mt-3 border-t border-border pt-2">
             <div className="mb-1 text-[10px] uppercase tracking-wide text-faint">
-              Session tree
+              {t(language, 'timelineSessionTree')}
             </div>
             <LineageTree nodes={lineage} currentPath={currentSessionFile} onSwitch={switchSession} />
           </div>
@@ -96,19 +100,51 @@ export function Timeline(): React.JSX.Element {
       <div className="flex items-center justify-between border-b border-border px-4 py-3">
         <div className="flex items-center gap-2">
           <Activity size={16} className="text-muted" />
-          <h2 className="text-sm font-medium text-primary">Agent Timeline</h2>
+          <h2 className="text-sm font-medium text-primary">{t(language, 'timelineTitle')}</h2>
           <span className="rounded-full bg-card px-2 py-0.5 text-xs text-dim">
             {timelineEvents.length}
           </span>
         </div>
         <button
-          onClick={clearTimeline}
-          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-dim hover:bg-surface-hover hover:text-secondary transition-colors"
+          onClick={() => setConfirmClear(true)}
+          disabled={timelineEvents.length === 0}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-dim transition-colors hover:bg-surface-hover hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
         >
           <Trash2 size={12} />
-          Clear
+          {t(language, 'timelineClear')}
         </button>
       </div>
+
+      {/* Clearing the timeline wipes every activity record for good — the same
+          destructive act as deleting a session, so it gets the same inline
+          confirm card rather than firing on a single click. */}
+      {confirmClear && (
+        <div className="border-b border-border bg-error-bg/30 px-4 py-2.5">
+          <div className="text-xs font-medium text-primary">{t(language, 'timelineClearConfirm')}</div>
+          <div className="mt-0.5 text-[11px] text-error">
+            {t(language, 'timelineClearConfirmHint', { count: String(timelineEvents.length) })}
+          </div>
+          <div className="mt-2 flex items-center justify-end gap-1">
+            <button
+              type="button"
+              onClick={() => setConfirmClear(false)}
+              className="rounded px-2 py-0.5 text-[11px] text-muted hover:text-primary"
+            >
+              {t(language, 'cancel')}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clearTimeline()
+                setConfirmClear(false)
+              }}
+              className="rounded-md border border-error bg-transparent px-2 py-0.5 text-[11px] text-error transition-colors hover:border-error-hover"
+            >
+              {t(language, 'timelineClearConfirmAction')}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Timeline */}
       <div className="flex-1 overflow-y-auto px-4 py-4">
@@ -117,6 +153,13 @@ export function Timeline(): React.JSX.Element {
             <Activity size={32} className="mb-3 text-faint" />
             <p className="text-sm">{t(language, 'timelineNoActivity')}</p>
             <p className="mt-1 text-xs text-faint">{t(language, 'timelineNoActivityHint')}</p>
+            <button
+              type="button"
+              onClick={() => setCurrentView('chat')}
+              className="mt-3 rounded-md border border-border-strong bg-transparent px-3 py-1 text-xs text-muted transition-colors hover:text-primary"
+            >
+              {t(language, 'timelineBackToChat')}
+            </button>
           </div>
         ) : (
           <div className="relative">

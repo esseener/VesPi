@@ -500,6 +500,12 @@ export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: 
       { name: 'task', description: t(language, 'cmdTask'), run: () => setTaskLauncherOpen(true) },
       { name: 'resume', description: t(language, 'cmdResume'), run: () => setCurrentView('sessions') },
       { name: 'fork', description: t(language, 'cmdFork'), run: () => setCurrentView('timeline') },
+      // `fork` is the only route to the timeline, and nobody searching for
+      // "timeline" or "branches" would guess to type "fork" — so the view gets
+      // its own discoverable entry rather than hiding behind the verb.
+      { name: 'timeline', description: t(language, 'cmdTimeline'), run: () => setCurrentView('timeline') },
+      { name: 'missions', description: t(language, 'cmdMissionControl'), run: () => setCurrentView('mission-control') },
+      { name: 'diagnostics', description: t(language, 'cmdDiagnostics'), run: () => setCurrentView('diagnostics') },
       { name: 'settings', description: t(language, 'cmdSettings'), run: () => setCurrentView('settings') },
     ],
     [language, compactContext, cloneBranch, createNewSession, setTaskLauncherOpen, setCurrentView]

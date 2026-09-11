@@ -21,7 +21,6 @@ const TOOL_TAB_LABEL: Record<string, MessageKey> = {
   settings: 'settings',
   packages: 'extensions',
   notes: 'notes',
-  skills: 'skills',
   about: 'about',
   diagnostics: 'diagnostics',
   sessions: 'sessions',
@@ -94,7 +93,7 @@ export function WorkspaceTabs(): React.JSX.Element {
     })
   }
 
-  const toolView = ['settings', 'packages', 'notes', 'skills', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
+  const toolView = ['settings', 'packages', 'notes', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
   const toolsActive =
     toolView.includes(currentView as (typeof toolView)[number]) || globalWorkflowOpen
   const toolsTabKey = toolTabLabel(currentView, globalWorkflowOpen)
@@ -121,8 +120,8 @@ export function WorkspaceTabs(): React.JSX.Element {
           type="button"
           onClick={toggleSidebar}
           className="titlebar-no-drag mb-0.5 flex h-6 w-6 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus"
-          title="Show sidebar"
-          aria-label="Show sidebar"
+          title={t(language, 'showSidebar')}
+          aria-label={t(language, 'showSidebar')}
         >
           <PanelLeft size={14} />
         </button>

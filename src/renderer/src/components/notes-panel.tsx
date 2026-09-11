@@ -5,6 +5,7 @@ import { useAppStore } from '../store'
 import { MarkdownRenderer } from './markdown-renderer'
 import type { Note, NoteInput } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 
 const GLOBAL_SCOPE = 'global'
 
@@ -35,6 +36,8 @@ function parseTags(raw: string): string[] {
 }
 
 export function NotesPanel(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const notes = useAppStore((state) => state.notes)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
@@ -157,8 +160,26 @@ export function NotesPanel(): React.JSX.Element {
       {/* List */}
       <div className="flex-1 space-y-2 overflow-y-auto px-4 pb-6">
         {visible.length === 0 ? (
-          <div className="mt-8 text-center text-sm text-faint">
-            {query.trim() ? t(language, 'noteNoMatch') : t(language, 'noteEmpty')}
+          <div className="mt-8 flex flex-col items-center gap-2 text-center text-sm text-faint">
+            <p>{query.trim() ? t(language, 'noteNoMatch') : t(language, 'noteEmpty')}</p>
+            <p className="text-xs">{query.trim() ? t(language, 'noteNoMatchHint') : t(language, 'noteNoNotesHint')}</p>
+            {!query.trim() ? (
+              <button
+                type="button"
+                onClick={() => setEditing('new')}
+                className="mt-1 rounded-md border border-accent-fg bg-transparent px-3 py-1 text-xs text-accent-fg transition-colors hover:bg-accent-bg/20"
+              >
+                {t(language, 'noteNew')}
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setQuery('')}
+                className="mt-1 rounded-md border border-border-strong bg-transparent px-3 py-1 text-xs text-muted transition-colors hover:text-primary"
+              >
+                {t(language, 'clearSearch')}
+              </button>
+            )}
           </div>
         ) : (
           visible.map((note) => (
