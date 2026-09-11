@@ -392,6 +392,13 @@ interface AppState {
   // Update check (GitHub releases). Set when a newer version is available.
   updateInfo: UpdateCheckResult | null
   updateDismissed: boolean
+  /**
+   * Identity of the offer the user was last shown (GUI + kernel latest version,
+   * plus whether the check errored). A dismissal sticks to this signature, so a
+   * dismissed banner only comes back when a genuinely newer offer appears —
+   * not every time the periodic re-check runs.
+   */
+  updateSignature: string | null
   kernelUpdateProgress: KernelUpdateProgress | null
   uiUpdateProgress: KernelUpdateProgress | null
 
@@ -981,6 +988,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   noteDraft: null,
   updateInfo: null,
   updateDismissed: false,
+  updateSignature: null,
   kernelUpdateProgress: null,
   uiUpdateProgress: null,
 
@@ -3350,9 +3358,28 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   checkForUpdates: async () => {
     try {
       const info = await window.piDesktop.updates.check()
-      set({
-        updateInfo: info,
-        updateDismissed: !info.updateAvailable && !info.kernel.updateAvailable && !info.checkError && !info.kernel.checkError,
+      set((state) => {
+        // Identify the offer by what the user would actually see. The error
+        // flags are part of it so a fresh failure counts as news too (the
+        // banner has a dedicated "check failed" clause).
+        const signature = [
+          info.latestVersion,
+          info.kernel.latestVersion,
+          info.checkError ? 'ui-error' : '',
+          info.kernel.checkError ? 'kernel-error' : '',
+        ].join('|')
+        const offerChanged = state.updateSignature !== signature
+        return {
+          updateInfo: info,
+          updateSignature: signature,
+          // A dismissal sticks until the offer itself changes. This is what
+          // makes a periodic re-check safe: it must not re-open a banner the
+          // user already closed, while a genuinely newer release (or a new
+          // failure) still surfaces on its own.
+          updateDismissed: offerChanged
+            ? !info.updateAvailable && !info.kernel.updateAvailable && !info.checkError && !info.kernel.checkError
+            : state.updateDismissed,
+        }
       })
     } catch {
       // Silent — update check is best-effort

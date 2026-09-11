@@ -530,6 +530,12 @@ export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: 
 }
 
 /**
+ * How often a long-running window re-checks for a new release. GitHub allows 60
+ * anonymous API requests per hour and one check costs two (GUI + kernel).
+ */
+const UPDATE_RECHECK_INTERVAL_MS = 30 * 60 * 1000
+
+/**
  * Loads initial data on mount — workspaces, settings, then Pi.
  */
 export function useInitialize(): void {
@@ -598,6 +604,23 @@ export function useInitialize(): void {
 
     initialize()
   }, [startPi, loadSettings, loadWorkspaces, refreshSessionStats, refreshSessionList])
+
+  // A release published while the app stays open would otherwise go unnoticed:
+  // the startup check above runs once and a running app gives the user no
+  // reason to restart. Re-check on a timer so the banner can appear on its own.
+  //
+  // Kept in its own effect rather than folded into the one-shot init above,
+  // because that one returns early on every later run (the `initialized` ref)
+  // and would therefore never re-register a timer. GitHub allows 60 anonymous
+  // requests/hour and one check costs two, so half-hourly stays well inside
+  // the budget. checkForUpdates is signature-aware, so this cannot re-open a
+  // banner the user already dismissed for the same offer.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      void useAppStore.getState().checkForUpdates()
+    }, UPDATE_RECHECK_INTERVAL_MS)
+    return () => clearInterval(timer)
+  }, [])
 }
 
 /**
