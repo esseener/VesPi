@@ -141,23 +141,44 @@ test('tracks the executing tool after the assistant message commits', () => {
   assert.equal(call.durationMs, 2000)
 })
 
-test('message_end and agent_end clear the buffer for the next turn', () => {
+test('message_end keeps the turn accumulated; agent_end clears it', () => {
   const { tracker, manager } = createHarness()
   emit(manager, assistantMessageStart())
   emit(manager, textDelta('committed text'))
   emit(manager, messageEnd())
 
-  assert.equal(tracker.snapshotFor(manager)?.streamingContent, '')
+  // The kernel does not surface this message via get_messages until the turn
+  // ends, so the tracker must keep it for a re-attaching renderer.
+  assert.equal(tracker.snapshotFor(manager)?.streamingContent, 'committed text')
 
   emit(manager, assistantMessageStart())
-  emit(manager, textDelta('second turn'))
-  assert.equal(tracker.snapshotFor(manager)?.streamingContent, 'second turn')
+  emit(manager, textDelta('second message'))
+  assert.equal(
+    tracker.snapshotFor(manager)?.streamingContent,
+    'committed text\n\nsecond message',
+    'a second assistant message appends to the same turn',
+  )
 
   emit(manager, { type: 'agent_end' } as PiRpcEvent)
   assert.equal(tracker.snapshotFor(manager)?.streamingContent, '')
 })
 
-test('a fresh assistant message resets text but keeps completed tool calls', () => {
+test('a fresh turn starts empty after agent_start', () => {
+  const { tracker, manager } = createHarness()
+  emit(manager, { type: 'agent_start' } as PiRpcEvent)
+  emit(manager, assistantMessageStart())
+  emit(manager, textDelta('first turn text'))
+  emit(manager, messageEnd())
+
+  emit(manager, { type: 'agent_start' } as PiRpcEvent)
+  assert.equal(
+    tracker.snapshotFor(manager)?.streamingContent,
+    '',
+    'agent_start marks a new turn and must not carry the previous one over',
+  )
+})
+
+test('a fresh assistant message keeps completed tool calls from earlier in the turn', () => {
   const { tracker, manager } = createHarness()
   emit(manager, assistantMessageStart())
   emit(manager, toolcallStart('tc-1', 'bash'))
@@ -189,6 +210,57 @@ test('managers are tracked independently', () => {
 
   assert.equal(tracker.snapshotFor(a)?.streamingContent, 'from A')
   assert.equal(tracker.snapshotFor(b)?.streamingContent, 'from B')
+})
+
+// Regression: switching away from a busy session and back showed an almost
+// empty chat — only the tail of the turn survived. A long agentic turn
+// interleaves many assistant messages and tool calls; the user expects to see
+// all of them, exactly as if they had never switched away.
+test('re-attaching mid-turn restores every message and tool call of the turn', () => {
+  const { tracker, manager } = createHarness()
+  emit(manager, { type: 'agent_start' } as PiRpcEvent)
+
+  for (let i = 1; i <= 5; i++) {
+    emit(manager, assistantMessageStart())
+    emit(manager, textDelta(`step ${i} `))
+    emit(manager, toolcallStart(`tc-${i}`, 'bash'))
+    emit(manager, toolcallEnd(`tc-${i}`, { cmd: `run ${i}` }))
+    emit(manager, messageEnd())
+    emit(manager, toolExecutionStart(`tc-${i}`, 'bash', { cmd: `run ${i}` }))
+    emit(manager, toolExecutionEnd(`tc-${i}`, `output ${i}`))
+  }
+
+  // The model is now thinking about step 6; the user switches back in.
+  const snap = tracker.snapshotFor(manager)
+  assert.equal(snap?.streamingToolCalls.length, 5, 'every tool call of the turn must survive')
+  assert.deepEqual(
+    snap?.streamingToolCalls.map((tc) => tc.id),
+    ['tc-1', 'tc-2', 'tc-3', 'tc-4', 'tc-5'],
+  )
+  assert.equal(snap?.streamingToolCalls.every((tc) => tc.isExecuting === false), true)
+  assert.ok(
+    snap?.streamingContent.includes('step 1') && snap?.streamingContent.includes('step 5'),
+    'text from the start and the end of the turn must both be present',
+  )
+})
+
+test('a long turn does not lose its earliest text as later messages arrive', () => {
+  const { tracker, manager } = createHarness()
+  emit(manager, { type: 'agent_start' } as PiRpcEvent)
+  emit(manager, assistantMessageStart())
+  emit(manager, textDelta('opening summary'))
+  emit(manager, messageEnd())
+
+  for (let i = 0; i < 20; i++) {
+    emit(manager, assistantMessageStart())
+    emit(manager, textDelta(`filler ${i}`))
+    emit(manager, messageEnd())
+  }
+
+  assert.ok(
+    tracker.snapshotFor(manager)?.streamingContent.startsWith('opening summary'),
+    'the first message of the turn is still the first thing restored',
+  )
 })
 
 test('attachManager is idempotent', () => {

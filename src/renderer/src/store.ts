@@ -2177,6 +2177,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
               !after.sessionLoading
             ) {
               set({ isStreaming: true, reattachedMidTurn: true })
+              // The backfill's reload cleared the per-turn buffers, and the
+              // kernel still withholds this turn's messages until it ends —
+              // so on its own the chat would go blank again right here and
+              // stay that way until the model produced its next event.
+              // Re-restore the live snapshot to keep the accumulated turn on
+              // screen across backfills. Called with no args so it resolves
+              // the current runtime and generation itself.
+              void get().restoreLiveTurnSnapshot()
             }
           })
         }
