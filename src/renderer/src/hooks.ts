@@ -374,8 +374,15 @@ export function useChatScroll(active: boolean): {
       } else {
         restoreAnchor(el, saved)
       }
-      // Consider the switch settled once the session's messages have loaded.
-      if (messages.length > 0) {
+      // Consider the switch settled once there is content on screen. `messages`
+      // alone is not enough: re-attaching to a session whose turn is still
+      // running yields NO committed messages, because the kernel only publishes
+      // them when the turn ends — the view is filled from the live-turn
+      // snapshot instead. Waiting for `messages` there kept pendingRestore
+      // armed for the entire turn, and the stream follower bails out while the
+      // flag is set, so the chat stayed parked at its old offset while the
+      // model kept writing. Streamed length counts as content too.
+      if (messages.length > 0 || prevStreamLen.current > 0) {
         pendingRestore.current = false
         forceBottom.current = false
       }

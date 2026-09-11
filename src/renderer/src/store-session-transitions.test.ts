@@ -2078,22 +2078,31 @@ test('a background runtime never blocks session navigation with a warning', asyn
   assert.equal(useAppStore.getState().confirmRequest, null)
 })
 
-test('a mid-turn message_end keeps the attach armed and restores the indicator', async () => {
+test('a mid-turn message_end keeps the attach armed without reloading history', async () => {
   enterWorkspacesWithBackgroundTurn()
   await useAppStore.getState().switchWorkspace(WORKSPACE_ID)
   const loadsBefore = calls.filter((c) => c === 'getMessages').length
 
-  // The in-flight message completes but the TURN continues (tool-using
-  // turns have several messages). The backfill's teardown clears the
-  // indicator; it must come back, and the attach must stay armed so the
-  // kill-gates keep warning and later boundaries keep backfilling.
+  // The in-flight message completes but the TURN continues (tool-using turns
+  // have several messages). Nothing is committed and nothing is reloaded here:
+  // the streaming buffer already holds the whole turn (restored from the
+  // live-turn snapshot), so committing again would duplicate those segments,
+  // and a reload cannot help anyway — the kernel withholds the turn's messages
+  // until it ends. That reload used to run on every message_end and each run
+  // cleared the message list, which re-parked the scroll position and left the
+  // chat unable to follow the stream. The attach must stay armed so the
+  // kill-gates keep warning; agent_end performs the one backfill.
   useAppStore.getState().handlePiEvent({ type: 'message_end', message: {} })
   await new Promise((resolve) => setTimeout(resolve, 20))
 
   const state = useAppStore.getState()
   assert.equal(state.reattachedMidTurn, true)
   assert.equal(state.isStreaming, true, 'the turn is still running — the UI must not look idle')
-  assert.equal(calls.filter((c) => c === 'getMessages').length, loadsBefore + 1)
+  assert.equal(
+    calls.filter((c) => c === 'getMessages').length,
+    loadsBefore,
+    'a mid-turn boundary must not reload history — agent_end does that once',
+  )
 })
 
 test('an activity broadcast arms the attach for a renderer that booted mid-turn', async () => {

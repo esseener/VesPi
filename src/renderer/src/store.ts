@@ -2147,7 +2147,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
       case 'message_end': {
         const endedMessage = (event as { message?: Record<string, unknown> }).message
-        handleTurnComplete(set, endedMessage)
+        // Mid-turn re-attach: the streaming buffer holds the WHOLE turn, because
+        // the live-turn snapshot accumulated it. The segments before this one
+        // are therefore already on screen, so committing here would duplicate
+        // them — and a mid-turn reload cannot be used to clean that up, since
+        // the kernel withholds a turn's messages until the turn ends. Leave the
+        // content in the bubble; agent_end loads the persisted history once the
+        // turn is genuinely over.
+        if (!get().reattachedMidTurn) {
+          handleTurnComplete(set, endedMessage)
+        }
         // turn_end re-delivers the same message, so errors surface only here.
         const turnError = turnErrorText(endedMessage)
         if (turnError) {
@@ -2160,39 +2169,21 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           title: turnError ? 'timelineAssistantFailed' : 'timelineAssistantComplete',
           status: turnError ? 'error' : 'success',
         })
-        // Attached mid-turn: the commit above only held the post-attach
-        // suffix of this message — replace it with the persisted full one.
-        // The reload's teardown (idleTurnState inside clearMessages) disarms
-        // the attach and the indicator, so re-arm afterwards from the
-        // authoritative signal: the activity map still reporting the turn
-        // live. If the turn ended during the backfill the map says idle (or
-        // its broadcast is about to and the reconciliation settles it).
-        if (get().reattachedMidTurn) {
-          void enqueueAttachBackfill(get).then(() => {
-            const after = get()
-            const activeId = after.activeWorkspace?.id
-            const activity = activeId ? after.workspaceActivity[activeId]?.state : undefined
-            if (
-              (activity === 'working' || activity === 'needs-approval') &&
-              !after.sessionLoading
-            ) {
-              set({ isStreaming: true, reattachedMidTurn: true })
-              // The backfill's reload cleared the per-turn buffers, and the
-              // kernel still withholds this turn's messages until it ends —
-              // so on its own the chat would go blank again right here and
-              // stay that way until the model produced its next event.
-              // Re-restore the live snapshot to keep the accumulated turn on
-              // screen across backfills. Called with no args so it resolves
-              // the current runtime and generation itself.
-              void get().restoreLiveTurnSnapshot()
-            }
-          })
-        }
+        // NOTE: deliberately no mid-turn backfill here. It used to run on every
+        // message_end, and each run cleared the message list and reloaded it.
+        // That churn kept re-parking the scroll position and left the "is the
+        // user at the bottom" flag stale, so the chat stopped following the
+        // stream. agent_end already backfills once the turn ends, which is the
+        // only point where the kernel can actually answer with the full turn.
         break
       }
 
       case 'turn_end':
-        handleTurnComplete(set, (event as { message?: Record<string, unknown> }).message)
+        // Mirrors message_end: on a mid-turn attach the buffer already holds the
+        // whole turn, so committing again here would duplicate it.
+        if (!get().reattachedMidTurn) {
+          handleTurnComplete(set, (event as { message?: Record<string, unknown> }).message)
+        }
         break
 
       case 'agent_start':
@@ -2237,9 +2228,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         })
         // Attached mid-turn and the turn just ended: the stream buffers never
         // held the full response, so pull the finished messages from the
-        // session instead of leaving the pre-attach view on screen.
+        // session instead of leaving the pre-attach view on screen. The
+        // snapshot-driven bubble is dropped in the same move — its content is
+        // about to reappear as real messages, and idleTurnState also clears
+        // reattachedMidTurn to end the mid-turn mode.
         if (get().reattachedMidTurn) {
-          set({ reattachedMidTurn: false })
+          set({ ...idleTurnState() })
           void enqueueAttachBackfill(get)
         }
         break
