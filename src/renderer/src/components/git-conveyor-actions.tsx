@@ -4,6 +4,7 @@ import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import type { GitConveyorStatus } from '../../../shared/ipc-contracts'
 import { formatIpcError } from '../utils/ipc-error'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 type ConveyorDialog =
   | { kind: 'commit'; message: string }
@@ -11,6 +12,9 @@ type ConveyorDialog =
 
 export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): React.JSX.Element {
   const requestConfirm = useAppStore((state) => state.requestConfirm)
+  const language = useAppStore(
+    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  )
   const [status, setStatus] = useState<GitConveyorStatus | null>(null)
   const [busy, setBusy] = useState<'commit' | 'push' | 'pr' | null>(null)
   const [dialog, setDialog] = useState<ConveyorDialog | null>(null)
@@ -73,20 +77,20 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
     setError(null)
     setDialog({
       kind: 'commit',
-      message: status?.lastCommitMessage ?? 'chore: update implementation',
+      message: status?.lastCommitMessage ?? t(language, 'gitDefaultCommitMessage'),
     })
   }
 
   const openPrDialog = (): void => {
     if (!status?.branch) {
-      setError('A named branch is required to create a pull request.')
+      setError(t(language, 'gitNeedBranch'))
       return
     }
     if (status.dirtyFiles || status.ahead > 0 || !status.hasUpstream) {
       setError(
         status.dirtyFiles
-          ? 'Commit changes before creating a pull request.'
-          : 'Push the branch before creating a pull request.'
+          ? t(language, 'gitCommitFirst')
+          : t(language, 'gitPushFirst')
       )
       return
     }
@@ -103,14 +107,14 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
     if (dialog.kind === 'commit') {
       const message = dialog.message.trim()
       if (!message) {
-        setError('Commit message is required.')
+        setError(t(language, 'gitCommitMessageRequired'))
         return
       }
       setDialog(null)
       void run(
         'commit',
         () => window.piDesktop.git.commit({ message }),
-        (next) => `Committed ${next.head.slice(0, 8)}.`,
+        (next) => t(language, 'gitCommitted', { head: next.head.slice(0, 8) }),
       )
       return
     }
@@ -118,7 +122,7 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
     const title = dialog.title.trim()
     const body = dialog.body.trim()
     if (!title) {
-      setError('Pull request title is required.')
+      setError(t(language, 'gitPrTitleRequired'))
       return
     }
     setDialog(null)
@@ -133,31 +137,40 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
         if (result.url) void window.piDesktop.system.openExternal(result.url)
         return result
       },
-      (result) => result.url ? `Pull request created: ${result.url}` : 'Pull request created.',
+      (result) =>
+        result.url
+          ? t(language, 'gitPrCreated', { url: result.url })
+          : t(language, 'gitPrCreatedPlain'),
     )
   }
 
   const push = async (): Promise<void> => {
     if (!status) return
     if (status.dirtyFiles) {
-      setError('Commit the working tree before pushing.')
+      setError(t(language, 'gitCommitWorkingTreeFirst'))
       return
     }
     const target = status.upstreamBranch
       ? `${status.pushRemote ?? 'remote'}/${status.upstreamBranch}`
       : `${status.pushRemote ?? 'origin'}/${status.branch ?? 'current branch'}`
     const confirmed = await requestConfirm({
-      title: 'Push branch?',
-      message: `Push ${status.branch ?? 'the current branch'} to ${target}?`,
-      confirmLabel: 'Push',
-      cancelLabel: 'Cancel',
+      title: t(language, 'gitPushTitle'),
+      message: t(language, 'gitPushMessage', {
+        branch: status.branch ?? 'the current branch',
+        target,
+      }),
+      confirmLabel: t(language, 'gitPush'),
+      cancelLabel: t(language, 'cancel'),
       danger: true,
     })
     if (!confirmed) return
     void run(
       'push',
       () => window.piDesktop.git.push(),
-      (next) => next.ahead > 0 ? `Pushed ${next.ahead} commit${next.ahead === 1 ? '' : 's'}.` : 'Branch pushed.',
+      (next) =>
+        next.ahead > 0
+          ? t(language, 'gitPushedCommits', { count: String(next.ahead) })
+          : t(language, 'gitBranchPushed'),
     )
   }
 
@@ -166,20 +179,23 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
       <div className="flex min-w-0 flex-wrap items-center justify-start gap-1.5 lg:justify-end">
         {status && (
           <span className="basis-full mr-1 max-w-60 truncate text-[10px] text-faint sm:basis-auto" title={status.branch ?? undefined}>
-            {status.branch ?? 'detached'}{status.dirtyFiles > 0 ? ` · ${status.dirtyFiles} changed` : ''}
+            {status.branch ?? t(language, 'gitDetached')}
+            {status.dirtyFiles > 0
+              ? ` ${t(language, 'gitChangedCount', { count: String(status.dirtyFiles) })}`
+              : ''}
           </span>
         )}
-        <button type="button" onClick={openCommitDialog} disabled={busy !== null || !status?.dirtyFiles} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title="Commit staged changes or changes in this workspace">
+        <button type="button" onClick={openCommitDialog} disabled={busy !== null || !status?.dirtyFiles} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t(language, 'gitCommitTooltip')}>
           {busy === 'commit' ? <Loader2 size={11} className="animate-spin" /> : <GitCommitHorizontal size={11} />}
-          Commit
+          {t(language, 'gitCommit')}
         </button>
-        <button type="button" onClick={() => void push()} disabled={busy !== null || !status || !!status.dirtyFiles || !status.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title="Push the current branch after confirmation">
+        <button type="button" onClick={() => void push()} disabled={busy !== null || !status || !!status.dirtyFiles || !status.branch} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t(language, 'gitPushTooltip')}>
           {busy === 'push' ? <Loader2 size={11} className="animate-spin" /> : <Upload size={11} />}
-          Push
+          {t(language, 'gitPush')}
         </button>
-        <button type="button" onClick={openPrDialog} disabled={busy !== null || !status || !!status.dirtyFiles || !!status.ahead || !status.branch || !status.hasUpstream} className={clsx('flex shrink-0 items-center gap-1 rounded border border-accent/50 px-2 py-1 text-[10px] text-accent-fg transition-colors hover:bg-accent-bg/20 disabled:cursor-not-allowed disabled:opacity-40')} title="Create a pull request with GitHub CLI">
+        <button type="button" onClick={openPrDialog} disabled={busy !== null || !status || !!status.dirtyFiles || !!status.ahead || !status.branch || !status.hasUpstream} className={clsx('flex shrink-0 items-center gap-1 rounded border border-accent/50 px-2 py-1 text-[10px] text-accent-fg transition-colors hover:bg-accent-bg/20 disabled:cursor-not-allowed disabled:opacity-40')} title={t(language, 'gitPrTooltip')}>
           {busy === 'pr' ? <Loader2 size={11} className="animate-spin" /> : <GitPullRequest size={11} />}
-          PR
+          {t(language, 'gitPr')}
         </button>
         {status?.remoteUrl && <ExternalLink size={11} className="text-faint" aria-hidden="true" />}
         {(error || feedback) && <span className={clsx('basis-full truncate text-[10px]', error ? 'text-error' : 'text-success')} role="status" title={error ?? feedback ?? undefined}>{error ?? feedback}</span>}
@@ -203,14 +219,14 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
             }}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-semibold text-primary">{dialog.kind === 'commit' ? 'Commit changes' : 'Create pull request'}</h2>
-              <button type="button" onClick={() => setDialog(null)} className="rounded p-1 text-muted hover:bg-surface-hover hover:text-primary" aria-label="Close dialog">
+              <h2 className="text-sm font-semibold text-primary">{t(language, dialog.kind === 'commit' ? 'gitCommitDialogTitle' : 'gitPrDialogTitle')}</h2>
+              <button type="button" onClick={() => setDialog(null)} className="rounded p-1 text-muted hover:bg-surface-hover hover:text-primary" aria-label={t(language, 'close')}>
                 <X size={14} />
               </button>
             </div>
             {dialog.kind === 'commit' ? (
               <label className="block text-xs text-muted">
-                Commit message
+                {t(language, 'gitCommitMessage')}
                 <input
                   autoFocus
                   value={dialog.message}
@@ -221,7 +237,7 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
             ) : (
               <div className="space-y-2">
                 <label className="block text-xs text-muted">
-                  Title
+                  {t(language, 'gitPrTitle')}
                   <input
                     autoFocus
                     value={dialog.title}
@@ -230,16 +246,16 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
                   />
                 </label>
                 <label className="block text-xs text-muted">
-                  Base branch
+                  {t(language, 'gitPrBaseBranch')}
                   <input
                     value={dialog.base}
                     onChange={(event) => setDialog({ ...dialog, base: event.target.value })}
-                    placeholder="Leave blank for repository default"
+                    placeholder={t(language, 'gitPrBasePlaceholder')}
                     className="mt-1 w-full rounded border border-border-strong bg-app px-2 py-1.5 text-sm text-primary outline-none focus:border-focus"
                   />
                 </label>
                 <label className="block text-xs text-muted">
-                  Description
+                  {t(language, 'gitPrDescription')}
                   <textarea
                     value={dialog.body}
                     onChange={(event) => setDialog({ ...dialog, body: event.target.value })}
@@ -250,8 +266,8 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
               </div>
             )}
             <div className="mt-4 flex justify-end gap-2">
-              <button type="button" onClick={() => setDialog(null)} className="rounded border border-border px-3 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-primary">Cancel</button>
-              <button type="submit" className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary">{dialog.kind === 'commit' ? 'Commit' : 'Create PR'}</button>
+              <button type="button" onClick={() => setDialog(null)} className="rounded border border-border px-3 py-1.5 text-xs text-muted hover:bg-surface-hover hover:text-primary">{t(language, 'cancel')}</button>
+              <button type="submit" className="rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-xs font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary">{t(language, dialog.kind === 'commit' ? 'gitCommit' : 'gitCreatePr')}</button>
             </div>
           </form>
         </div>

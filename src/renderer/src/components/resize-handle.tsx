@@ -5,6 +5,9 @@
  * than absolute positions so a caller can apply its own sign and clamping without
  * knowing where the handle sits on screen.
  */
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { useAppStore } from '../store'
+
 export function ResizeHandle({
   onResize,
   onResizeEnd,
@@ -13,6 +16,7 @@ export function ResizeHandle({
   /** Fires once when the drag ends — for callers that persist the final size. */
   onResizeEnd?: () => void
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const handleMouseDown = (event: React.MouseEvent) => {
     event.preventDefault()
     document.body.style.cursor = 'col-resize'
@@ -40,7 +44,7 @@ export function ResizeHandle({
     <div
       onMouseDown={handleMouseDown}
       className="group flex w-2 shrink-0 cursor-col-resize items-stretch justify-center bg-app transition-colors hover:bg-surface-hover"
-      title="Drag to resize"
+      title={t(language, 'dragToResize')}
     >
       <div className="w-px bg-transparent transition-colors group-hover:bg-accent" />
     </div>

@@ -22,6 +22,7 @@ import { createStaleGuard } from '../utils/stale-guard'
 import { getSessionTitle } from '../utils/session-title'
 import { isImagePath } from './chat-file-link'
 import type { FileSearchResult } from '../../../shared/ipc-contracts'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 const FILE_SEARCH_DEBOUNCE_MS = 150
 
@@ -43,6 +44,7 @@ export function CommandPalette(): React.JSX.Element | null {
   const workspaces = useAppStore((s) => s.workspaces)
   const activeWorkspace = useAppStore((s) => s.activeWorkspace)
   const sessionList = useAppStore((s) => s.sessionList)
+  const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   const { builtins, allCommands } = useCommandCatalog()
 
   const [query, setQuery] = useState('')
@@ -204,13 +206,13 @@ export function CommandPalette(): React.JSX.Element | null {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Search commands, workspaces, sessions, files..."
+            placeholder={t(language, 'paletteSearchPlaceholder')}
             className="flex-1 bg-transparent text-sm text-primary placeholder:text-faint outline-none"
           />
         </div>
         <div className="max-h-72 overflow-y-auto py-1">
           {entries.length === 0 ? (
-            <div className="px-3 py-6 text-center text-sm text-faint">No matches</div>
+            <div className="px-3 py-6 text-center text-sm text-faint">{t(language, 'paletteNoMatches')}</div>
           ) : (
             <>
               {commandFlat.length > 0 && (

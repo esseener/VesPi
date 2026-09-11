@@ -5,6 +5,7 @@ import { WebLinksAddon } from '@xterm/addon-web-links'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { clsx } from 'clsx'
 import {
   Terminal as TerminalIcon,
@@ -56,6 +57,7 @@ export function TerminalPanel(): React.JSX.Element | null {
   const toggleTerminal = useAppStore((state) => state.toggleTerminal)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const theme = useAppStore((state) => state.settings?.theme)
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   const [maximized, setMaximized] = useState(false)
   const [shellLabel, setShellLabel] = useState<string>('Terminal')
@@ -101,7 +103,10 @@ export function TerminalPanel(): React.JSX.Element | null {
     })
     const exitCleanup = window.piDesktop.terminal.onExit((event) => {
       terminal.writeln('')
-      terminal.writeln(`[process exited with code ${event.exitCode}]`)
+      const lang = useAppStore.getState().settingsDraft.language
+        ?? useAppStore.getState().settings?.language
+        ?? DEFAULT_LANGUAGE
+      terminal.writeln(t(lang, 'terminalProcessExited', { code: String(event.exitCode) }))
     })
 
     window.setTimeout(async () => {
@@ -114,7 +119,12 @@ export function TerminalPanel(): React.JSX.Element | null {
         })
         setShellLabel(result.shell.split('/').pop() ?? result.shell)
       } catch (err) {
-        terminal.writeln(`Failed to start terminal: ${err instanceof Error ? err.message : String(err)}`)
+        const lang = useAppStore.getState().settingsDraft.language
+          ?? useAppStore.getState().settings?.language
+          ?? DEFAULT_LANGUAGE
+        terminal.writeln(t(lang, 'terminalFailedStart', {
+          error: err instanceof Error ? err.message : String(err),
+        }))
       }
       terminal.focus()
     }, 0)
@@ -163,31 +173,31 @@ export function TerminalPanel(): React.JSX.Element | null {
       <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
         <div className="flex items-center gap-2">
           <TerminalIcon size={14} className="text-dim" />
-          <span className="text-xs text-muted">Terminal</span>
+          <span className="text-xs text-muted">{t(language, 'terminalTitle')}</span>
           <span className="text-[10px] text-faint">{shellLabel}</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => terminalRef.current?.clear()}
             className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title="Clear"
-            aria-label="Clear terminal"
+            title={t(language, 'terminalClear')}
+            aria-label={t(language, 'terminalClearAria')}
           >
             <Trash2 size={12} />
           </button>
           <button
             onClick={() => setMaximized(!maximized)}
             className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title={maximized ? 'Restore terminal' : 'Maximize terminal'}
-            aria-label={maximized ? 'Restore terminal' : 'Maximize terminal'}
+            title={t(language, maximized ? 'terminalRestore' : 'terminalMaximize')}
+            aria-label={t(language, maximized ? 'terminalRestore' : 'terminalMaximize')}
           >
             {maximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
           </button>
           <button
             onClick={toggleTerminal}
             className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title="Close terminal"
-            aria-label="Close terminal"
+            title={t(language, 'terminalClose')}
+            aria-label={t(language, 'terminalClose')}
           >
             <X size={12} />
           </button>

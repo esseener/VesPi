@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useAppStore } from '../store'
 import { Image as ImageIcon, Loader2, X } from 'lucide-react'
+import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
 /**
  * Read-only image preview pane, opened when a chat filename link points at an
@@ -10,6 +11,7 @@ import { Image as ImageIcon, Loader2, X } from 'lucide-react'
 export function ImageViewer(): React.JSX.Element | null {
   const target = useAppStore((state) => state.previewTarget)
   const image = target?.kind === 'image' ? target : null
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [dataUrl, setDataUrl] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -62,7 +64,7 @@ export function ImageViewer(): React.JSX.Element | null {
         <button
           onClick={() => void useAppStore.getState().setPreviewTarget(null)}
           className="rounded p-1 text-dim hover:text-secondary"
-          title="Close image"
+          title={t(language, 'closeImage')}
         >
           <X size={12} />
         </button>

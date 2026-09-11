@@ -554,7 +554,7 @@ function SessionEntry({
               ))}
               {autoTag && (
                 <span
-                  title="Auto-tagged from chat context — add your own tag to replace it"
+                  title={t(language, 'autoTagHint')}
                   className="inline-flex items-center gap-0.5 rounded border border-dashed border-border-strong px-1.5 py-0.5 text-[10px] text-dim"
                 >
                   <Sparkles size={8} />
@@ -609,9 +609,9 @@ function SessionEntry({
           ref={menuButtonRef}
           onClick={toggleMenu}
           className="rounded p-1 text-muted hover:bg-elevated/60 hover:text-primary"
-          aria-label="Session actions"
+          aria-label={t(language, 'sessionActions')}
           aria-expanded={menuOpen}
-          title="Session actions (or right-click the row)"
+          title={t(language, 'sessionActionsHint')}
         >
           <MoreVertical size={14} />
         </button>
@@ -704,7 +704,7 @@ function SessionEntry({
                   if (e.key === 'Enter') handleAddTag()
                   if (e.key === 'Escape') setShowTagInput(false)
                 }}
-                placeholder="Add tag..."
+                placeholder={t(language, 'addTagPlaceholder')}
                 className="flex-1 rounded border border-border-strong bg-card px-2 py-0.5 text-[10px] text-secondary placeholder:text-faint focus:border-focus focus:outline-none"
                 autoFocus
               />
@@ -712,7 +712,7 @@ function SessionEntry({
                 onClick={handleAddTag}
                 className="rounded-md border border-border-strong bg-transparent px-1.5 py-0.5 text-[10px] text-muted transition-colors hover:border-accent-fg hover:text-primary"
               >
-                Add
+                {t(language, 'add')}
               </button>
             </div>
           ) : (
@@ -721,7 +721,7 @@ function SessionEntry({
               className="flex items-center gap-1 text-[10px] text-faint hover:text-muted"
             >
               <Tag size={10} />
-              Add tag
+              {t(language, 'addTag')}
             </button>
           )}
         </div>

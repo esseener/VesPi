@@ -1,11 +1,19 @@
 import React from 'react'
 import { ChevronDown, ChevronRight } from 'lucide-react'
 import { useAppStore } from '../store'
+import { DEFAULT_LANGUAGE, t, type MessageKey } from '../../../shared/i18n'
 
-const STATUS_LABEL: Record<string, string> = {
-  contributed: 'contributed',
-  'timed-out': 'timed out',
-  errored: 'errored',
+const STATUS_LABEL_KEY: Record<string, MessageKey> = {
+  contributed: 'councilStatusContributed',
+  'timed-out': 'councilStatusTimedOut',
+  errored: 'councilStatusErrored',
+}
+
+const PHASE_LABEL_KEY: Record<string, MessageKey> = {
+  consulting: 'councilPhaseConsulting',
+  merging: 'councilPhaseMerging',
+  'awaiting-approval': 'councilPhaseAwaitingApproval',
+  refused: 'councilPhaseRefused',
 }
 
 const AGENT_LABEL: Record<string, string> = {
@@ -26,6 +34,9 @@ export function CouncilPanels(): React.JSX.Element | null {
   const revise = useAppStore((s) => s.reviseCouncilPlan)
   const cancel = useAppStore((s) => s.cancelCouncil)
   const isStreaming = useAppStore((s) => s.isStreaming)
+  const language = useAppStore(
+    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+  )
   const [reviseText, setReviseText] = React.useState('')
 
   const consulting = run?.phase === 'consulting'
@@ -64,7 +75,11 @@ export function CouncilPanels(): React.JSX.Element | null {
         className="flex w-full items-center gap-1 text-xs font-medium uppercase tracking-wide text-muted hover:text-primary"
       >
         {collapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
-        <span>Council planning — {run.phase}</span>
+        <span>
+          {t(language, 'councilPanelTitle', {
+            phase: t(language, PHASE_LABEL_KEY[run.phase] ?? 'councilPhaseConsulting'),
+          })}
+        </span>
         {consulting && startedAt ? <span className="text-dim">({formatElapsed(elapsed)})</span> : null}
         {collapsed && run.results.length > 0 ? (
           <span className="ml-2 normal-case text-dim">
@@ -86,7 +101,7 @@ export function CouncilPanels(): React.JSX.Element | null {
                   <div key={id} className="rounded border border-border bg-app p-2">
                     <div className="mb-1 flex items-center justify-between">
                       <span className="text-sm text-primary">{AGENT_LABEL[id] ?? id}</span>
-                      <span className="text-xs text-accent-fg">{text ? 'streaming…' : 'working…'}</span>
+                      <span className="text-xs text-accent-fg">{text ? t(language, 'councilStreaming') : t(language, 'councilWorking')}</span>
                     </div>
                     <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted">
                       {text}
@@ -106,7 +121,7 @@ export function CouncilPanels(): React.JSX.Element | null {
                     <span
                       className={`text-xs ${r.status === 'contributed' ? 'text-success' : 'text-warning'}`}
                     >
-                      {STATUS_LABEL[r.status]}
+                      {t(language, STATUS_LABEL_KEY[r.status] ?? 'councilStatusContributed')}
                     </span>
                   </div>
                   <pre className="max-h-40 overflow-auto whitespace-pre-wrap text-xs text-muted">
@@ -126,9 +141,11 @@ export function CouncilPanels(): React.JSX.Element | null {
       {(run.phase === 'merging' || awaiting) && (
         <div className="mt-2 rounded border border-border bg-app p-2">
           <div className="mb-1 flex items-center justify-between">
-            <span className="text-sm text-primary">Consensus plan</span>
+            <span className="text-sm text-primary">{t(language, 'councilConsensusPlan')}</span>
             <span className="text-xs text-accent-fg">
-              {run.phase === 'merging' ? (run.consensus ? 'merging…' : 'working…') : 'ready for review'}
+              {run.phase === 'merging'
+                ? (run.consensus ? t(language, 'councilMerging') : t(language, 'councilWorking'))
+                : t(language, 'councilReadyForReview')}
             </span>
           </div>
           <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs text-secondary">
@@ -151,7 +168,7 @@ export function CouncilPanels(): React.JSX.Element | null {
                   setReviseText('')
                 }
               }}
-              placeholder="Request changes to the plan…"
+              placeholder={t(language, 'councilRevisePlaceholder')}
               disabled={isStreaming}
               className="flex-1 rounded-md border border-border-strong bg-surface px-3 py-1.5 text-sm text-primary placeholder:text-faint focus:border-focus focus:outline-none disabled:opacity-50"
             />
@@ -163,7 +180,7 @@ export function CouncilPanels(): React.JSX.Element | null {
                 setReviseText('')
               }}
             >
-              Revise
+              {t(language, 'councilRevise')}
             </button>
           </div>
           <div className="flex justify-end gap-2">
@@ -171,14 +188,14 @@ export function CouncilPanels(): React.JSX.Element | null {
               className="rounded px-3 py-1 text-sm text-secondary hover:bg-surface-hover"
               onClick={cancel}
             >
-              Cancel
+              {t(language, 'cancel')}
             </button>
             <button
               disabled={isStreaming}
               className="rounded-md border border-border-strong bg-transparent px-3 py-1 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
               onClick={() => void approve()}
             >
-              Implement this
+              {t(language, 'councilImplement')}
             </button>
           </div>
         </div>

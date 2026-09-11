@@ -172,8 +172,8 @@ export function StatusBar(): React.JSX.Element {
             'flex items-center gap-1 transition-colors',
             workflowPanelOpen || activeWorkflowCount > 0 ? 'text-accent-fg' : 'text-dim hover:text-secondary'
           )}
-          title="Open workflow runs"
-          aria-label="Open workflow runs"
+          title={t(language, 'openWorkflowRuns')}
+          aria-label={t(language, 'openWorkflowRuns')}
         >
           <WorkflowIcon size={11} />
           <span>{activeWorkflowCount > 0 ? String(activeWorkflowCount) : 'wf'}</span>

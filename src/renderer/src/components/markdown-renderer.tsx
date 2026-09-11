@@ -198,8 +198,8 @@ function SvgBlock({ raw }: { raw: string }): React.JSX.Element {
               'rounded p-1 transition-colors',
               showSource ? 'bg-card text-primary' : 'text-dim hover:bg-surface-hover/50 hover:text-secondary'
             )}
-            title="View source"
-            aria-label="View source"
+            title={t(language, 'viewSource')}
+            aria-label={t(language, 'viewSource')}
           >
             <Code2 size={14} />
           </button>

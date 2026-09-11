@@ -18,6 +18,8 @@ import {
   Blocks,
   Info,
   Workflow as WorkflowIcon,
+  Activity,
+  Stethoscope,
 } from 'lucide-react'
 
 import { useMemo, useState, useRef } from 'react'
@@ -36,7 +38,7 @@ import vespiCenterLogo from '../assets/vespi-center-logo.png'
 
 
 /** Views reachable from the sidebar's Tools group. */
-type ToolView = 'packages' | 'notes' | 'settings' | 'about'
+type ToolView = 'packages' | 'notes' | 'settings' | 'about' | 'mission-control' | 'diagnostics'
 
 /** Cap how many workspace groups appear in the Recent list. */
 const MAX_RECENT_GROUPS = 12
@@ -659,6 +661,20 @@ export function Sidebar(): React.JSX.Element {
           />
           <SidebarItem
             compact
+            icon={<Activity size={12} />}
+            label={t(language, 'missionControl')}
+            active={toolViewShowing('mission-control')}
+            onClick={() => openToolView('mission-control')}
+          />
+          <SidebarItem
+            compact
+            icon={<Stethoscope size={12} />}
+            label={t(language, 'diagnostics')}
+            active={toolViewShowing('diagnostics')}
+            onClick={() => openToolView('diagnostics')}
+          />
+          <SidebarItem
+            compact
             icon={<Info size={12} />}
             label={t(language, 'about')}
             active={toolViewShowing('about')}
@@ -765,7 +781,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
               }
             }}
             onBlur={() => void handleRename()}
-            placeholder="Workspace name"
+            placeholder={t(language, 'workspaceNamePlaceholder')}
             className="min-w-0 flex-1 rounded-sm border border-border-strong bg-transparent px-2 py-1 text-xs text-primary placeholder:text-faint focus:border-focus focus:outline-none"
             autoFocus
           />
@@ -944,6 +960,7 @@ function SidebarItem({
   title?: string
   badge?: boolean
 }): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   return (
     <button
       type="button"
@@ -957,7 +974,7 @@ function SidebarItem({
     >
       {icon}
       <span className="min-w-0 flex-1 truncate text-left">{label}</span>
-      {badge && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" aria-label="update" />}
+      {badge && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-secondary" aria-label={t(language, 'updateBadge')} />}
     </button>
   )
 }

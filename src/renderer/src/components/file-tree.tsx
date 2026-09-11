@@ -684,7 +684,7 @@ export function FilePreview(): React.JSX.Element | null {
                   'rounded p-1 transition-colors',
                   viewMode === 'source' ? 'bg-elevated text-primary' : 'text-dim hover:text-secondary'
                 )}
-                title="Source"
+                title={t(language, 'source')}
               >
                 <Code2 size={12} />
               </button>
@@ -694,7 +694,7 @@ export function FilePreview(): React.JSX.Element | null {
                   'rounded p-1 transition-colors',
                   viewMode === 'preview' ? 'bg-elevated text-primary' : 'text-dim hover:text-secondary'
                 )}
-                title="Preview"
+                title={t(language, 'preview')}
               >
                 <Eye size={12} />
               </button>
@@ -706,7 +706,7 @@ export function FilePreview(): React.JSX.Element | null {
                 onClick={handleRevert}
                 disabled={!isDirty || saving}
                 className="rounded p-1 text-dim transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
-                title="Revert changes"
+                title={t(language, 'revertChanges')}
               >
                 <RotateCcw size={12} />
               </button>
@@ -714,7 +714,7 @@ export function FilePreview(): React.JSX.Element | null {
                 onClick={handleSave}
                 disabled={!isDirty || saving}
                 className="rounded p-1 text-dim transition-colors hover:text-secondary disabled:cursor-not-allowed disabled:opacity-40"
-                title="Save file"
+                title={t(language, 'saveFile')}
               >
                 <Save size={12} />
               </button>
@@ -723,7 +723,7 @@ export function FilePreview(): React.JSX.Element | null {
           <button
             onClick={() => void useAppStore.getState().setPreviewTarget(null)}
             className="rounded p-1 text-dim hover:text-secondary"
-            title="Close editor"
+            title={t(language, 'closeEditor')}
           >
             <X size={12} />
           </button>

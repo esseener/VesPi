@@ -25,6 +25,7 @@ import { CustomModelsEditor } from './custom-models-editor'
 import { ThemeEditor } from './theme-editor'
 import { ThemeGallery } from './theme-gallery'
 import type { UserThemeRecord } from '../../../shared/ipc-contracts'
+import { useEscapeToClose } from '../hooks/use-escape-close'
 import {
   MIN_TIMEOUT_SECONDS as COUNCIL_MIN_TIMEOUT,
   MAX_TIMEOUT_SECONDS as COUNCIL_MAX_TIMEOUT,
@@ -52,6 +53,8 @@ interface ScopeRulesState {
 const EMPTY_SCOPE_RULES: ScopeRulesState = { rules: [], loaded: false, loadError: null, exists: false }
 
 export function SettingsPanel(): React.JSX.Element {
+  const setCurrentView = useAppStore((state) => state.setCurrentView)
+  useEscapeToClose(true, () => setCurrentView('chat'))
   const settings = useAppStore((state) => state.settings)
   const loadSettings = useAppStore((state) => state.loadSettings)
   const setSettingsDraft = useAppStore((state) => state.setSettingsDraft)
@@ -629,7 +632,7 @@ export function SettingsPanel(): React.JSX.Element {
                   type="text"
                   value={installUrl}
                   onChange={(e) => setInstallUrl(e.target.value)}
-                  placeholder="https://example.com/theme.json"
+                  placeholder={t(language, 'themeUrlPlaceholder')}
                   className="flex-1 rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-primary focus:border-accent-fg focus:outline-none"
                 />
                 <button
