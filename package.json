@@ -48,10 +48,11 @@
     "package:mac": "electron-vite build && electron-builder --mac",
     "package:mac:dmg": "electron-vite build && electron-builder --mac dmg",
     "package:mac:zip": "electron-vite build && electron-builder --mac zip",
-    "package:win": "npm run prepare:runtime:release && electron-vite build && electron-builder --win nsis",
-    "package:win:nsis": "npm run prepare:runtime:release && electron-vite build && electron-builder --win nsis",
+    "package:win": "npm run prepare:runtime:release && electron-vite build && electron-builder --win nsis && npm run checksums:release",
+    "package:win:nsis": "npm run prepare:runtime:release && electron-vite build && electron-builder --win nsis && npm run checksums:release",
     "package:all": "npm run prepare:runtime:release && electron-vite build && electron-builder --linux --mac --win",
-    "postinstall": "node scripts/postinstall.js"
+    "postinstall": "node scripts/postinstall.js",
+    "checksums:release": "node scripts/write-release-checksums.mjs"
   },
   "dependencies": {
     "@codemirror/lang-cpp": "^6.0.3",
@@ -143,7 +144,6 @@
     "directories": {
       "output": "release"
     },
-
     "linux": {
       "target": [
         "AppImage"
