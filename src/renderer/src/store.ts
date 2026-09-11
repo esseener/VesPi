@@ -1622,8 +1622,20 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
     const alreadyEmpty = get().messages.length === 0 && !get().isStreaming
     if (!alreadyEmpty) {
-      get().clearMessages()
-      set({ sessionLoading: true })
+      if (get().isStreaming) {
+        // A turn is live on screen: a mid-turn re-attach filled the streaming
+        // buffers from the live snapshot, and this reload is only here to
+        // refresh the persisted history underneath them (handleSessionRuntime
+        // fires it right after a switch). clearMessages() would also reset
+        // isStreaming and streamingContent, which left the composer looking
+        // idle and the chat empty while the model was still writing. The old
+        // code hid this by re-arming the flag from a backfill callback that no
+        // longer runs, so the teardown has to stop reaching the live buffers.
+        set({ messages: [], sessionLoading: true })
+      } else {
+        get().clearMessages()
+        set({ sessionLoading: true })
+      }
     }
     const runtimeId = get().activeSessionRuntimeId
     void get().refreshSessionState(gen, runtimeId)

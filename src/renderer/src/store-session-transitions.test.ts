@@ -590,6 +590,54 @@ test('switchSession onto a working runtime restores the in-progress turn snapsho
   assert.equal(state.streamingToolCalls.get('tc-1')?.isExecuting, true)
 })
 
+// Regression: main broadcasts the runtime it just activated, and
+// handleSessionRuntime reacts by reloading the persisted history. That reload
+// must not reach the live streaming buffers — clearMessages() also resets
+// isStreaming and streamingContent, which dropped the composer back to its idle
+// state and wiped the restored turn while the model was still writing.
+test('the runtime broadcast after a switch keeps the live turn on screen', async () => {
+  switchResult = {
+    runtimeId: 'rt-live',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 7,
+    error: null,
+    activity: 'working',
+    active: true,
+  }
+  liveTurnResult = {
+    streamingContent: 'building…',
+    streamingThinking: 'planning',
+    streamingToolCalls: [],
+  }
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  await new Promise((resolve) => setTimeout(resolve, 0))
+  assert.equal(useAppStore.getState().isStreaming, true, 'the switch arms the live turn')
+
+  // Main announces the runtime it just made active; the renderer refreshes the
+  // persisted history underneath the live view.
+  useAppStore.getState().handleSessionRuntime({
+    runtimeId: 'rt-live',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 7,
+    error: null,
+    activity: 'working',
+    active: true,
+  } as never)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  const state = useAppStore.getState()
+  assert.equal(state.isStreaming, true, 'the indicator must survive the reload')
+  assert.equal(state.streamingContent, 'building…', 'the restored turn must stay on screen')
+  assert.equal(state.reattachedMidTurn, true, 'the attach must stay armed until the turn ends')
+})
+
 test('restoreLiveTurnSnapshot ignores a stale snapshot once deltas are flowing', async () => {
   liveTurnResult = { streamingContent: 'stale prefix', streamingThinking: '', streamingToolCalls: [] }
   useAppStore.setState({ reattachedMidTurn: true, isStreaming: true, streamingContent: 'fresh delta' })
