@@ -15,6 +15,8 @@ import { createEditorGuard } from './editor-guard'
 import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
 import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp } from './vespi-runtime'
+import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
+import { isWebviewAttachAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
@@ -172,6 +174,21 @@ function hardenPreviewSession(): void {
     })
 }
 
+/**
+ * The browser panel is a general web client, so it cannot inherit the preview
+ * partition's file://-only lock-down — it needs the network by definition. It
+ * gets its own locked-down session instead: every capability request (camera,
+ * microphone, geolocation, notifications, clipboard read…) is denied outright,
+ * since a page opened in a side panel has no legitimate need to ask. Combined
+ * with the sandboxed, preload-free guest from `will-attach-webview` and its
+ * separate partition, the panel is no more privileged than a browser tab.
+ */
+function hardenBrowserSession(): void {
+  session
+    .fromPartition(VESPI_BROWSER_PARTITION)
+    .setPermissionRequestHandler((_contents, _permission, callback) => callback(false))
+}
+
 function createMainWindow(): BrowserWindow {
   const appIcon = nativeImage.createFromPath(getAppIconPath())
   const window = new BrowserWindow({
@@ -291,10 +308,21 @@ function createMainWindow(): BrowserWindow {
     event.preventDefault()
   })
 
-  // Harden the HTML file-preview <webview> guest before Electron attaches it:
-  // strip any preload/Node access it might request and reject anything that
-  // isn't the local `file://` preview it's meant for. Defense-in-depth against
-  // a renderer XSS trying to attach a guest with elevated webPreferences.
+  // Harden every <webview> guest before Electron attaches it: strip any
+  // preload/Node access it might request. Two kinds of guest exist, each with
+  // its own contract:
+  //
+  //   • the embedded browser panel (VESPI_BROWSER_PARTITION) — loads http(s)
+  //     pages and must stay scripted, since a page without JS is not a browser.
+  //     It is still treated as hostile: sandboxed, isolated, no Node, no
+  //     preload, and confined to its own session partition so it shares no
+  //     cookies or storage with the app window.
+  //   • the file preview — local `file://` HTML/PDF only. Rejecting every other
+  //     scheme here is what (correctly) blocks a preview from reaching the
+  //     network; the browser panel's exemption is explicit rather than implied.
+  //
+  // Defense-in-depth against a renderer XSS trying to attach a guest with
+  // elevated webPreferences: whatever the tag requests, these assignments win.
   window.webContents.on('will-attach-webview', (event, webPreferences, params) => {
     delete webPreferences.preload
     webPreferences.nodeIntegration = false
@@ -304,21 +332,42 @@ function createMainWindow(): BrowserWindow {
     webPreferences.webSecurity = true
     webPreferences.allowRunningInsecureContent = false
 
-    // Only the PDF preview needs pdfium (plugins). For the HTML preview, scripts
-    // run only when the workspace is trusted (interactive preview of your own
-    // project); for an untrusted workspace scripts are disabled so — with sandbox
-    // + webSecurity above and the partition's network block — malicious preview
-    // HTML cannot read other local files or exfiltrate data.
-    const isPdfPreview =
-      params.partition === PDF_PREVIEW_PARTITION || /\.pdf(?:[?#]|$)/i.test(params.src)
-    webPreferences.plugins = isPdfPreview
-    if (!isPdfPreview && !isActiveWorkspaceTrusted()) {
-      webPreferences.javascript = false
+    if (params.partition === VESPI_BROWSER_PARTITION) {
+      // Web pages only. file:// and every other scheme stay rejected, so the
+      // panel can never be pointed at the local disk through this partition.
+      // Scripting is mandatory here — a page without JS is not a browser — and
+      // is safe because the guest is sandboxed and preload-free.
+      webPreferences.plugins = false
+      webPreferences.javascript = true
+    } else {
+      // Only the PDF preview needs pdfium (plugins). For the HTML preview,
+      // scripts run only when the workspace is trusted (interactive preview of
+      // your own project); for an untrusted workspace scripts are disabled so —
+      // with sandbox + webSecurity above and the partition's network block —
+      // malicious preview HTML cannot read other local files or exfiltrate data.
+      const isPdfPreview =
+        params.partition === PDF_PREVIEW_PARTITION || /\.pdf(?:[?#]|$)/i.test(params.src)
+      webPreferences.plugins = isPdfPreview
+      if (!isPdfPreview && !isActiveWorkspaceTrusted()) {
+        webPreferences.javascript = false
+      }
     }
 
-    if (!params.src.startsWith('file://')) {
+    if (!isWebviewAttachAllowed(params.partition, params.src)) {
       event.preventDefault()
     }
+  })
+
+  // The browser panel's guest has no tab strip or URL bar of its own, so a
+  // pop-up (`target="_blank"`, `window.open`) would otherwise become a stray
+  // Electron window with no chrome. Hand those to the user's real browser.
+  const browserSession = session.fromPartition(VESPI_BROWSER_PARTITION)
+  window.webContents.on('did-attach-webview', (_event, guest) => {
+    if (guest.session !== browserSession) return
+    guest.setWindowOpenHandler(({ url }) => {
+      if (isHttpUrl(url)) void shell.openExternal(url)
+      return { action: 'deny' }
+    })
   })
 
   // Load renderer
@@ -459,6 +508,8 @@ app.whenReady().then(async () => {
 
   // Lock the HTML preview partition to local files before any preview can load.
   hardenPreviewSession()
+  // Deny every capability prompt on the browser panel's partition up front.
+  hardenBrowserSession()
 
   // Resolve the configured engine before exposing IPC or creating the renderer;
   // otherwise the renderer can win the startup race and launch the default Pi

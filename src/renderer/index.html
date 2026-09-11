@@ -3,6 +3,14 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Deliberately NO frame-src here. The browser panel's <webview> attaches and
+      loads correctly under default-src 'self' (verified against Electron 43),
+      but declaring frame-src makes the guest fail to attach outright — even when
+      the panel's schemes are listed, it never reaches will-attach-webview. So
+      adding frame-src silently breaks the panel. Guest limits are enforced in
+      the main process instead; see will-attach-webview in src/main/index.ts.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'"
