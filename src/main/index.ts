@@ -14,11 +14,12 @@ import { shouldHideToTray } from './tray-decision'
 import { createEditorGuard } from './editor-guard'
 import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
-import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp } from './vespi-runtime'
+import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp, vespiProfileAgentDir } from './vespi-runtime'
 import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
 import { isWebviewAttachAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
-import { initAgentBrowser, startAgentBrowser } from './browser-cdp'
+import { chromeExecutableCandidates, initAgentBrowser, pickChromeExecutable, startAgentBrowser } from './browser-cdp'
+import { browserMcpEntry, ensureAgentBrowserMcp, removeAgentBrowserMcp, unpackedModulePath } from './agent-browser-mcp'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
 
@@ -153,6 +154,7 @@ const agentBrowser = initAgentBrowser({
   appDataDir: app.getPath('appData'),
 })
 if (agentBrowser.port !== null) {
+  const mcpPath = join(vespiProfileAgentDir(), 'mcp.json')
   void startAgentBrowser({
     guiDataDir: userDataDir,
     appDataDir: app.getPath('appData'),
@@ -164,9 +166,47 @@ if (agentBrowser.port !== null) {
           'No browser available for the agent; the browser tool will fall back to its own headless browser',
           detail
         )
-      } else {
-        appLog.info('browser', `Agent browser ${status} on 127.0.0.1:${detail.port}`, detail)
+        // Drop any entry from a previous run, so OMP does not keep spawning a
+        // server pointed at an endpoint nobody is listening on.
+        removeAgentBrowserMcp({ mcpPath })
+        return
       }
+      appLog.info('browser', `Agent browser ${status} on 127.0.0.1:${detail.port}`, detail)
+
+      // Ship the semantic toolset too: Playwright's browser_* tools drive the
+      // same endpoint, and everything they need is already inside the install.
+      const cliPath = unpackedModulePath(
+        process.resourcesPath,
+        app.isPackaged,
+        app.getAppPath(),
+        '@playwright',
+        'mcp',
+        'cli.js'
+      )
+      if (!existsSync(cliPath)) {
+        appLog.warn('browser', 'Playwright MCP missing from this build; the agent keeps the built-in browser tool', {
+          cliPath,
+        })
+        removeAgentBrowserMcp({ mcpPath })
+        return
+      }
+
+      const configured = ensureAgentBrowserMcp({
+        mcpPath,
+        entry: browserMcpEntry({
+          nodeExecutable: process.execPath,
+          cliPath,
+          endpoint: `http://127.0.0.1:${detail.port}`,
+          executablePath: pickChromeExecutable(chromeExecutableCandidates()),
+        }),
+      })
+      appLog[configured ? 'info' : 'warn'](
+        'browser',
+        configured
+          ? 'Vendored Playwright browser tools configured for the agent'
+          : 'Could not write the Playwright MCP config; the agent keeps the built-in browser tool',
+        { mcpPath }
+      )
     },
   })
 }

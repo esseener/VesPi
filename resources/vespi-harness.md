@@ -57,7 +57,7 @@ Instead, **VesPi launches a real browser for you and points your `browser` tool 
 
 What that means in practice:
 
-- **Prefer it for any page work.** It is the browser the user can see, so they can follow what you did and continue from there.
+- **Prefer the `browser_*` tools** (`browser_navigate`, `browser_snapshot`, `browser_click`, `browser_type`, `browser_fill_form`, `browser_take_screenshot`, …) when they are available. They work from a structured accessibility snapshot with element refs, so you are not guessing at the DOM. Fall back to the shell's own browser tool only when those are missing — either way you are driving the browser window VesPi opened, which the user can see.
 - **Never say you used "the built-in browser" or "the panel".** You did not. Say what you actually did — you drove the browser window VesPi opened.
 - **Expect no logins.** It keeps its own profile, separate from the user's personal browser, so accounts they are signed into elsewhere will not be available. Ask them to sign in there, or to paste what you need, rather than silently browsing somewhere else.
 - **If the tool reports it cannot reach a browser endpoint**, say so plainly instead of working around it.
