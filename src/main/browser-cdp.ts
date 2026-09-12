@@ -1,72 +1,66 @@
+import { spawn } from 'child_process'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs'
 import { delimiter, join } from 'path'
 import { getLegacyGuiDataDirs } from './app-data-paths'
 
 /**
- * Loopback CDP endpoint for the embedded browser panel.
+ * Hands the agent's `browser` tool a browser the user can see.
  *
- * The port exists so the OMP `browser` tool can attach to the panel the user is
- * actually looking at, instead of launching its own invisible browser with no
- * logins. It is **on by default**, because the feature only means anything if
- * every model gets it without the user having to configure anything first.
+ * Why not the embedded panel: VesPi's panel is an Electron `<webview>`, whose
+ * CDP target type is `webview`. The kernel's attach path only accepts `page`
+ * targets (hard-coded in `pickElectronTarget`, verified in both OMP 18.1.17 and
+ * 18.1.18), so the panel can never be the target. Instead we launch a real
+ * Chromium-family browser with a debugging port and point the tool at it.
  *
- * The cost is real and worth stating: a Chromium debugging port is
- * unauthenticated, so while it is open any local process that can reach
- * 127.0.0.1 can drive every webContents in the app, including the privileged
- * renderer. Users who do not want that turn it off in Settings, which sets
- * `browserCdpEnabled: false`.
+ * The browser gets its **own user-data-dir**, so the agent's sessions and
+ * logins stay separate from the user's personal profile. Pointing the port
+ * setting at a browser the user already runs shares that one instead.
  */
-export const DEFAULT_BROWSER_CDP_PORT = 9333
+export const DEFAULT_AGENT_BROWSER_PORT = 9223
 
-/** Override the port without touching settings (useful for tests and second profiles). */
-export const BROWSER_CDP_PORT_ENV = 'VESPI_BROWSER_CDP_PORT'
+/** Override the port without touching settings (tests, second profiles). */
+export const AGENT_BROWSER_PORT_ENV = 'VESPI_AGENT_BROWSER_PORT'
 
-/** Generated into the GUI data dir on every launch; safe to delete. */
+/** Profile directory the agent's browser is launched with, under the GUI dir. */
+export const AGENT_BROWSER_PROFILE_DIR = 'agent-browser-profile'
+
+/** Generated into the GUI data dir once the endpoint is confirmed up. */
 export const BROWSER_CDP_OVERLAY_FILE = 'omp-browser-cdp.yml'
 
 /**
- * OMP reads this as a path-delimiter-separated list of config files it merges
- * on top of the profile's own `config.yml` — it appends, never replaces, so
- * pointing it at our overlay leaves user settings intact.
+ * OMP reads this as a path-delimiter-separated list of config files merged on
+ * top of the profile's own `config.yml` — it appends, never replaces.
  */
 const CONFIG_FILES_ENV = 'PI_CONFIG_FILES'
 
 const SETTINGS_FILE_NAME = 'settings.json'
 
-export function resolveBrowserCdpPort(env: NodeJS.ProcessEnv = process.env): number {
-  const raw = env[BROWSER_CDP_PORT_ENV]?.trim()
-  if (!raw) return DEFAULT_BROWSER_CDP_PORT
+export function resolveAgentBrowserPort(env: NodeJS.ProcessEnv = process.env): number {
+  const raw = env[AGENT_BROWSER_PORT_ENV]?.trim()
+  if (!raw) return DEFAULT_AGENT_BROWSER_PORT
   const parsed = Number(raw)
-  // Fall back rather than throw: a malformed override must not stop startup,
-  // and silently binding an unexpected port would be worse than the default.
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return DEFAULT_BROWSER_CDP_PORT
+  // Fall back rather than throw: a malformed override must not stop startup.
+  if (!Number.isInteger(parsed) || parsed < 1 || parsed > 65535) return DEFAULT_AGENT_BROWSER_PORT
   return parsed
 }
 
 /**
- * Whether the panel is reachable, read tolerantly from a parsed settings object.
- *
- * Enabled is the shipped default: the point of the feature is that *every*
- * model can drive the panel, so a fresh install with no settings file at all
- * must already have it. Only an explicit `false` turns it off, and an
- * unreadable value fails closed rather than silently enabling an
- * unauthenticated debugging port.
+ * Enabled is the shipped default: the point is that every model gets a drivable
+ * browser without the user configuring anything first. Only an explicit `false`
+ * turns it off, and an unreadable value fails closed rather than launching a
+ * browser with a debugging port nobody asked for.
  */
-export function browserCdpEnabledIn(parsedSettings: unknown): boolean {
+export function agentBrowserEnabledIn(parsedSettings: unknown): boolean {
   if (!parsedSettings || typeof parsedSettings !== 'object') return true
-  const raw = (parsedSettings as { browserCdpEnabled?: unknown }).browserCdpEnabled
+  const raw = (parsedSettings as { agentBrowserEnabled?: unknown }).agentBrowserEnabled
   if (raw === undefined) return true
   if (raw === false) return false
   if (raw === true) return true
   return false
 }
 
-/**
- * Candidate settings.json paths, most authoritative first. The canonical GUI
- * data dir wins; the legacy locations are only consulted when it has no
- * readable settings file (pre-migration installs).
- */
-export function browserCdpSettingsCandidates(options: {
+/** Candidate settings.json paths, most authoritative first. */
+export function agentBrowserSettingsCandidates(options: {
   guiDataDir: string
   appDataDir?: string
   homeDir?: string
@@ -78,8 +72,8 @@ export function browserCdpSettingsCandidates(options: {
   return [primary, ...legacy]
 }
 
-/** First readable settings file decides. Unreadable or invalid files are skipped. */
-export function readBrowserCdpEnabled(
+/** First readable settings file decides; a truncated one fails closed. */
+export function readAgentBrowserEnabled(
   candidates: string[],
   readFile: (path: string) => string = (path) => readFileSync(path, 'utf-8'),
   pathExists: (path: string) => boolean = existsSync
@@ -87,10 +81,8 @@ export function readBrowserCdpEnabled(
   for (const candidate of candidates) {
     if (!pathExists(candidate)) continue
     try {
-      return browserCdpEnabledIn(JSON.parse(readFile(candidate)))
+      return agentBrowserEnabledIn(JSON.parse(readFile(candidate)))
     } catch {
-      // A truncated settings file fails closed: better to leave the port shut
-      // and let the user re-enable it than to open one on a corrupt read.
       return false
     }
   }
@@ -98,19 +90,67 @@ export function readBrowserCdpEnabled(
   return true
 }
 
+/**
+ * Installed Chromium-family browsers, most preferred first. Edge is included
+ * because it is Chromium and speaks the same CDP, and it is present on every
+ * current Windows install.
+ */
+export function chromeExecutableCandidates(env: NodeJS.ProcessEnv = process.env): string[] {
+  const local = env.LOCALAPPDATA ?? ''
+  const programFiles = env.ProgramFiles ?? ''
+  const programFilesX86 = env['ProgramFiles(x86)'] ?? ''
+  const roots = [local, programFiles, programFilesX86].filter(Boolean)
+  const relatives: string[][] = [
+    ['Google', 'Chrome', 'Application', 'chrome.exe'],
+    ['Microsoft', 'Edge', 'Application', 'msedge.exe'],
+    ['BraveSoftware', 'Brave-Browser', 'Application', 'brave.exe'],
+    ['Chromium', 'Application', 'chrome.exe'],
+  ]
+  const candidates: string[] = []
+  // Walk by browser first, not by root, so the preferred engine wins no matter
+  // which install root happens to be checked first.
+  for (const relative of relatives) {
+    for (const root of roots) candidates.push(join(root, ...relative))
+  }
+  return candidates
+}
+
+export function pickChromeExecutable(
+  candidates: string[],
+  pathExists: (path: string) => boolean = existsSync
+): string | null {
+  for (const candidate of candidates) {
+    if (pathExists(candidate)) return candidate
+  }
+  return null
+}
+
+/**
+ * Launch arguments for the agent's browser.
+ *
+ * `about:blank` last keeps the window from restoring the previous session's
+ * tabs, so the agent starts from a known empty page.
+ */
+export function agentBrowserLaunchArgs(port: number, profileDir: string): string[] {
+  return [
+    `--remote-debugging-port=${port}`,
+    `--user-data-dir=${profileDir}`,
+    '--no-first-run',
+    '--no-default-browser-check',
+    '--disable-session-crashed-bubble',
+    'about:blank',
+  ]
+}
+
 export function browserCdpOverlayPath(guiDataDir: string): string {
   return join(guiDataDir, BROWSER_CDP_OVERLAY_FILE)
 }
 
-/**
- * The overlay handed to OMP. Only `cdpUrl` is set: `browser.relay` takes
- * precedence over it and stays the user's choice, and `headless` is irrelevant
- * once we attach to an existing browser instead of launching one.
- */
+/** The overlay handed to OMP: only `cdpUrl`, so nothing else is touched. */
 export function browserCdpOverlayYaml(port: number): string {
   return [
-    '# Generated by VesPi. Points the OMP browser tool at the embedded browser',
-    '# panel instead of launching its own browser. Rewritten on every launch.',
+    '# Generated by VesPi. Points the OMP browser tool at the browser VesPi',
+    '# launched for the agent. Rewritten on every launch; safe to delete.',
     'browser:',
     `  cdpUrl: "http://127.0.0.1:${port}"`,
     '',
@@ -134,7 +174,7 @@ export function withConfigFilesEnv(
   return parts.join(separator)
 }
 
-/** The PI_CONFIG_FILES value that points the kernel at the panel overlay. */
+/** The PI_CONFIG_FILES value that points the kernel at the overlay. */
 export function browserCdpConfigFilesValue(
   overlayPath: string,
   env: NodeJS.ProcessEnv = process.env
@@ -142,19 +182,11 @@ export function browserCdpConfigFilesValue(
   return withConfigFilesEnv(env[CONFIG_FILES_ENV], overlayPath, delimiter)
 }
 
-export interface BrowserCdpInit {
-  enabled: boolean
-  port: number | null
-  overlayPath: string | null
-}
-
 let kernelEnv: Record<string, string> = {}
 
 /**
- * Env vars every kernel start needs so the browser tool attaches to the panel.
- * Empty until the panel is proven reachable, so nothing changes for users who
- * never opt in — and, more importantly, the kernel is never pointed at an
- * endpoint where the only thing it could pick is VesPi's own interface.
+ * Env every kernel start needs so the browser tool attaches. Stays empty until
+ * the endpoint answers, so the kernel is never pointed at a dead port.
  */
 export function browserCdpKernelEnv(): Record<string, string> {
   return { ...kernelEnv }
@@ -165,180 +197,134 @@ export function resetBrowserCdpState(): void {
   kernelEnv = {}
 }
 
-export interface CdpTargetInfo {
-  type?: string
-  url?: string
-  title?: string
+export type AgentBrowserStatus = 'reused' | 'launched' | 'unavailable'
+
+export interface AgentBrowserProbe {
+  isUp: (port: number) => Promise<boolean>
+  launch: (executable: string, args: string[]) => void
+  pickExecutable: () => string | null
+  /** How long to wait for a freshly launched browser to answer. */
+  waitMs: number
+  sleep: (ms: number) => Promise<void>
+  now: () => number
 }
 
-/**
- * The kernel's Electron attach path (`pickElectronTarget`) only ever considers
- * targets whose type is exactly `page`. A target the model must not drive —
- * VesPi's own renderer — is also a `page`, so "a page target exists" is not
- * enough: it has to be an http(s) target that is not this app's renderer.
- *
- * Returns null when nothing qualifies, which is the signal to keep the kernel
- * away from this endpoint entirely rather than let it fall back to driving the
- * application's own interface.
- */
-export function pickPanelTarget(
-  targets: CdpTargetInfo[],
-  isAppRenderer: (url: string) => boolean
-): CdpTargetInfo | null {
-  for (const target of targets) {
-    if (target.type !== 'page') continue
-    const url = target.url
-    if (typeof url !== 'string' || !/^https?:\/\//i.test(url)) continue
-    if (isAppRenderer(url)) continue
-    return target
-  }
-  return null
-}
+const defaultSleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))
 
-/** Cheap, sorted summary of what the endpoint is offering — for the app log. */
-export function describeTargets(targets: CdpTargetInfo[]): string {
-  const kinds = targets.map((target) => `${target.type ?? '?'}${target.url ? `:${trimUrl(target.url)}` : ''}`)
-  return kinds.length > 0 ? kinds.sort().join(' | ') : '(none)'
-}
-
-function trimUrl(url: string): string {
+export async function isCdpUp(port: number): Promise<boolean> {
   try {
-    const parsed = new URL(url)
-    return parsed.host || parsed.protocol
+    const response = await fetch(`http://127.0.0.1:${port}/json/version`, {
+      signal: AbortSignal.timeout(1500),
+    })
+    return response.ok
   } catch {
-    return url.slice(0, 24)
+    return false
   }
 }
 
-async function listCdpTargets(port: number): Promise<CdpTargetInfo[]> {
-  const response = await fetch(`http://127.0.0.1:${port}/json/list`)
-  if (!response.ok) return []
-  const parsed: unknown = await response.json()
-  return Array.isArray(parsed) ? (parsed as CdpTargetInfo[]) : []
-}
-
-export interface BrowserCdpWatchOptions {
-  port: number
-  isAppRenderer: (url: string) => boolean
-  /** Full value to put in PI_CONFIG_FILES once the panel is drivable. */
-  configFilesValue: string
-  intervalMs?: number
-  /** Test seams. */
-  listTargets?: (port: number) => Promise<CdpTargetInfo[]>
-  setTimer?: (fn: () => void, ms: number) => NodeJS.Timeout
-  clearTimer?: (timer: NodeJS.Timeout) => void
-  onStateChange?: (state: { attached: boolean; url: string | null; observed: string }) => void
+function launchDetached(executable: string, args: string[]): void {
+  const child = spawn(executable, args, { detached: true, stdio: 'ignore' })
+  child.unref()
 }
 
 /**
- * Keep the kernel pointed at this endpoint only while a drivable panel page is
- * actually present, and take the pointer away the moment it is not.
+ * Reuse the browser on `port` if something already answers there, otherwise
+ * launch one and wait for it to come up.
  *
- * This is a safety property, not a nicety: while the panel is a non-`page`
- * target, `pickElectronTarget` would happily select VesPi's own renderer
- * instead, and a model clicking the application's own interface is worse than
- * no browser at all. Re-evaluated continuously because the user can close the
- * panel or navigate it while a session is live.
+ * "Unavailable" is a normal outcome, not an error: no Chromium-family browser
+ * installed, or the launch failed. The caller then leaves the kernel alone.
  */
-export function startBrowserCdpWatch(options: BrowserCdpWatchOptions): () => void {
-  const interval = options.intervalMs ?? 3000
-  const list = options.listTargets ?? listCdpTargets
-  const setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms))
-  const clearTimer = options.clearTimer ?? ((timer) => clearTimeout(timer))
+export async function ensureAgentBrowser(
+  options: { port: number; profileDir: string; probe?: Partial<AgentBrowserProbe> }
+): Promise<AgentBrowserStatus> {
+  const probe = options.probe ?? {}
+  const isUp = probe.isUp ?? isCdpUp
+  const pickExecutable = probe.pickExecutable ?? (() => pickChromeExecutable(chromeExecutableCandidates()))
+  const launch = probe.launch ?? launchDetached
+  const sleep = probe.sleep ?? defaultSleep
+  const waitMs = probe.waitMs ?? 8000
+  const now = probe.now ?? (() => Date.now())
 
-  let stopped = false
-  let timer: NodeJS.Timeout | null = null
-  let attached = false
-  let lastObserved: string | null = null
+  if (await isUp(options.port)) return 'reused'
 
-  const stop = (): void => {
-    stopped = true
-    if (timer) clearTimer(timer)
-    timer = null
-    kernelEnv = {}
+  const executable = pickExecutable()
+  if (!executable) return 'unavailable'
+
+  try {
+    mkdirSync(options.profileDir, { recursive: true })
+    launch(executable, agentBrowserLaunchArgs(options.port, options.profileDir))
+  } catch {
+    return 'unavailable'
   }
 
-  const tick = async (): Promise<void> => {
-    if (stopped) return
-    let targets: CdpTargetInfo[] = []
-    try {
-      targets = await list(options.port)
-    } catch {
-      // The endpoint is not up yet, or the app is shutting down. Treated the
-      // same as "no panel": the kernel must not be pointed at it.
-      targets = []
-    }
-    if (stopped) return
-
-    const found = pickPanelTarget(targets, options.isAppRenderer)
-    const observed = describeTargets(targets)
-    const nextAttached = found !== null
-
-    if (nextAttached) {
-      // The overlay is inert unless PI_CONFIG_FILES points at it, so leave the
-      // file in place and gate on the env instead.
-      kernelEnv = { [CONFIG_FILES_ENV]: options.configFilesValue }
-    } else {
-      kernelEnv = {}
-    }
-
-    if (nextAttached !== attached || observed !== lastObserved) {
-      attached = nextAttached
-      lastObserved = observed
-      options.onStateChange?.({ attached, url: found?.url ?? null, observed })
-    }
-
-    if (!stopped) timer = setTimer(() => void tick(), interval)
+  const deadline = now() + waitMs
+  while (now() < deadline) {
+    await sleep(400)
+    if (await isUp(options.port)) return 'launched'
   }
-
-  void tick()
-  return stop
+  return 'unavailable'
 }
 
-/**
- * Decide once at startup whether the panel's endpoint should be opened at all.
- * Called before `app.whenReady()` — the debugging port switch has to be set
- * before Chromium initialises.
- *
- * Returns the decision instead of calling `app.commandLine.appendSwitch`
- * itself, so this module stays free of Electron and remains unit-testable.
- * Wiring the kernel is deliberately *not* done here: it waits for the watch to
- * observe a drivable panel page.
- */
-export function initBrowserCdp(options: {
+export interface AgentBrowserOptions {
   guiDataDir: string
   appDataDir?: string
   homeDir?: string
   env?: NodeJS.ProcessEnv
-}): BrowserCdpInit {
-  const env = options.env ?? process.env
-  const disabled: BrowserCdpInit = { enabled: false, port: null, overlayPath: null }
+}
 
-  const enabled = readBrowserCdpEnabled(
-    browserCdpSettingsCandidates({
+/**
+ * Decide whether to hand the agent a browser. Called before `app.whenReady()`
+ * so nothing about it depends on windows existing yet. Wiring the kernel is
+ * deliberately not done here: it waits until the endpoint actually answers.
+ */
+export function initAgentBrowser(options: AgentBrowserOptions): { enabled: boolean; port: number | null } {
+  const env = options.env ?? process.env
+  const enabled = readAgentBrowserEnabled(
+    agentBrowserSettingsCandidates({
       guiDataDir: options.guiDataDir,
       appDataDir: options.appDataDir,
       homeDir: options.homeDir,
     })
   )
-  if (!enabled) {
+  kernelEnv = {}
+  if (!enabled) return { enabled: false, port: null }
+  return { enabled: true, port: resolveAgentBrowserPort(env) }
+}
+
+/**
+ * Bring the browser up, then publish the overlay and the env the kernel needs.
+ * Called once at startup; later kernel starts read the module state.
+ */
+export async function startAgentBrowser(
+  options: AgentBrowserOptions & {
+    port: number
+    probe?: Partial<AgentBrowserProbe>
+    onStatus?: (status: AgentBrowserStatus, detail: { port: number; overlayPath: string }) => void
+  }
+): Promise<AgentBrowserStatus> {
+  const env = options.env ?? process.env
+  const profileDir = join(options.guiDataDir, AGENT_BROWSER_PROFILE_DIR)
+  const overlayPath = browserCdpOverlayPath(options.guiDataDir)
+
+  const status = await ensureAgentBrowser({ port: options.port, profileDir, probe: options.probe })
+
+  if (status === 'unavailable') {
     kernelEnv = {}
-    return disabled
+    options.onStatus?.(status, { port: options.port, overlayPath })
+    return status
   }
 
-  const port = resolveBrowserCdpPort(env)
-  const overlayPath = browserCdpOverlayPath(options.guiDataDir)
   try {
     mkdirSync(options.guiDataDir, { recursive: true })
-    writeFileSync(overlayPath, browserCdpOverlayYaml(port), 'utf-8')
+    writeFileSync(overlayPath, browserCdpOverlayYaml(options.port), 'utf-8')
   } catch {
-    // An unwritable data dir must not stop the app from starting; the port
-    // simply stays unusable because the kernel has no overlay to read.
+    // No overlay means no way to point the kernel; leave it alone.
     kernelEnv = {}
-    return disabled
+    options.onStatus?.('unavailable', { port: options.port, overlayPath })
+    return 'unavailable'
   }
 
-  // Env stays empty until the watch proves the panel is drivable.
-  kernelEnv = {}
-  return { enabled: true, port, overlayPath }
+  kernelEnv = { [CONFIG_FILES_ENV]: browserCdpConfigFilesValue(overlayPath, env) }
+  options.onStatus?.(status, { port: options.port, overlayPath })
+  return status
 }

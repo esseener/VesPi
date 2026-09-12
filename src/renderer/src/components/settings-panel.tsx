@@ -88,7 +88,7 @@ export function SettingsPanel(): React.JSX.Element {
   const [showThinking, setShowThinking] = useState(draft0.showThinking ?? settings?.showThinking ?? DEFAULT_SETTINGS.showThinking)
   const [autoScroll, setAutoScroll] = useState(draft0.autoScroll ?? settings?.autoScroll ?? DEFAULT_SETTINGS.autoScroll)
   const [desktopNotifications, setDesktopNotifications] = useState(draft0.desktopNotifications ?? settings?.desktopNotifications ?? DEFAULT_SETTINGS.desktopNotifications)
-  const [browserCdpEnabled, setBrowserCdpEnabled] = useState(draft0.browserCdpEnabled ?? settings?.browserCdpEnabled ?? DEFAULT_SETTINGS.browserCdpEnabled)
+  const [agentBrowserEnabled, setBrowserCdpEnabled] = useState(draft0.agentBrowserEnabled ?? settings?.agentBrowserEnabled ?? DEFAULT_SETTINGS.agentBrowserEnabled)
   const [resumeLastSession, setResumeLastSession] = useState(draft0.resumeLastSession ?? settings?.resumeLastSession ?? DEFAULT_SETTINGS.resumeLastSession)
   const [openToHomeOnLaunch, setOpenToHomeOnLaunch] = useState(draft0.openToHomeOnLaunch ?? settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch)
   const [runOnStartup, setRunOnStartup] = useState(draft0.runOnStartup ?? settings?.runOnStartup ?? DEFAULT_SETTINGS.runOnStartup)
@@ -256,7 +256,7 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(draft.showThinking ?? settings.showThinking)
     setAutoScroll(draft.autoScroll ?? settings.autoScroll)
     setDesktopNotifications(draft.desktopNotifications ?? settings.desktopNotifications)
-    setBrowserCdpEnabled(draft.browserCdpEnabled ?? settings.browserCdpEnabled)
+    setBrowserCdpEnabled(draft.agentBrowserEnabled ?? settings.agentBrowserEnabled)
     setResumeLastSession(draft.resumeLastSession ?? settings.resumeLastSession)
     setOpenToHomeOnLaunch(draft.openToHomeOnLaunch ?? settings.openToHomeOnLaunch)
     setRunOnStartup(draft.runOnStartup ?? settings.runOnStartup)
@@ -484,7 +484,7 @@ export function SettingsPanel(): React.JSX.Element {
       showThinking: DEFAULT_SETTINGS.showThinking,
       autoScroll: DEFAULT_SETTINGS.autoScroll,
       desktopNotifications: DEFAULT_SETTINGS.desktopNotifications,
-      browserCdpEnabled: DEFAULT_SETTINGS.browserCdpEnabled,
+      agentBrowserEnabled: DEFAULT_SETTINGS.agentBrowserEnabled,
       resumeLastSession: DEFAULT_SETTINGS.resumeLastSession,
       openToHomeOnLaunch: DEFAULT_SETTINGS.openToHomeOnLaunch,
       runOnStartup: DEFAULT_SETTINGS.runOnStartup,
@@ -500,7 +500,7 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(defaults.showThinking!)
     setAutoScroll(defaults.autoScroll!)
     setDesktopNotifications(defaults.desktopNotifications!)
-    setBrowserCdpEnabled(defaults.browserCdpEnabled!)
+    setBrowserCdpEnabled(defaults.agentBrowserEnabled!)
 
     setResumeLastSession(defaults.resumeLastSession!)
     setOpenToHomeOnLaunch(defaults.openToHomeOnLaunch!)
@@ -779,10 +779,10 @@ export function SettingsPanel(): React.JSX.Element {
           </SettingsRow>
 
           <SettingsRow
-            label={t(language, 'browserCdpEnabled')}
-            description={t(language, 'browserCdpEnabledHint')}
+            label={t(language, 'agentBrowserEnabled')}
+            description={t(language, 'agentBrowserEnabledHint')}
           >
-            <Toggle checked={browserCdpEnabled} onChange={(v) => { setBrowserCdpEnabled(v); persistSettingPatch({ browserCdpEnabled: v }) }} />
+            <Toggle checked={agentBrowserEnabled} onChange={(v) => { setBrowserCdpEnabled(v); persistSettingPatch({ agentBrowserEnabled: v }) }} />
           </SettingsRow>
 
           <SettingsRow

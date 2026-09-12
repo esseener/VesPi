@@ -1166,15 +1166,13 @@ export interface AppSettings {
   // Show OS desktop notifications when a turn finishes, fails, or waits for
   // approval in a workspace the user is not currently looking at.
   desktopNotifications: boolean
-  // Expose the embedded browser panel on a loopback CDP port so the agent's
-  // browser tool drives that panel — the page the user is looking at — instead
-  // of launching its own invisible browser. **On by default**, so every model
-  // gets the capability with no setup; a settings file with no such key counts
-  // as on. Set false to close the port. A Chromium debugging port is
-  // unauthenticated, so while it is open any local process that reaches it can
-  // drive every webContents in the app. Read before the app is ready, so
-  // changing it needs a restart.
-  browserCdpEnabled: boolean
+  // Launch a dedicated Chromium-family browser on a loopback debugging port and
+  // point the agent's `browser` tool at it, so the model drives a browser the
+  // user can see and take over — instead of its own invisible headless one.
+  // **On by default**, so every model gets it with no setup; a settings file
+  // with no such key counts as on. Set false to leave the model with its own.
+  // The port belongs to that browser, not to VesPi.
+  agentBrowserEnabled: boolean
   // Multi-agent council planning configuration.
   council: CouncilConfig
 }

@@ -18,7 +18,7 @@ import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpens
 import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
 import { isWebviewAttachAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
-import { initBrowserCdp, startBrowserCdpWatch, browserCdpConfigFilesValue } from './browser-cdp'
+import { initAgentBrowser, startAgentBrowser } from './browser-cdp'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
 
@@ -138,42 +138,34 @@ mkdirSync(userDataDir, { recursive: true })
 app.setPath('userData', userDataDir)
 configureGuiDataDir(userDataDir)
 
-// Opt-in: expose the embedded browser panel on a loopback CDP port so the
-// agent's browser tool can drive the page the user actually sees, instead of
-// launching its own invisible browser. Must run before `whenReady()` — the
-// debugging port has to be set before Chromium initialises — which is why the
-// setting is read synchronously here rather than through the async loader.
-// A Chromium debugging port is unauthenticated, so while this is on any local
-// process that reaches the port can drive every webContents in the app.
-const browserCdp = initBrowserCdp({
+// The agent's browser tool cannot drive the embedded panel: the panel is an
+// Electron `<webview>`, and the kernel's attach path only accepts CDP targets
+// typed `page` (hard-coded in `pickElectronTarget`). So VesPi launches a real
+// Chromium-family browser with a debugging port and points the tool at it: the
+// user can see it, take it over, and it keeps its own profile.
+//
+// Decided here, before `whenReady()`, so the decision never depends on windows
+// existing. The kernel is wired only once the endpoint actually answers. Note
+// the loopback port belongs to that browser, not to VesPi — the app itself
+// opens nothing.
+const agentBrowser = initAgentBrowser({
   guiDataDir: userDataDir,
   appDataDir: app.getPath('appData'),
 })
-if (browserCdp.port !== null && browserCdp.overlayPath !== null) {
-  app.commandLine.appendSwitch('remote-debugging-port', String(browserCdp.port))
-  appLog.info('browser', `Browser panel CDP endpoint opened on 127.0.0.1:${browserCdp.port}`, {
-    overlay: browserCdp.overlayPath,
-  })
-
-  // The kernel's Electron attach path only accepts targets typed `page`, and
-  // VesPi's own renderer is one of those. Handing the endpoint over before a
-  // real panel page exists would let the agent drive the application's own
-  // interface, so the watch gates the handover on a page target that is http(s)
-  // and is not this app's renderer.
-  startBrowserCdpWatch({
-    port: browserCdp.port,
-    isAppRenderer: (url) =>
-      isTrustedRendererUrl(url, { devServerUrl: DEV_SERVER_URL, rendererIndexPath: RENDERER_INDEX_PATH }),
-    configFilesValue: browserCdpConfigFilesValue(browserCdp.overlayPath),
-    onStateChange: ({ attached, url, observed }) => {
-      if (attached) {
-        appLog.info('browser', `Agent browser attached to the panel page: ${url}`, { targets: observed })
-      } else {
+if (agentBrowser.port !== null) {
+  void startAgentBrowser({
+    guiDataDir: userDataDir,
+    appDataDir: app.getPath('appData'),
+    port: agentBrowser.port,
+    onStatus: (status, detail) => {
+      if (status === 'unavailable') {
         appLog.warn(
           'browser',
-          'No drivable panel page on the CDP endpoint — agent browser stays detached (this is why the model may fall back to its own browser)',
-          { targets: observed }
+          'No browser available for the agent; the browser tool will fall back to its own headless browser',
+          detail
         )
+      } else {
+        appLog.info('browser', `Agent browser ${status} on 127.0.0.1:${detail.port}`, detail)
       }
     },
   })

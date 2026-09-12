@@ -35,9 +35,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTrayOnClose: false,
   hasSeenTrayHint: false,
   desktopNotifications: true,
-  // On by default: the embedded browser panel is a capability every model
-  // should get without setup. Turning it off closes the loopback CDP port the
-  // agent's browser tool attaches to, so it falls back to its own browser.
-  browserCdpEnabled: true,
+  // On by default: the agent gets a browser it can actually drive, and the user
+  // gets to watch it. Turning it off leaves the model with its own invisible
+  // headless browser.
+  agentBrowserEnabled: true,
   council: DEFAULT_COUNCIL_CONFIG,
 }
