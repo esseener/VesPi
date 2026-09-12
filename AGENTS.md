@@ -1,6 +1,6 @@
 # VesPi
 
-VesPi is the desktop GUI for Oh My Pi (OMP) and the Pi coding agent. Public product repo: `esseener/VesPi`. Current shipped version: **1.0.13**.
+VesPi is the desktop GUI for Oh My Pi (OMP), the agent runtime that ships inside it. Public product repo: `esseener/VesPi`. The shipped version lives in `package.json` — read it there rather than trusting a number written in this file.
 
 ## Version
 
@@ -144,7 +144,6 @@ src/
             ├── timeline.tsx       # Agent activity timeline
             ├── review-rail.tsx    # Permissions, approvals, changed files (toggleable)
             ├── package-browser.tsx # Package/skill browser, fetch-once + local filter
-            ├── skills-panel.tsx   # Skills browser
             ├── notes-panel.tsx    # Reusable prompts/notes
             ├── note-picker.tsx    # Insert a saved note
             ├── command-palette.tsx # Ctrl/Cmd+K quick switcher (commands, workspaces, sessions, files)
@@ -160,14 +159,20 @@ src/
 
 ## Features
 
-### Engines (Pi and OMP)
+### Engines (OMP is the product runtime)
 
-- The app runs either the standard `pi` CLI or the compatible `omp` binary from oh-my-pi. Settings → Agent Configuration picks one (auto-detect, detected install, or custom executable); `pi-binary-resolution.ts` locates and identifies installs.
-- The two engines keep separate session stores: Pi under `~/.pi/agent/sessions`, OMP under `~/.omp/agent/sessions`. OMP ignores `--session-dir` for new sessions, so no shared store is forced; the session index reads both roots.
+- **OMP is the only Agent Runtime VesPi ships and starts.** It launches the bundled `runtime/omp/omp.exe`, never a globally installed `omp` or `pi` (see `ARCHITECTURE.md` §2). Settings → Agent Configuration accepts a custom executable for development; `pi-binary-resolution.ts` locates and identifies installs.
+- The shell can still *read* a Pi-era session. Pi sessions live under `~/.pi/agent/sessions`, OMP sessions under `~/.omp/profiles/vespi/agent/sessions`; OMP ignores `--session-dir` for new sessions, so no shared store is forced and the session index reads both roots.
 - Each session list row carries the engine that owns it (`SessionListItem.engine`, stamped from the store it was found in). Opening, forking, or resuming a session starts the engine that wrote it, not the configured default (`engineForBoundSession` in `pi-paths.ts` is the single rule).
 - Tool names differ per engine (Pi ships `find`/`ls`, OMP ships `glob`), so Plan/Read-only mode derives its tool list from the session's engine, never from the configured one.
 - Every surface that names the running agent (status bar, empty chat, permission prompts, Diagnostics, session tags) reads `shared/agent-engine-label.ts`; the permission extension gets the label via `PI_DESKTOP_AGENT_LABEL`. Session rows show the Pi/OMP tag only when both engines appear in one list.
 - OMP specifics: protocol-v2 chunked frames are decoded with the limits the engine advertises in its ready frame; OMP starts subagents in a new process group, so shutdown walks the descendant tree before signalling; OMP's plugin verbs back the package actions.
+
+### Model-facing shell context
+
+- On every start the shell appends `resources/vespi-harness.md` to the kernel's system prompt via `--append-system-prompt`, so any model knows which shell it runs inside (the permission gate, the user-driven Git conveyor, the panes the user sees). Wiring lives in `src/main/ipc/harness-doc.ts` + `pi-start-options.ts`.
+- The kernel resolves a path-valued flag by reading the file; a value containing a newline is taken as inline text instead. A missing file is therefore never passed through — the kernel would inline the path string itself.
+- A caller that already named `--append-system-prompt` wins; that is the escape hatch for a custom prompt.
 
 ### Workspace Management
 
@@ -175,7 +180,7 @@ src/
 - New Task can create or reuse an isolated Git worktree (matching task metadata, explicit branches, and GitHub PR URLs are detected), and Diff Review exposes explicit Commit → Push → PR actions with upstream-aware GitHub CLI routing
 - Multiple workspaces (project directories)
 - Each workspace owns a file service; every live session in that project owns an independent Pi process bound to that workspace cwd and its own `--session` file
-- Session navigation is immediate; Pi startup and history hydration continue in the background
+- Session navigation is immediate; agent startup and history hydration continue in the background
 - Default workspace: user's home directory
 - Workspace switcher in sidebar
 - Auto-creates workspace when switching to a session from a different project
@@ -189,7 +194,7 @@ src/
 - Session tabs and sidebar rows show working, approval, completed, and failed indicators
 - Sessions grouped by project in the session panel
 - **Session tags**: type `#tag-name` in chat to tag the current session
-- Tags persisted to `~/.pi-desktop-gui/session-tags.json`
+- Tags persisted to `<appData>/vespi/session-tags.json`
 - Tags displayed in session list, filterable
 - Session names read from each session's `session_info` record; shown in the list and as fallback a distinguishable local timestamp (not a collapsing id prefix)
 - Inline rename of the active session (double-click, or right-click → Rename…) via Pi's `set_session_name` RPC; live-updates on `session_info_changed`
@@ -262,7 +267,7 @@ src/
 
 - Real PTY via `node-pty` in the main process, `@xterm/xterm` in the renderer
 - Full ANSI/VT100 support including 256-color and true-color
-- Runs the user's shell directly — independent of the Pi process
+- Runs the user's shell directly — independent of the agent process
 - PTY managed by `terminal-service.ts`; IPC channels relay input/output/resize
 
 ### Home / Activity Dashboard
@@ -284,16 +289,15 @@ src/
 
 ### Packages & Skills
 
-- Browse installed packages from Pi settings
+- Browse installed packages from the OMP profile
 - Package catalog from pi.dev — fetched once and filtered locally per keystroke (no per-keystroke re-crawl); concurrent paged crawl with a shared in-flight promise, prefetched at launch so the tab opens instantly
-- Install/remove packages via `pi install`/`pi remove`
-- Skills list with source (global/project)
-- Extension commands display
+- Install/remove/upgrade packages by shelling out to the OMP plugin verbs (`omp --profile vespi plugin …`, see `omp-plugins.ts`)
+- Skills list with source (global/project), read from `~/.omp/profiles/vespi/agent/skills`, `~/.vespi/skills`, `~/.openspace/skills`, and the same names under the workspace. **View only:** create/delete/evolve report `OpenSpace 未随 VesPi 发布` because the OpenSpace runtime is not shipped
 
 ### System Status Popover
 
 Click the status icon in the sidebar header to see:
-- Pi Agent status, PID, model, provider, thinking level
+- Agent status (labelled Pi or OMP), PID, model, provider, thinking level
 - Context usage with progress bar
 - Token count and cost
 - Workspace info
@@ -304,15 +308,15 @@ Click the status icon in the sidebar header to see:
 
 ### Settings
 
-- Pi executable path
+- Agent executable path (defaults to the bundled OMP)
 - Theme: Dark, Light, System, Nord, Gruvbox, Breeze Dark, Breeze Light, Breeze Claudius (Breeze Dark base + deep chat surface, contributed by @sumit-m) — applies immediately. **Default is `dark`** — Breeze Claudius is opt-in only, never auto-selected for new installs
 - Independent UI / Terminal / Code Editor font size sliders
 - Show thinking blocks, auto-scroll
 - Every field (theme, permission mode, toggles, font sizes) live-previews before Save via a unified settings draft (`store.ts` `settingsDraft`); survives view switches; Save persists, Reset restores `DEFAULT_SETTINGS`
 - Permission rules: user-defined allow/deny rules (glob per Pi tool) that overlay the permission modes. Deny beats allow beats mode default; deny applies in every mode. Global rules live in `<GUI data dir>/permission-rules.json`. A workspace `.pi-desktop/permission-rules.json` is gated by workspace trust: when the workspace is trusted it fully replaces the global rules; when untrusted (the default) only its deny rules apply, layered on top of the global rules, and its allow rules are ignored (a repo can tighten, never grant). Opening a workspace whose rules file contains allow rules shows a trust prompt; the editor's Global tab notes the override and the This workspace tab carries a Trust/Revoke control. Settings → Behavior edits BOTH scopes via Global | This workspace tabs: create, edit, and remove workspace rules (in-app danger confirm), Copy from global (seeds an unsaved draft from the current global list), and per-scope JSON import/export. Manual editing of either file on disk remains fully supported — switching scope tabs re-reads that file when the scope has no unsaved draft, so hand-edited rules show up without a restart. Engine: `resources/permission-rules.ts`, shared by the Pi extension (jiti relative import, mtime-cached live re-read) and the main process. The permissions extension always loads alongside Pi when present on disk, regardless of mode or whether rules currently exist, so a rules file created mid-session is enforced immediately rather than after a restart.
   - Trust posture: a workspace's `.pi-desktop/permission-rules.json` is repo content, so its allow rules take effect only after the user explicitly trusts the workspace (persisted in `trusted-workspaces.json`; surfaced as a trust prompt on open and a control in Settings). Until trusted, the repo can only add deny rules — it cannot suppress ask-mode prompts. Rule globs match raw tool input strings only (no path canonicalization, no command parsing), so rules are a guardrail against accidents, not a security sandbox.
-- Custom models & providers editor — edits `~/.pi/agent/models.json` (applied on Pi restart)
-- All settings persisted to `~/.pi-desktop-gui/settings.json`; defaults come from the single shared `src/shared/default-settings.ts` (used to seed the file AND for the renderer's initial/Reset values)
+- Custom models & providers editor — edits `models.json` beside the OMP session store (`~/.omp/profiles/vespi/agent/`), mirrored into `models.yml` because OMP treats the YAML file as authoritative whenever it exists
+- All settings persisted to `<appData>/vespi/settings.json`; defaults come from the single shared `src/shared/default-settings.ts` (used to seed the file AND for the renderer's initial/Reset values)
 
 ### Context Menu
 
@@ -330,29 +334,30 @@ All communication between renderer and main goes through a typed preload bridge:
 Renderer → preload (contextBridge) → IPC → main handlers → Pi RPC / File system
 ```
 
-- 100 IPC channels, all validated (count drifts as features land — check `IPC_CHANNELS` in `src/shared/ipc-contracts.ts` for the current number rather than trusting this doc)
-- Pi events forwarded from main to renderer via `webContents.send`
+- 155 IPC channels, all validated (count drifts as features land — read `IPC_CHANNELS` in `src/shared/ipc-contracts.ts` for the current number rather than trusting this doc)
+- Agent events forwarded from main to renderer via `webContents.send`
 - Extension UI protocol supported (select, confirm, input, editor dialogs)
 
 ## Data Storage
 
-Paths below show the legacy home-dir location for brevity; since the canonical
-data-dir migration the GUI's files live under the OS app-data dir
-(`<appData>/pi-desktop`, overridable via `PI_DESKTOP_USER_DATA_DIR`), with
-`~/.pi-desktop-gui` kept as the legacy fallback.
+GUI files live under the OS app-data directory in a `vespi` folder
+(`<appData>/vespi`, e.g. `%APPDATA%\vespi` on Windows). Override it with the
+`VESPI_USER_DATA_DIR` env var. The older folder names `VesPi`, `Pi Desktop`,
+`pi-desktop`, and `pi-desktop-gui` are recognized as legacy fallbacks — see
+`app-data-paths.ts`.
 
 | Path | Purpose |
 |------|---------|
-| `~/.pi-desktop-gui/workspaces.json` | Workspace list and active workspace |
-| `~/.pi-desktop-gui/settings.json` | App settings |
-| `~/.pi-desktop-gui/session-tags.json` | Session tags |
-| `~/.pi-desktop-gui/trusted-workspaces.json` | Workspaces the user has trusted (enables their allow rules + interactive HTML preview) |
-| `~/.pi-desktop-gui/activity-stats.json` | Persisted per-day activity stats (aggregates only, survives session deletion) |
-| `~/.pi-desktop-gui/app-log.jsonl` | Main-process app log (warnings/errors for the Diagnostics view) |
-| `~/.pi/agent/sessions/` | Pi session files (organized by cwd) |
-| `~/.omp/agent/sessions/` | OMP session files (same layout; OMP writes here regardless of flags) |
-| `~/.pi/agent/settings.json` | Pi global settings |
-| `.pi/settings.json` | Pi project settings |
+| `<appData>/vespi/workspaces.json` | Workspace list and active workspace |
+| `<appData>/vespi/settings.json` | App settings |
+| `<appData>/vespi/session-tags.json` | Session tags |
+| `<appData>/vespi/trusted-workspaces.json` | Workspaces the user has trusted (enables their allow rules + interactive HTML preview) |
+| `<appData>/vespi/activity-stats.json` | Persisted per-day activity stats (aggregates only, survives session deletion) |
+| `<appData>/vespi/app-log.jsonl` | Main-process app log (warnings/errors for the Diagnostics view) |
+| `~/.pi/agent/sessions/` | Pi session files (organized by cwd) — legacy, read-only for this app |
+| `~/.omp/profiles/vespi/agent/sessions/` | OMP session files; OMP writes here regardless of flags |
+| `~/.omp/profiles/vespi/agent/models.json` | Custom models & providers (mirrored to `models.yml`, which OMP treats as authoritative) |
+| `<workspace>/.pi-desktop/permission-rules.json` | Workspace-scoped permission rules (trust-gated) |
 
 ## Distribution
 

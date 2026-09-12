@@ -9,6 +9,8 @@ import { isString, isObject, isOptionalString, isOptionalBoolean, isOptionalStri
 import { getPiCli } from '../pi-rpc-manager'
 import { engineForBoundSession } from '../pi-paths'
 import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../shared/agent-engine-label'
+import { withHarnessDoc } from './harness-doc'
+import { browserCdpKernelEnv } from '../browser-cdp'
 
 const READ_ONLY_TOOLS = 'read,grep,find,ls'
 const OMP_READ_ONLY_TOOLS = 'read,grep,glob'
@@ -16,6 +18,16 @@ const OMP_READ_ONLY_TOOLS = 'read,grep,glob'
 const PERMISSIONS_EXTENSION_PATH = app.isPackaged
   ? join(process.resourcesPath, 'resources', 'pi-desktop-permissions.ts')
   : join(app.getAppPath(), 'resources', 'pi-desktop-permissions.ts')
+
+/**
+ * Shell-level context appended to the system prompt on every start. It is
+ * VesPi-authored content about the GUI the model is running inside — the
+ * permission gate, the user-driven Git conveyor, the panes and panels the user
+ * sees — none of which the kernel's own tool schemas can describe.
+ */
+const HARNESS_DOC_PATH = app.isPackaged
+  ? join(process.resourcesPath, 'resources', 'vespi-harness.md')
+  : join(app.getAppPath(), 'resources', 'vespi-harness.md')
 
 export function getGlobalPermissionRulesPath(): string {
   return getGuiDataPath(PERMISSION_RULES_FILE_NAME)
@@ -80,14 +92,23 @@ export function applyPermissionModeToStartOptions(
     ? [...removeToolArgs(options.args ?? []), '--tools', toolList]
     : [...(options.args ?? [])]
   const globalRulesPath = getGlobalPermissionRulesPath()
-  if (existsSync(PERMISSIONS_EXTENSION_PATH)) {
-    args.push('-e', PERMISSIONS_EXTENSION_PATH)
-  }
+  const withExtension = existsSync(PERMISSIONS_EXTENSION_PATH)
+    ? [...args, '-e', PERMISSIONS_EXTENSION_PATH]
+    : args
+
+  // Hand the model the shell's own context — the permission gate, the
+  // user-driven Git conveyor, the panes the user sees. The kernel reads a
+  // path-valued flag as file contents (a value containing a newline would
+  // instead be taken as inline text), so one argument is enough and the
+  // document stays editable on disk.
+  const finalArgs = withHarnessDoc(withExtension, HARNESS_DOC_PATH)
 
   return {
     ...options,
-    args,
+    args: finalArgs,
     env: {
+      // Shell-provided defaults first, so a caller-supplied value still wins.
+      ...browserCdpKernelEnv(),
       ...options.env,
       PI_DESKTOP_PERMISSION_MODE: settings.permissionMode,
       // The extension raises the approval prompt from inside the agent, so it
