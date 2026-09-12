@@ -43,6 +43,9 @@ export function BrowserPanel(): React.JSX.Element {
   // Bumped by retry/re-open so the <webview> remounts and re-attaches listeners.
   const [attempt, setAttempt] = useState(0)
   const [load, setLoad] = useState<LoadState>({ kind: 'idle' })
+  // A rejected address used to do nothing at all, which reads as a broken
+  // panel. Only http(s) can attach to this partition, so say so.
+  const [inputError, setInputError] = useState<string | null>(null)
   const webviewRef = useRef<HTMLElement | null>(null)
 
   // The guest reports load progress only through DOM events, so the panel can
@@ -75,7 +78,11 @@ export function BrowserPanel(): React.JSX.Element {
 
   const open = (): void => {
     const next = normalizeUrl(draft)
-    if (!next) return
+    if (!next) {
+      setInputError(t(language, 'browserPanelInvalidUrl'))
+      return
+    }
+    setInputError(null)
     if (next === url) setAttempt((n) => n + 1)
     else setUrl(next)
     setLoad({ kind: 'loading' })
@@ -88,7 +95,11 @@ export function BrowserPanel(): React.JSX.Element {
 
   const askModel = (): void => {
     const next = normalizeUrl(draft)
-    if (!next) return
+    if (!next) {
+      setInputError(t(language, 'browserPanelInvalidUrl'))
+      return
+    }
+    setInputError(null)
     insertPrompt(t(language, 'browserPanelAskModelPrompt', { url: next }), true)
   }
 
@@ -110,7 +121,10 @@ export function BrowserPanel(): React.JSX.Element {
       >
         <input
           value={draft}
-          onChange={(event) => setDraft(event.target.value)}
+          onChange={(event) => {
+            setDraft(event.target.value)
+            if (inputError) setInputError(null)
+          }}
           placeholder={t(language, 'browserPanelPlaceholder')}
           className="min-w-0 flex-1 rounded-md border border-border bg-app px-2 py-1 text-xs text-primary outline-none placeholder:text-faint focus:border-focus"
         />
@@ -129,6 +143,12 @@ export function BrowserPanel(): React.JSX.Element {
           <ExternalLink size={12} />
         </button>
       </form>
+      {inputError && (
+        <div className="flex items-start gap-2 border-b border-border bg-error-bg/30 px-3 py-2">
+          <AlertTriangle size={13} className="mt-0.5 shrink-0 text-error" />
+          <div className="min-w-0 flex-1 text-[11px] text-muted">{inputError}</div>
+        </div>
+      )}
       {url ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {load.kind === 'loading' && (
