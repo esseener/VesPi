@@ -407,11 +407,12 @@ Never ship a user-visible change only as a local preview. **User gate:** after a
 After the user confirms:
 
 1. Bump `package.json` version (if not already bumped for that install)
-2. Commit and push `master` to `vespi` (`esseener/VesPi`)
-3. `npm run package:win` if artifacts still need a final rebuild — it first refreshes the bundled OMP kernel to the newest `can1357/oh-my-pi` release (`scripts/update-omp.mjs`)
-4. Tag `vX.Y.Z` and create a GitHub Release with the installer (`VesPi-Setup-{version}-win-x64.exe`; the portable exe is dropped since 1.0.10)
-5. Copy the installer into `desktop/release/` (delete older versioned exes there)
-6. Confirm About / the top banner can see the new tag from an older client
+2. `npm run kernel:check` — if it reports BEHIND (exit 1), refresh the kernel and repackage **before** pushing. The shipped installer must carry the newest kernel.
+3. `npm run package:win` if artifacts still need a final rebuild — it first refreshes the bundled OMP kernel to the newest `can1357/oh-my-pi` release (`scripts/update-omp.mjs`), so this step also satisfies step 2
+4. Commit and push `master` to `vespi` (`esseener/VesPi`)
+5. Tag `vX.Y.Z` and create a GitHub Release with the installer (`VesPi-Setup-{version}-win-x64.exe`; the portable exe is dropped since 1.0.10)
+6. Copy the installer into `desktop/release/` (delete older versioned exes there)
+7. Confirm About / the top banner can see the new tag from an older client
 
 ## Dual update reminders
 
@@ -424,6 +425,63 @@ After the user confirms:
 
 If either is newer, show all three surfaces together: top banner, About **有更新**, sidebar About dot. Do not hide a kernel update behind a UI-only notice, or a UI update behind a kernel-only notice.
 
+## Kernel freshness is a release gate
+
+The OMP kernel is half the product, and the installer bundles a copy of it
+(`runtime/omp/omp.exe`, pinned by `resources/omp-runtime-lock.json`). **Any push
+that ships a package must carry the newest kernel release.** Shipping a stale one
+hands users an older runtime than the app would fetch for itself on first launch,
+which shows up as an immediate "kernel update available" on a fresh install.
+
+Check before packaging, and again before pushing:
+
+```bash
+npm run kernel:check
+```
+
+| Exit | Meaning | What to do |
+|---|---|---|
+| `0` | Bundled version is the newest release (or deliberately ahead) | Package and push |
+| `1` | Bundled version is **behind** | Refresh the kernel, rebuild, then push |
+| `2` | Newest release **could not be determined** (offline, API error, bad lock) | Treat as unknown, never as up-to-date. Fix connectivity or decide explicitly |
+
+Refreshing is part of packaging, not a separate errand:
+
+```bash
+npm run package:win   # update-omp.mjs --strict → electron-vite build → electron-builder → SHA256SUMS.txt
+```
+
+`package:win` runs the refresh first, so it satisfies this gate by construction.
+`scripts/update-omp.mjs` has **no check-only mode** — `--strict` updates and
+fails loudly on any mismatch, network error or probe failure. `kernel:check`
+exists because "is it current?" is a question you must be able to ask without
+changing anything.
+
+### Building without touching the kernel
+
+The manual path (`rm -rf out/main out/preload out/renderer` → `electron-vite build`
+→ `electron-builder`) skips the refresh. That is only valid when `kernel:check`
+already reports `0` — it is a way to avoid re-downloading a kernel you already
+have, **not** a way to ship a stale one.
+
+### Overriding the output directory
+
+`build.directories.output` defaults to `release/`. A clean directory per build
+avoids electron-builder's rename dance on a reused `win-unpacked` (EPERM) — and
+those directories collide by name over time (`release18`…`release33` are used
+up), so pick a fresh one:
+
+```bash
+npx electron-builder --win nsis -c.directories.output=releaseNN
+```
+
+### Two kernel channels
+
+The bundled kernel is the floor; the app can also fetch a newer one at runtime
+from `can1357/oh-my-pi` (About → **更新内核**, landing in `runtime/omp/omp.exe`).
+Both surfaces share one version check, so a kernel update and a UI update must
+both appear as **有更新** — never one behind the other.
+
 ## Final Delivery Checklist
 
 Before delivering a change:
@@ -435,7 +493,8 @@ Before delivering a change:
 5. Remove dead code
 6. Ensure consistency (naming, API shape, structure)
 7. Verify on the actual UI (`npm run preview` during development)
-8. Rebuild the versioned installer, **install it over the local VesPi**, and stop. The user tests that installed app.
-9. Only after the user confirms: bump version if needed, push `esseener/VesPi`, tag, and publish a GitHub Release
-10. Copy `VesPi-Setup-{version}-win-x64.exe` into `desktop/release/` and drop older versioned exes from that folder
-11. Update `MEMORY.md` with the ship decision (version, what changed, update channels)
+8. **Check the kernel is current: `npm run kernel:check`.** Exit 1 means the bundled OMP kernel is behind the newest `can1357/oh-my-pi` release — refresh it before you package (see "Kernel freshness is a release gate"). Never ship an installer built on a stale kernel.
+9. Rebuild the versioned installer, **install it over the local VesPi**, and stop. The user tests that installed app.
+10. Only after the user confirms: bump version if needed, push `esseener/VesPi`, tag, and publish a GitHub Release
+11. Copy `VesPi-Setup-{version}-win-x64.exe` into `desktop/release/` and drop older versioned exes from that folder
+12. Update `MEMORY.md` with the ship decision (version, what changed, update channels)

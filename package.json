@@ -39,6 +39,7 @@
     "typecheck": "tsc -b --noEmit",
     "lint": "eslint src bin scripts resources && node scripts/check-semantic-colors.mjs",
     "check:release": "node scripts/check-release-consistency.mjs",
+    "kernel:check": "node scripts/check-kernel-latest.mjs",
     "check": "npm run typecheck && npm run lint && npm test && npm run check:release && npm run build",
     "package": "electron-vite build && electron-builder",
     "prepare:runtime:release": "node scripts/update-omp.mjs --strict",
