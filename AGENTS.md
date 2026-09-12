@@ -407,8 +407,8 @@ Never ship a user-visible change only as a local preview. **User gate:** after a
 After the user confirms:
 
 1. Bump `package.json` version (if not already bumped for that install)
-2. `npm run kernel:check` — if it reports BEHIND (exit 1), refresh the kernel and repackage **before** pushing. The shipped installer must carry the newest kernel.
-3. `npm run package:win` if artifacts still need a final rebuild — it first refreshes the bundled OMP kernel to the newest `can1357/oh-my-pi` release (`scripts/update-omp.mjs`), so this step also satisfies step 2
+2. `npm run kernel:check`. If it reports BEHIND (exit 1), run `npm run kernel:update` → `npm run prepare:runtime:release` → `npm run check:release`, then rebuild the installer. Do this **before** packaging: the shipped installer must carry the newest kernel.
+3. `npm run package:win` if artifacts still need a final rebuild (it verifies the *locked* kernel as part of the build; it does not advance it)
 4. Commit and push `master` to `vespi` (`esseener/VesPi`)
 5. Tag `vX.Y.Z` and create a GitHub Release with the installer (`VesPi-Setup-{version}-win-x64.exe`; the portable exe is dropped since 1.0.10)
 6. Copy the installer into `desktop/release/` (delete older versioned exes there)
@@ -445,17 +445,26 @@ npm run kernel:check
 | `1` | Bundled version is **behind** | Refresh the kernel, rebuild, then push |
 | `2` | Newest release **could not be determined** (offline, API error, bad lock) | Treat as unknown, never as up-to-date. Fix connectivity or decide explicitly |
 
-Refreshing is part of packaging, not a separate errand:
+Refreshing the kernel is **two steps**, because the lock file is the source of
+truth and nothing advances it automatically:
 
 ```bash
-npm run package:win   # update-omp.mjs --strict → electron-vite build → electron-builder → SHA256SUMS.txt
+npm run kernel:check               # 1. is the lock behind?
+npm run kernel:update              # 2. advance the lock to the newest release
+npm run prepare:runtime:release    # 3. download + verify the binary against the lock
+npm run check:release              # 4. lock and binary agree again
+# then package as usual
 ```
 
-`package:win` runs the refresh first, so it satisfies this gate by construction.
-`scripts/update-omp.mjs` has **no check-only mode** — `--strict` updates and
-fails loudly on any mismatch, network error or probe failure. `kernel:check`
-exists because "is it current?" is a question you must be able to ask without
-changing anything.
+**`npm run package:win` does NOT refresh the kernel.** It runs
+`update-omp.mjs --strict`, which is *lock-driven*: it only guarantees the bundled
+binary matches `omp-runtime-lock.json`, and it never looks up the newest release.
+Packaging on a stale lock therefore produces a stale installer, silently and
+with every gate passing. That is the trap this section exists to close.
+
+`kernel:update` writes the version and the SHA-256 that the release publishes in
+its own `SHA256SUMS.txt`, so the pin stays explicit and shows up in the diff for
+review. Downloading the binary remains `update-omp.mjs`'s job.
 
 ### Building without touching the kernel
 

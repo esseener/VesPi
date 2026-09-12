@@ -88,8 +88,10 @@ if (comparison > 0) {
 }
 
 console.error(`[kernel-check] bundled kernel ${lock.version} is BEHIND ${latest.tag} (released ${latest.publishedAt})`)
-console.error('[kernel-check] refresh it, rebuild, then push:')
-console.error('[kernel-check]   npm run package:win      # refreshes the kernel, builds, packages, writes SHA256SUMS.txt')
-console.error('[kernel-check]   # or, for a shell-only change you want to keep: ')
-console.error('[kernel-check]   npm run prepare:runtime:release && npm run check:release')
+console.error('[kernel-check] advance the lock, fetch the binary, then package:')
+console.error('[kernel-check]   npm run kernel:update            # lock -> newest release')
+console.error('[kernel-check]   npm run prepare:runtime:release  # download + verify the binary')
+console.error('[kernel-check]   npm run check:release            # lock and binary agree')
+console.error('[kernel-check] Note: npm run package:win does NOT advance the kernel — it only')
+console.error('[kernel-check] verifies whatever the lock already pins.')
 process.exit(1)
