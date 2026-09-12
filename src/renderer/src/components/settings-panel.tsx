@@ -88,6 +88,7 @@ export function SettingsPanel(): React.JSX.Element {
   const [showThinking, setShowThinking] = useState(draft0.showThinking ?? settings?.showThinking ?? DEFAULT_SETTINGS.showThinking)
   const [autoScroll, setAutoScroll] = useState(draft0.autoScroll ?? settings?.autoScroll ?? DEFAULT_SETTINGS.autoScroll)
   const [desktopNotifications, setDesktopNotifications] = useState(draft0.desktopNotifications ?? settings?.desktopNotifications ?? DEFAULT_SETTINGS.desktopNotifications)
+  const [browserCdpEnabled, setBrowserCdpEnabled] = useState(draft0.browserCdpEnabled ?? settings?.browserCdpEnabled ?? DEFAULT_SETTINGS.browserCdpEnabled)
   const [resumeLastSession, setResumeLastSession] = useState(draft0.resumeLastSession ?? settings?.resumeLastSession ?? DEFAULT_SETTINGS.resumeLastSession)
   const [openToHomeOnLaunch, setOpenToHomeOnLaunch] = useState(draft0.openToHomeOnLaunch ?? settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch)
   const [runOnStartup, setRunOnStartup] = useState(draft0.runOnStartup ?? settings?.runOnStartup ?? DEFAULT_SETTINGS.runOnStartup)
@@ -255,6 +256,7 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(draft.showThinking ?? settings.showThinking)
     setAutoScroll(draft.autoScroll ?? settings.autoScroll)
     setDesktopNotifications(draft.desktopNotifications ?? settings.desktopNotifications)
+    setBrowserCdpEnabled(draft.browserCdpEnabled ?? settings.browserCdpEnabled)
     setResumeLastSession(draft.resumeLastSession ?? settings.resumeLastSession)
     setOpenToHomeOnLaunch(draft.openToHomeOnLaunch ?? settings.openToHomeOnLaunch)
     setRunOnStartup(draft.runOnStartup ?? settings.runOnStartup)
@@ -482,6 +484,7 @@ export function SettingsPanel(): React.JSX.Element {
       showThinking: DEFAULT_SETTINGS.showThinking,
       autoScroll: DEFAULT_SETTINGS.autoScroll,
       desktopNotifications: DEFAULT_SETTINGS.desktopNotifications,
+      browserCdpEnabled: DEFAULT_SETTINGS.browserCdpEnabled,
       resumeLastSession: DEFAULT_SETTINGS.resumeLastSession,
       openToHomeOnLaunch: DEFAULT_SETTINGS.openToHomeOnLaunch,
       runOnStartup: DEFAULT_SETTINGS.runOnStartup,
@@ -497,6 +500,7 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(defaults.showThinking!)
     setAutoScroll(defaults.autoScroll!)
     setDesktopNotifications(defaults.desktopNotifications!)
+    setBrowserCdpEnabled(defaults.browserCdpEnabled!)
 
     setResumeLastSession(defaults.resumeLastSession!)
     setOpenToHomeOnLaunch(defaults.openToHomeOnLaunch!)
@@ -772,6 +776,13 @@ export function SettingsPanel(): React.JSX.Element {
             description={t(language, 'desktopNotificationsHint')}
           >
             <Toggle checked={desktopNotifications} onChange={(v) => { setDesktopNotifications(v); persistSettingPatch({ desktopNotifications: v }) }} />
+          </SettingsRow>
+
+          <SettingsRow
+            label={t(language, 'browserCdpEnabled')}
+            description={t(language, 'browserCdpEnabledHint')}
+          >
+            <Toggle checked={browserCdpEnabled} onChange={(v) => { setBrowserCdpEnabled(v); persistSettingPatch({ browserCdpEnabled: v }) }} />
           </SettingsRow>
 
           <SettingsRow
