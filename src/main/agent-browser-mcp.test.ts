@@ -5,9 +5,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   AGENT_BROWSER_MCP_NAME,
+  PANEL_MCP_NAME,
   browserMcpEntry,
   ensureAgentBrowserMcp,
+  extraResourcePath,
   mergeMcpServerEntry,
+  panelMcpEntry,
   removeAgentBrowserMcp,
   unpackedModulePath,
 } from './agent-browser-mcp'
@@ -187,5 +190,68 @@ describe('removeAgentBrowserMcp', () => {
     writeFileSync(mcpPath, '{ broken', 'utf-8')
     assert.equal(removeAgentBrowserMcp({ mcpPath }), false)
     assert.equal(readFileSync(mcpPath, 'utf-8'), '{ broken')
+  })
+})
+
+describe('panelMcpEntry', () => {
+  const entry = (): Record<string, unknown> =>
+    panelMcpEntry({
+      nodeExecutable: 'C://app//VesPi.exe',
+      serverPath: 'C://app//resources//resources//vespi-panel-mcp.mjs',
+      pipePath: '\\\\.\\pipe\\vespi-panel-abc123',
+      token: 'secret-token',
+    })
+
+  it('runs the panel server through the app executable as Node', () => {
+    assert.equal(entry().command, 'C://app//VesPi.exe')
+    assert.deepEqual(entry().args, ['C://app//resources//resources//vespi-panel-mcp.mjs'])
+    assert.equal((entry().env as Record<string, string>).ELECTRON_RUN_AS_NODE, '1')
+  })
+
+  // The pipe path and token are the whole access control story.
+  it('passes the pipe and token through the environment', () => {
+    const env = entry().env as Record<string, string>
+    assert.equal(env.VESPI_PANEL_PIPE, '\\\\.\\pipe\\vespi-panel-abc123')
+    assert.equal(env.VESPI_PANEL_TOKEN, 'secret-token')
+  })
+
+  it('is a separate server from the agent browser, so both can coexist', () => {
+    const merged = mergeMcpServerEntry(
+      mergeMcpServerEntry(null, AGENT_BROWSER_MCP_NAME, baseEntry()),
+      PANEL_MCP_NAME,
+      entry()
+    )
+    const parsed = JSON.parse(merged)
+    assert.deepEqual(Object.keys(parsed.mcpServers).sort(), ['browser', 'panel'])
+  })
+
+  it('can be removed again without touching the other server', () => {
+    const dir = makeTempDir()
+    const mcpPath = join(dir, 'mcp.json')
+    writeFileSync(
+      mcpPath,
+      mergeMcpServerEntry(mergeMcpServerEntry(null, AGENT_BROWSER_MCP_NAME, baseEntry()), PANEL_MCP_NAME, entry()),
+      'utf-8'
+    )
+    assert.equal(removeAgentBrowserMcp({ mcpPath, name: PANEL_MCP_NAME }), true)
+    const parsed = JSON.parse(readFileSync(mcpPath, 'utf-8'))
+    assert.deepEqual(Object.keys(parsed.mcpServers), [AGENT_BROWSER_MCP_NAME])
+  })
+})
+
+describe('extraResourcePath', () => {
+  // extraResources copies resources/ to resources/, so packaged is one level deeper.
+  it('resolves under resources/ when packaged', () => {
+    assert.equal(
+      extraResourcePath('C://app//resources', true, 'C://app//resources//app.asar', 'vespi-panel-mcp.mjs'),
+      join('C://app//resources', 'resources', 'vespi-panel-mcp.mjs')
+    )
+  })
+
+  it('resolves against the project when unpackaged', () => {
+    assert.equal(
+      extraResourcePath('/res', false, 'C://dev//app', 'vespi-panel-mcp.mjs'),
+      join('C://dev//app', 'resources', 'vespi-panel-mcp.mjs')
+    )
   })
 })

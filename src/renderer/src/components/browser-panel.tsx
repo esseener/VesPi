@@ -35,7 +35,16 @@ type LoadState =
   | { kind: 'ready' }
   | { kind: 'failed'; detail: string }
 
-export function BrowserPanel(): React.JSX.Element {
+/**
+ * A page the agent asked the panel to open. `nonce` makes a repeat request for
+ * the same URL a new object, so the effect below can tell them apart.
+ */
+export interface PanelOpenRequest {
+  url: string
+  nonce: number
+}
+
+export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest | null }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const insertPrompt = useAppStore((state) => state.insertPrompt)
   const [draft, setDraft] = useState('')
@@ -47,6 +56,20 @@ export function BrowserPanel(): React.JSX.Element {
   // panel. Only http(s) can attach to this partition, so say so.
   const [inputError, setInputError] = useState<string | null>(null)
   const webviewRef = useRef<HTMLElement | null>(null)
+
+  // The agent drives this panel through the main process (see panel-ops.ts).
+  // Applying its request here — rather than loading the guest directly — is what
+  // keeps the address bar and the page in agreement, and it is also how the
+  // panel comes into existence: the <webview> only mounts once it has a URL.
+  const appliedRequestRef = useRef(0)
+  useEffect(() => {
+    if (!openRequest || openRequest.nonce === appliedRequestRef.current) return
+    appliedRequestRef.current = openRequest.nonce
+    setInputError(null)
+    setDraft(openRequest.url)
+    setLoad({ kind: 'loading' })
+    setUrl(openRequest.url)
+  }, [openRequest])
 
   // The guest reports load progress only through DOM events, so the panel can
   // never render a silent blank page: a failure surfaces its reason and a

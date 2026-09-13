@@ -18,8 +18,18 @@ import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpens
 import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
 import { isWebviewAttachAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
-import { chromeExecutableCandidates, initAgentBrowser, pickChromeExecutable, startAgentBrowser } from './browser-cdp'
-import { browserMcpEntry, ensureAgentBrowserMcp, removeAgentBrowserMcp, unpackedModulePath } from './agent-browser-mcp'
+import { initAgentBrowser, startAgentBrowser, chromeExecutableCandidates, pickChromeExecutable } from './browser-cdp'
+import {
+  PANEL_MCP_NAME,
+  browserMcpEntry,
+  ensureAgentBrowserMcp,
+  extraResourcePath,
+  panelMcpEntry,
+  removeAgentBrowserMcp,
+  unpackedModulePath,
+} from './agent-browser-mcp'
+import { createPanelChannel, createPanelPipePath, createPanelToken, type PanelChannel } from './panel-channel'
+import { createPanelOps, type PanelGuestLike } from './panel-ops'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
 
@@ -82,6 +92,16 @@ let workspaceManager: WorkspaceManager | null = null
 // macOS dock-activate can all bring it back. `isQuitting` distinguishes a real
 // quit (menu/tray Quit, Cmd-Ctrl+Q) from a window close that should hide to tray.
 let mainWindow: BrowserWindow | null = null
+
+/**
+ * The browser panel's guest webContents, captured in `did-attach-webview`. Null
+ * until the panel is actually mounted — the panel's `<webview>` only exists once
+ * it has a URL, which is why opening a page is routed through the renderer.
+ */
+let panelGuest: PanelGuestLike | null = null
+
+/** The named-pipe channel the agent's panel tools arrive on. */
+let panelChannel: PanelChannel | null = null
 let isQuitting = false
 
 // Guards the renderer's unsaved editor buffer against teardown. The renderer
@@ -209,6 +229,78 @@ if (agentBrowser.port !== null) {
       )
     },
   })
+}
+
+// The kernel cannot reach the embedded panel at all: its target type is
+// `webview`, and the kernel's browser tools only accept `page` (verified in OMP
+// 18.1.17 and 18.1.18). VesPi can reach it, so it exposes the panel over a
+// named pipe instead — no listening port, a per-launch token, and nothing but
+// panel operations on the other end of it.
+if (agentBrowser.enabled) {
+  const panelServerPath = extraResourcePath(
+    process.resourcesPath,
+    app.isPackaged,
+    app.getAppPath(),
+    'vespi-panel-mcp.mjs'
+  )
+  const token = createPanelToken()
+  const pipePath = createPanelPipePath()
+  const panelMcpPath = join(vespiProfileAgentDir(), 'mcp.json')
+
+  if (!existsSync(panelServerPath)) {
+    appLog.warn('browser', 'Panel MCP server missing from this build; the panel tools stay unavailable', {
+      panelServerPath,
+    })
+    removeAgentBrowserMcp({ mcpPath: panelMcpPath, name: PANEL_MCP_NAME })
+  } else {
+    void createPanelChannel({
+      pipePath,
+      token,
+      handle: createPanelOps({
+        getGuest: () => panelGuest,
+        // Bringing the panel into view is the user's own requirement: the agent
+        // must act on the panel they are watching, not behind their back.
+        requestPanel: (url) => {
+          mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PANEL_SHOW, url ? { url } : {})
+        },
+      }),
+    })
+      .then((channel) => {
+        panelChannel = channel
+        const configured = ensureAgentBrowserMcp({
+          mcpPath: panelMcpPath,
+          name: PANEL_MCP_NAME,
+          entry: panelMcpEntry({
+            nodeExecutable: process.execPath,
+            serverPath: panelServerPath,
+            pipePath,
+            token,
+          }),
+        })
+        appLog[configured ? 'info' : 'warn'](
+          'browser',
+          configured ? 'Panel tools configured for the agent' : 'Could not write the panel MCP config',
+          { mcpPath: panelMcpPath, pipePath }
+        )
+      })
+      .catch((error: unknown) => {
+        appLog.error('browser', 'Could not start the panel channel', error)
+        removeAgentBrowserMcp({ mcpPath: panelMcpPath, name: PANEL_MCP_NAME })
+      })
+
+    // Release the pipe on the way out rather than letting the OS clean it up:
+    // a half-closed channel would leave the agent's tools hanging instead of
+    // reporting the panel as gone.
+    app.on('will-quit', () => {
+      void panelChannel?.close()
+    })
+  }
+} else {
+  // Feature off. Drop any entries a previous run left behind, so OMP does not
+  // keep spawning servers whose endpoint is not there.
+  const mcpPath = join(vespiProfileAgentDir(), 'mcp.json')
+  removeAgentBrowserMcp({ mcpPath })
+  removeAgentBrowserMcp({ mcpPath, name: PANEL_MCP_NAME })
 }
 
 // ─── Window Creation ─────────────────────────────────────────────────────────
@@ -438,6 +530,13 @@ function createMainWindow(): BrowserWindow {
   const browserSession = session.fromPartition(VESPI_BROWSER_PARTITION)
   window.webContents.on('did-attach-webview', (_event, guest) => {
     if (guest.session !== browserSession) return
+    // This is the handle the agent's panel tools operate through: VesPi owns the
+    // panel, so it can drive it with Electron's own API, while the kernel's
+    // CDP-based browser tools never can (see panel-channel.ts).
+    panelGuest = guest
+    guest.once('destroyed', () => {
+      if (panelGuest === guest) panelGuest = null
+    })
     guest.setWindowOpenHandler(({ url }) => {
       if (isHttpUrl(url)) void shell.openExternal(url)
       return { action: 'deny' }

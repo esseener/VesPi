@@ -206,9 +206,22 @@ export const IPC_CHANNELS = {
   EVENT_TERMINAL_DATA: 'event:terminal-data',
   EVENT_TERMINAL_EXIT: 'event:terminal-exit',
   EVENT_COUNCIL_PROGRESS: 'event:council-progress',
+  // Sent when the agent acts on the embedded browser panel: the shell brings the
+  // panel into view, and mounts it at `url` when the request carries one.
+  EVENT_PANEL_SHOW: 'event:panel-show',
 } as const
 
 // ─── Pi Process Types ───────────────────────────────────────────────────────
+
+/**
+ * Asks the renderer to bring the embedded browser panel into view. A `url` also
+ * opens that page in the panel, which is how the agent navigates it — the panel's
+ * `<webview>` only exists once it has a URL, and the address bar is driven by the
+ * same state, so routing navigation through the renderer keeps them in sync.
+ */
+export interface PanelShowRequest {
+  url?: string
+}
 
 export type PiProcessStatus = 'stopped' | 'starting' | 'running' | 'error'
 

@@ -20,6 +20,13 @@ import { dirname, join } from 'path'
  */
 export const AGENT_BROWSER_MCP_NAME = 'browser'
 
+/**
+ * Name of the entry that exposes VesPi's *own* browser panel. Two browser
+ * toolsets exist on purpose: `panel_*` drives the panel the user is watching,
+ * `browser_*` drives the separate browser VesPi launched for the agent.
+ */
+export const PANEL_MCP_NAME = 'panel'
+
 export interface BrowserMcpEntryOptions {
   /** The app executable, used as the Node runtime. */
   nodeExecutable: string
@@ -52,6 +59,47 @@ export function browserMcpEntry(options: BrowserMcpEntryOptions): Record<string,
 export function unpackedModulePath(resourcesPath: string, packaged: boolean, appPath: string, ...segments: string[]): string {
   const root = packaged ? join(resourcesPath, 'app.asar.unpacked', 'node_modules') : join(appPath, 'node_modules')
   return join(root, ...segments)
+}
+
+/** Where a file shipped through `extraResources` (`resources/` → `resources/`) lives. */
+export function extraResourcePath(
+  resourcesPath: string,
+  packaged: boolean,
+  appPath: string,
+  ...segments: string[]
+): string {
+  const root = packaged ? join(resourcesPath, 'resources') : join(appPath, 'resources')
+  return join(root, ...segments)
+}
+
+export interface PanelMcpEntryOptions {
+  /** The app executable, used as the Node runtime. */
+  nodeExecutable: string
+  /** Absolute path to the panel MCP server, outside the asar. */
+  serverPath: string
+  /** Named pipe the active VesPi instance is listening on. */
+  pipePath: string
+  /** Per-launch token; the only thing standing between a stray local process and the panel. */
+  token: string
+}
+
+/**
+ * Entry for the panel server. The pipe path and token go into the child's
+ * environment and nowhere else, so a local process that guesses the pipe name
+ * still cannot drive the panel.
+ */
+export function panelMcpEntry(options: PanelMcpEntryOptions): Record<string, unknown> {
+  return {
+    type: 'stdio',
+    command: options.nodeExecutable,
+    args: [options.serverPath],
+    env: {
+      ELECTRON_RUN_AS_NODE: '1',
+      VESPI_PANEL_PIPE: options.pipePath,
+      VESPI_PANEL_TOKEN: options.token,
+    },
+    timeout: 120000,
+  }
 }
 
 /**

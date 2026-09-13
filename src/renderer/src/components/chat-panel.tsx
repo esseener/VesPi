@@ -26,7 +26,7 @@ import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
 import { DiffViewer } from './diff-viewer'
 import { TerminalPanel } from './terminal'
-import { BrowserPanel } from './browser-panel'
+import { BrowserPanel, type PanelOpenRequest } from './browser-panel'
 import { SideTabPicker } from './side-tab-picker'
 import { ReviewRail } from './review-rail'
 import { useChatScroll, useGlobalWorkflowOpen } from '../hooks'
@@ -96,6 +96,21 @@ export function ChatPanel(): React.JSX.Element {
   }, [setPreviewTarget, setSidePanel])
   const [sidePanelWidth, setSidePanelWidth] = useState(DEFAULT_SIDE_PANEL_WIDTH)
   const [filePaneWidth, setFilePaneWidth] = useState(DEFAULT_FILE_PANE_WIDTH)
+
+  // When the agent acts on the embedded browser, the shell brings the panel into
+  // view so the user can see what it is doing. Navigation carries a url, which
+  // the panel applies itself — that is what creates the <webview> in the first
+  // place, and what keeps the address bar honest.
+  const [panelOpenRequest, setPanelOpenRequest] = useState<PanelOpenRequest | null>(null)
+  const panelRequestNonce = useRef(0)
+  useEffect(() => {
+    return window.piDesktop.onPanelShow((request) => {
+      void setSidePanel('browser')
+      if (!request.url) return
+      panelRequestNonce.current += 1
+      setPanelOpenRequest({ url: request.url, nonce: panelRequestNonce.current })
+    })
+  }, [setSidePanel])
 
   // One shared clock for all relative-time labels — refresh every 30s so
   // "5 minutes ago" stays current without each label owning a timer.
@@ -362,7 +377,7 @@ export function ChatPanel(): React.JSX.Element {
             <div className="flex min-w-0 flex-1 overflow-hidden">
               {showPicker && <SideTabPicker />}
               {showReview && <ReviewRail embedded />}
-              {showBrowser && <BrowserPanel />}
+              {showBrowser && <BrowserPanel openRequest={panelOpenRequest} />}
               {showFileTree && (
                 <>
                   <div className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>

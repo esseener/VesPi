@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
 import type {
+  PanelShowRequest,
   PiRpcEvent,
   PiStartOptions,
   PiStatus,
@@ -360,6 +361,7 @@ interface PiDesktopAPI {
   onSessionRuntime(callback: (runtime: SessionRuntimeInfo) => void): () => void
   onActivateWorkspace(callback: (payload: WorkspaceActivationIntent) => void): () => void
   onFileChange(callback: (event: FileChangeEvent) => void): () => void
+  onPanelShow(callback: (request: PanelShowRequest) => void): () => void
   onMenuAction(callback: (action: string) => void): () => void
 }
 
@@ -660,6 +662,14 @@ const api: PiDesktopAPI = {
     ipcRenderer.on(IPC_CHANNELS.EVENT_ACTIVATE_WORKSPACE, handler)
     return () => {
       ipcRenderer.removeListener(IPC_CHANNELS.EVENT_ACTIVATE_WORKSPACE, handler)
+    }
+  },
+
+  onPanelShow: (callback: (request: PanelShowRequest) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, data: PanelShowRequest) => callback(data ?? {})
+    ipcRenderer.on(IPC_CHANNELS.EVENT_PANEL_SHOW, handler)
+    return () => {
+      ipcRenderer.removeListener(IPC_CHANNELS.EVENT_PANEL_SHOW, handler)
     }
   },
 
