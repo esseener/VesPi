@@ -28,7 +28,7 @@ import { useEffect } from 'react'
 import { clsx } from 'clsx'
 import { ArrowUpCircle, FolderOpen, PanelLeft, X } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../shared/i18n'
-import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel } from './utils/kernel-update-progress'
+import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel, visibleUpdateRows } from './utils/kernel-update-progress'
 
 
 export function App(): React.JSX.Element {
@@ -54,6 +54,14 @@ export function App(): React.JSX.Element {
   const uiBusy = kernelUpdateBusy(uiUpdateProgress)
   const uiDone = uiUpdateProgress?.phase === 'done'
   const uiFailed = uiUpdateProgress?.phase === 'error'
+  // Which lines the banner shows. Decided per channel so one update's progress
+  // can never hide the other's line — see visibleUpdateRows.
+  const updateRows = visibleUpdateRows({
+    uiAvailable: Boolean(updateInfo?.updateAvailable),
+    kernelAvailable: Boolean(updateInfo?.kernel.updateAvailable),
+    uiProgress: uiUpdateProgress,
+    kernelProgress: kernelUpdateProgress,
+  })
   const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
   const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
   const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
@@ -137,87 +145,91 @@ export function App(): React.JSX.Element {
             </div>
           </div>
         </div>
-      )}
-      {showUpdateBanner && (
+      )}      {showUpdateBanner && (
         <div className="titlebar-no-drag relative z-50 flex shrink-0 items-center justify-center gap-3 border-b border-border bg-app/95 px-4 py-1.5 text-xs text-primary">
           <ArrowUpCircle size={14} className="shrink-0" />
-          {updateCheckFailed && !kernelBusy && (
-            <span className="min-w-0 truncate text-error">
-              {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
-            </span>
-          )}
-          {/* Both channels render side by side. The UI row used to be hidden
-              while the kernel was busy, which read as one update replacing the
-              other; the two downloads are independent and both have to be
-              visible. Applying them is what gets ordered (see update-order.ts). */}
-          {(updateInfo?.updateAvailable || uiBusy || uiDone || uiFailed) && (
-            <>
-              <span className={clsx('min-w-0 truncate', uiDone && 'text-success', uiFailed && 'text-error')}>
-                {uiBusy || uiDone || uiFailed
-                  ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
-                  : t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}
-              </span>
-              {uiBusy ? (
-                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-border" aria-hidden="true">
-                  <div
-                    className="h-full bg-accent-fg transition-[width] duration-200"
-                    style={{ width: `${kernelUpdateBarPercent(uiUpdateProgress)}%` }}
-                  />
-                </div>
-              ) : uiFailed ? (
-                <button
-                  type="button"
-                  onClick={() => void installUiUpdate()}
-                  className="titlebar-no-drag rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
-                >
-                  {t(language, 'download')}
-                </button>
-              ) : uiDone ? null : (
-                <button
-                  type="button"
-                  onClick={() => void installUiUpdate()}
-                  disabled={!updateInfo?.installerUrl && !updateInfo?.url}
-                  className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
-                >
-                  {t(language, 'download')}
-                </button>
-              )}
-            </>
-          )}
-          {(updateInfo?.kernel.updateAvailable || kernelBusy || kernelDone || kernelFailed) && (
-            <>
-              <span className={clsx('min-w-0 truncate', kernelDone && 'text-success', kernelFailed && 'text-error')}>
-                {kernelBusy || kernelDone || kernelFailed
-                  ? kernelUpdateLabel(language, kernelUpdateProgress)
-                  : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion}` })}
-              </span>
-              {kernelBusy ? (
-                <div className="h-1.5 w-28 overflow-hidden rounded-full bg-border" aria-hidden="true">
-                  <div
-                    className="h-full bg-accent-fg transition-[width] duration-200"
-                    style={{ width: `${kernelUpdateBarPercent(kernelUpdateProgress)}%` }}
-                  />
-                </div>
-              ) : kernelFailed ? (
-                <button
-                  type="button"
-                  onClick={() => void installKernelUpdate()}
-                  className="titlebar-no-drag rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
-                >
-                  {t(language, 'updateKernel')}
-                </button>
-              ) : kernelDone ? null : (
-                <button
-                  type="button"
-                  onClick={() => void installKernelUpdate()}
-                  disabled={!updateInfo?.kernel.downloadUrl}
-                  className="titlebar-no-drag rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
-                >
-                  {t(language, 'updateKernel')}
-                </button>
-              )}
-            </>
-          )}
+          {/*
+            One line per channel, each pairing its own sentence with its own
+            control. Both sentences and both buttons used to share a single row,
+            so which button belonged to which sentence was a guess. Showing the
+            two updates side by side is deliberate; only *applying* them is
+            ordered (see update-order.ts).
+          */}
+          <div className="flex min-w-0 flex-col gap-1">
+            {updateCheckFailed && !kernelBusy && (
+              <div className="min-w-0 truncate text-error">
+                {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
+              </div>
+            )}
+            {updateRows.ui && (
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={clsx('min-w-0 truncate', uiDone && 'text-success', uiFailed && 'text-error')}>
+                  {uiBusy || uiDone || uiFailed
+                    ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
+                    : t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}
+                </span>
+                {uiBusy ? (
+                  <div className="h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                    <div
+                      className="h-full bg-accent-fg transition-[width] duration-200"
+                      style={{ width: `${kernelUpdateBarPercent(uiUpdateProgress)}%` }}
+                    />
+                  </div>
+                ) : uiFailed ? (
+                  <button
+                    type="button"
+                    onClick={() => void installUiUpdate()}
+                    className="titlebar-no-drag shrink-0 rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
+                  >
+                    {t(language, 'download')}
+                  </button>
+                ) : uiDone ? null : (
+                  <button
+                    type="button"
+                    onClick={() => void installUiUpdate()}
+                    disabled={!updateInfo?.installerUrl && !updateInfo?.url}
+                    className="titlebar-no-drag shrink-0 rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                  >
+                    {t(language, 'download')}
+                  </button>
+                )}
+              </div>
+            )}
+            {updateRows.kernel && (
+              <div className="flex min-w-0 items-center gap-2">
+                <span className={clsx('min-w-0 truncate', kernelDone && 'text-success', kernelFailed && 'text-error')}>
+                  {kernelBusy || kernelDone || kernelFailed
+                    ? kernelUpdateLabel(language, kernelUpdateProgress)
+                    : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion}` })}
+                </span>
+                {kernelBusy ? (
+                  <div className="h-1.5 w-28 shrink-0 overflow-hidden rounded-full bg-border" aria-hidden="true">
+                    <div
+                      className="h-full bg-accent-fg transition-[width] duration-200"
+                      style={{ width: `${kernelUpdateBarPercent(kernelUpdateProgress)}%` }}
+                    />
+                  </div>
+                ) : kernelFailed ? (
+                  <button
+                    type="button"
+                    onClick={() => void installKernelUpdate()}
+                    className="titlebar-no-drag shrink-0 rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
+                  >
+                    {t(language, 'updateKernel')}
+                  </button>
+                ) : kernelDone ? null : (
+                  <button
+                    type="button"
+                    onClick={() => void installKernelUpdate()}
+                    disabled={!updateInfo?.kernel.downloadUrl}
+                    className="titlebar-no-drag shrink-0 rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                  >
+                    {t(language, 'updateKernel')}
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <button
             onClick={dismissUpdate}
             className="rounded-sm p-0.5 text-muted hover:text-primary transition-colors"

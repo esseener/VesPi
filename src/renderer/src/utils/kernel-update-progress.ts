@@ -12,6 +12,32 @@ export function kernelUpdateBusy(progress: KernelUpdateProgress | null): boolean
   return Boolean(progress && progress.phase !== 'done' && progress.phase !== 'error')
 }
 
+export interface UpdateRowVisibility {
+  ui: boolean
+  kernel: boolean
+}
+
+/**
+ * Which update lines the banner shows.
+ *
+ * Each channel is decided on its own: its line appears when its release is
+ * available, or when its own install has something to report. **Neither depends
+ * on the other channel's progress** — the banner used to hide the UI line
+ * whenever the kernel was busy, so starting one update made the other vanish.
+ * Showing them is independent; only *applying* them is ordered (update-order.ts).
+ */
+export function visibleUpdateRows(input: {
+  uiAvailable: boolean
+  kernelAvailable: boolean
+  uiProgress: KernelUpdateProgress | null
+  kernelProgress: KernelUpdateProgress | null
+}): UpdateRowVisibility {
+  return {
+    ui: input.uiAvailable || input.uiProgress !== null,
+    kernel: input.kernelAvailable || input.kernelProgress !== null,
+  }
+}
+
 export function kernelUpdateLabel(
   language: AppLanguage,
   progress: KernelUpdateProgress | null,
