@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { join, sep } from 'node:path'
+import { join, resolve, sep } from 'node:path'
 import {
   PI_CLI_REL,
   PI_FALLBACK_BINARY_POSIX,
@@ -17,6 +17,7 @@ import {
   resolvePiBinary,
   versionManagerPrefixes,
 } from './pi-binary-resolution'
+import { VESPI_PRIVATE_OMP_REL } from '../shared/vespi'
 import type { CaptureOptions, ResolutionDeps } from './pi-binary-resolution'
 
 const POSIX_HOME = '/Users/tester'
@@ -619,4 +620,60 @@ test('describePiResolutionFailure gives install guidance when nothing was config
   const message = describePiResolutionFailure(resolvePiBinary(deps, null))
   assert.match(message, /npm install -g @earendil-works\/pi-coding-agent/)
   assert.match(message, /Settings/)
+})
+
+// ─── The bundled kernel is trusted by path, not by running it ─────────────────
+
+test('resolvePiBinary takes the app-owned OMP without probing it', () => {
+  // The kernel VesPi ships and installs itself is an absolute path inside its own
+  // resources, so it is not the "same-named file from user space" the identity
+  // probe exists to reject. Probing it meant spawning a ~154 MB binary on every
+  // launch — and a probe that ran out of budget read as "OMP is not installed",
+  // silently running Pi for the session instead.
+  const packaged = join('C:////Program Files\\VesPi\\resources', VESPI_PRIVATE_OMP_REL)
+  const deps = fakeDeps({
+    isWindows: true,
+    env: { USERPROFILE: WINDOWS_HOME, PATH: '', VESPI_RESOURCES_PATH: 'C:////Program Files\\VesPi\\resources' },
+    files: [packaged],
+    // Deliberately useless output: if the owned kernel were still probed, this
+    // would read as "cannot run" and the resolution would fall back.
+    captures: { [versionProbe(packaged)]: 'usage: something else\n' },
+  })
+
+  const resolution = resolvePiBinary(deps, null)
+
+  assert.equal(resolution.script, packaged)
+  assert.equal(resolution.source, 'omp')
+  assert.equal(resolution.found, true)
+})
+
+test('resolvePiBinary still probes an OMP found by guessing the working directory', () => {
+  // Same layout, but discovered from the cwd rather than from the app's own path:
+  // a stray tree that happens to contain runtime/omp/omp.exe must prove it runs.
+  const guessed = resolve(process.cwd(), '..', VESPI_PRIVATE_OMP_REL)
+  const deps = fakeDeps({ env: { HOME: POSIX_HOME, PATH: '' }, files: [guessed], captures: {} })
+
+  const resolution = resolvePiBinary(deps, null)
+
+  assert.equal(resolution.found, false)
+  assert.equal(resolution.source, 'fallback')
+})
+
+test('resolvePiBinary still probes a foreign omp even when the owned one exists', () => {
+  // The owned kernel is missing here, so the PATH candidate is the one under
+  // test: it is a short, common name in user space, and must answer.
+  const foreign = join(POSIX_HOME, 'bin', 'omp')
+  const silent = fakeDeps({
+    env: { HOME: POSIX_HOME, PATH: join(POSIX_HOME, 'bin') },
+    files: [foreign],
+    captures: {},
+  })
+  assert.equal(resolvePiBinary(silent, null).found, false)
+
+  const answering = fakeDeps({
+    env: { HOME: POSIX_HOME, PATH: join(POSIX_HOME, 'bin') },
+    files: [foreign],
+    captures: { [versionProbe(foreign)]: OMP_VERSION_OUTPUT },
+  })
+  assert.equal(resolvePiBinary(answering, null).script, foreign)
 })

@@ -1,5 +1,5 @@
 import { ipcMain, app, BrowserWindow, net, session, shell } from 'electron'
-import { createWriteStream, createReadStream } from 'fs'
+import { createWriteStream, createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -10,6 +10,11 @@ import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
 import { updateOrder } from '../update-order'
+import {
+  formatInstalledKernelMarker,
+  installedKernelMarkerPath,
+  readInstalledKernelVersion,
+} from '../kernel-version-marker'
 import { extractVersionLine } from '../diagnostics-report'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'
@@ -196,14 +201,60 @@ export function pickLatestRelease(releases: GithubRelease[], includePrerelease =
   return latest
 }
 
+/**
+ * The version of the kernel currently on disk.
+ *
+ * The marker is tried first. Asking the binary directly means spawning a ~154 MB
+ * Bun build, and this runs on launch and every 30 minutes; a marker that cannot
+ * be trusted (absent, or describing a different file) falls through to the probe.
+ *
+ * The probe asks for the **omp** engine explicitly: the ambient resolution can
+ * be Pi, and Pi's version is not the kernel's version.
+ */
 async function currentOmpVersion(): Promise<string> {
+  const dest = resolvePrivateOmpPath()
+  const cached = dest ? readCachedKernelVersion(dest) : null
+  if (cached) return cached
+
   const cwd = process.env.HOME ?? process.env.USERPROFILE ?? process.cwd()
-  const result = await runPiCli(['--version'], cwd, 8_000)
+  const result = await runPiCli(['--version'], cwd, 8_000, 'omp')
   if (!result.success) return ''
   const line = extractVersionLine(result.output)
   if (!line) return ''
   const match = line.match(/(\d+\.\d+\.\d+(?:-[0-9A-Za-z.]+)?)/)
-  return match?.[1] ?? line
+  const version = match?.[1] ?? line
+  // Record it, so the next check does not have to run the kernel again.
+  if (dest) writeKernelVersionMarker(dest, version)
+  return version
+}
+
+/** The version a marker records for this binary, or null when it cannot vouch. */
+function readCachedKernelVersion(ompPath: string): string | null {
+  try {
+    const markerPath = installedKernelMarkerPath(ompPath)
+    if (!existsSync(markerPath)) return null
+    const stat = statSync(ompPath)
+    return readInstalledKernelVersion(readFileSync(markerPath, 'utf-8'), {
+      size: stat.size,
+      mtimeMs: stat.mtimeMs,
+    })
+  } catch {
+    return null
+  }
+}
+
+/** Best-effort: a marker that cannot be written only costs the next probe. */
+function writeKernelVersionMarker(ompPath: string, version: string): void {
+  try {
+    const stat = statSync(ompPath)
+    writeFileSync(
+      installedKernelMarkerPath(ompPath),
+      formatInstalledKernelMarker(version, { size: stat.size, mtimeMs: stat.mtimeMs }),
+      'utf-8',
+    )
+  } catch {
+    // Nothing to recover: the version is still discoverable by probing.
+  }
 }
 
 async function checkVespiUpdate(): Promise<Omit<UpdateCheckResult, 'kernel'>> {
@@ -504,6 +555,9 @@ async function installKernelUpdateInner(): Promise<{ ok: true; version: string }
       await unlink(staged)
     }
     if (process.platform !== 'win32') await chmod(dest, 0o755)
+    // We know exactly what we just put there, so record it instead of making the
+    // next update check spawn the kernel to ask.
+    writeKernelVersionMarker(dest, kernel.latestVersion)
     appLog.warn('updates', `Installed OMP kernel ${kernel.latestVersion} at ${dest}`)
     broadcastKernelProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
     return { ok: true, version: kernel.latestVersion }

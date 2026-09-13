@@ -29,8 +29,18 @@ export const SHELL_PATH_END = '__PI_PATH_END__'
 /** A login shell sources the user's whole rc chain; give it room but bound it. */
 export const SHELL_PROBE_TIMEOUT_MS = 5_000
 export const NPM_PREFIX_TIMEOUT_MS = 5_000
-/** `--version` prints a cached string and exits; it never waits on the network. */
-const IDENTITY_PROBE_TIMEOUT_MS = 5_000
+/**
+ * `--version` prints a cached string and exits; it never waits on the network.
+ *
+ * The budget is generous because the two failure modes are not symmetric. A
+ * candidate that is *not* a CLI fails fast — a spawn error, or output containing
+ * no version — so a large timeout costs nothing in that case; it only bounds a
+ * candidate that hangs. A candidate that *is* a valid CLI but responds slowly
+ * (the bundled kernel is a ~154 MB Bun build, measured at 1.4-1.8 s) would be
+ * misread as absent, and "absent" silently runs the other engine for the whole
+ * session. Paying a longer wait in a rare case beats that.
+ */
+const IDENTITY_PROBE_TIMEOUT_MS = 20_000
 const VERSION_FLAG = '--version'
 /** Any dotted number in the output: both `0.4.1` and `omp 0.4.1` qualify. */
 const VERSION_OUTPUT_PATTERN = /\d+\.\d+/
@@ -362,7 +372,11 @@ function npmGlobalPrefix(deps: ResolutionDeps, pathEnv: string): string | null {
   return prefix
 }
 
-function privateOmpCandidates(deps: ResolutionDeps): string[] {
+/**
+ * Bundled-kernel locations derived from the app's own paths — the file this app
+ * installs and ships, not a same-named file somewhere in user space.
+ */
+function ownedOmpCandidates(deps: ResolutionDeps): string[] {
   const appPath = deps.env.VESPI_APP_PATH
   const resourcesPath = deps.env.VESPI_RESOURCES_PATH
   const out: string[] = []
@@ -371,14 +385,35 @@ function privateOmpCandidates(deps: ResolutionDeps): string[] {
     out.push(join(dirname(appPath), VESPI_PRIVATE_OMP_REL))
     out.push(join(dirname(appPath), 'resources', VESPI_PRIVATE_OMP_REL))
   }
+  return out.filter(Boolean)
+}
+
+function privateOmpCandidates(deps: ResolutionDeps): string[] {
+  const out: string[] = [...ownedOmpCandidates(deps)]
   // Dev builds run from the repository or desktop package directory, where the
-  // bundled kernel lives outside the Electron executable's directory.
+  // bundled kernel lives outside the Electron executable's directory. These are
+  // guesses about the working directory, so they are deliberately NOT treated as
+  // owned below — a stray tree that happens to contain `runtime/omp/omp.exe`
+  // must still prove it can run.
   out.push(
     resolve(process.cwd(), VESPI_PRIVATE_OMP_REL),
     resolve(process.cwd(), '..', VESPI_PRIVATE_OMP_REL),
     resolve(process.cwd(), '..', '..', VESPI_PRIVATE_OMP_REL),
   )
   return [...new Set(out.filter(Boolean))]
+}
+
+/** Path equality that tolerates separator style and Windows case-insensitivity. */
+function samePath(a: string, b: string, isWindows: boolean): boolean {
+  const normalize = (value: string): string => value.replace(/[\\/]+/g, '/').replace(/\/+$/, '')
+  const left = normalize(a)
+  const right = normalize(b)
+  return isWindows ? left.toLowerCase() === right.toLowerCase() : left === right
+}
+
+/** Whether a candidate is the app's own bundled kernel, by path. */
+function isOwnedOmpCandidate(deps: ResolutionDeps, candidate: string): boolean {
+  return ownedOmpCandidates(deps).some((owned) => samePath(owned, candidate, deps.isWindows))
 }
 
 
@@ -463,6 +498,17 @@ function respondsToVersion(deps: ResolutionDeps, script: string, pathEnv: string
  */
 function resolveVerifiedOmpBinary(deps: ResolutionDeps, pathEnv: string): string | null {
   for (const candidate of ompCandidates(deps, pathEnv)) {
+    // The bundled kernel is this app's own file at an absolute path inside its
+    // own resources: written by our installer, or by our own checksum-verified
+    // download. The identity probe below exists to reject a *same-named* file
+    // from a user-space location, which that is not.
+    //
+    // Probing it anyway meant spawning a ~154 MB binary on every launch. That is
+    // slow enough — 1.4 s idle, more on a busy machine — for the probe budget to
+    // run out, and a probe that fails for any reason reads as "OMP is not
+    // installed": the session then silently runs Pi instead. Not spawning is both
+    // cheaper and more reliable.
+    if (isOwnedOmpCandidate(deps, candidate)) return candidate
     if (respondsToVersion(deps, candidate, pathEnv)) return candidate
   }
   return null
