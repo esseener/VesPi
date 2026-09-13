@@ -9,6 +9,7 @@ import { tmpdir } from 'os'
 import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
+import { updateOrder } from '../update-order'
 import { extractVersionLine } from '../diagnostics-report'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'
@@ -438,7 +439,21 @@ async function probeBinaryVersion(binaryPath: string): Promise<string | null> {
   }
 }
 
+/**
+ * Install the newest OMP kernel.
+ *
+ * Serialized against other kernel applies (the swap is not reentrant) and
+ * refused once the UI installer has taken over the app — see `update-order.ts`
+ * for why the two must be ordered rather than raced.
+ */
 export async function installKernelUpdate(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
+  if (updateOrder.hasUiInstallerLaunched()) {
+    return { ok: false, error: '界面更新已经开始安装，请等它完成并重启后再更新内核' }
+  }
+  return updateOrder.trackKernelApply(() => installKernelUpdateInner())
+}
+
+async function installKernelUpdateInner(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
   const kernel = await checkKernelUpdate()
   if (!kernel.updateAvailable) return { ok: false, error: 'OMP kernel is already up to date' }
   if (!kernel.downloadUrl) return { ok: false, error: 'No OMP binary is published for this platform' }
@@ -546,9 +561,14 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     })
     broadcastUiProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
     await verifyReleaseAsset(vespi.installerUrl, dest)
+    // Ordering: this installer ends by restarting the app, so a kernel swap must
+    // not be in flight when it runs. The kernel is a local file swap that
+    // finishes in milliseconds, so it goes first and this waits for it.
+    await updateOrder.waitForKernelApply()
     const opened = await shell.openPath(dest)
     if (opened) throw new Error(opened)
     openedInstaller = true
+    updateOrder.markUiInstallerLaunched()
     // "done" means the verified installer was launched; installation itself is
     // owned by Windows and can still be cancelled by the user.
     broadcastUiProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })

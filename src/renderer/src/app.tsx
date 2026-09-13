@@ -146,7 +146,11 @@ export function App(): React.JSX.Element {
               {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
             </span>
           )}
-          {(updateInfo?.updateAvailable || uiBusy || uiDone || uiFailed) && !kernelBusy && (
+          {/* Both channels render side by side. The UI row used to be hidden
+              while the kernel was busy, which read as one update replacing the
+              other; the two downloads are independent and both have to be
+              visible. Applying them is what gets ordered (see update-order.ts). */}
+          {(updateInfo?.updateAvailable || uiBusy || uiDone || uiFailed) && (
             <>
               <span className={clsx('min-w-0 truncate', uiDone && 'text-success', uiFailed && 'text-error')}>
                 {uiBusy || uiDone || uiFailed
