@@ -175,7 +175,7 @@ export function AboutPanel(): React.JSX.Element {
                   <span className={`min-w-0 flex-1 truncate ${uiDone ? 'text-success' : uiFailed ? 'text-error' : ''}`}>
                     {uiBusy || uiDone || uiFailed
                       ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
-                      : `${t(language, 'updateHasUpdate')} · ${t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}`}
+                      : t(language, 'updateAvailable', { latest: `v${updateInfo!.latestVersion}`, current: `v${updateInfo!.currentVersion}` })}
                   </span>
                   <span className="shrink-0 text-xs text-dim">
                     {uiBusy ? `${kernelUpdateBarPercent(uiUpdateProgress)}%` : t(language, 'download')}
@@ -209,7 +209,7 @@ export function AboutPanel(): React.JSX.Element {
                   <span className={`min-w-0 flex-1 truncate ${kernelDone ? 'text-success' : kernelFailed ? 'text-error' : ''}`}>
                     {installing || kernelBusy || kernelDone || kernelFailed
                       ? kernelUpdateLabel(language, kernelUpdateProgress)
-                      : `${t(language, 'updateHasUpdate')} · ${t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion || ompVersion}` })}`}
+                      : t(language, 'kernelUpdateAvailable', { latest: `v${updateInfo!.kernel.latestVersion}`, current: `v${updateInfo!.kernel.currentVersion || ompVersion}` })}
                   </span>
                   <span className="shrink-0 text-xs text-dim">
                     {installing || kernelBusy
@@ -230,6 +230,9 @@ export function AboutPanel(): React.JSX.Element {
                   </div>
                 )}
               </div>
+            )}
+            {updateInfo?.updateAvailable && updateInfo?.kernel.updateAvailable && (
+              <p className="text-xs text-dim">{t(language, 'updateOrderHint')}</p>
             )}
             {(kernelMessage || kernelDone) && <p className="text-xs text-success">{kernelMessage || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}
             {(kernelError || kernelFailed) && <p className="text-xs text-error">{kernelError || kernelUpdateLabel(language, kernelUpdateProgress)}</p>}

@@ -155,14 +155,20 @@ export function App(): React.JSX.Element {
             two updates side by side is deliberate; only *applying* them is
             ordered (see update-order.ts).
           */}
-          <div className="flex min-w-0 flex-col gap-1">
+          {/*
+            One line when it fits, wrapping only when the window is too narrow.
+            Each update is its own bordered unit so which button belongs to which
+            sentence is never a guess, and the arrow icon + border grouping carry
+            the "these are two separate things" reading without needing two rows.
+          */}
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1">
             {updateCheckFailed && !kernelBusy && (
               <div className="min-w-0 truncate text-error">
                 {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
               </div>
             )}
             {updateRows.ui && (
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-sm border border-border px-2 py-0.5">
                 <span className={clsx('min-w-0 truncate', uiDone && 'text-success', uiFailed && 'text-error')}>
                   {uiBusy || uiDone || uiFailed
                     ? kernelUpdateLabel(language, uiUpdateProgress, 'ui')
@@ -178,6 +184,7 @@ export function App(): React.JSX.Element {
                 ) : uiFailed ? (
                   <button
                     type="button"
+                    title={t(language, 'updateOrderHint')}
                     onClick={() => void installUiUpdate()}
                     className="titlebar-no-drag shrink-0 rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
                   >
@@ -186,6 +193,7 @@ export function App(): React.JSX.Element {
                 ) : uiDone ? null : (
                   <button
                     type="button"
+                    title={t(language, 'updateOrderHint')}
                     onClick={() => void installUiUpdate()}
                     disabled={!updateInfo?.installerUrl && !updateInfo?.url}
                     className="titlebar-no-drag shrink-0 rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
@@ -196,7 +204,7 @@ export function App(): React.JSX.Element {
               </div>
             )}
             {updateRows.kernel && (
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="flex min-w-0 items-center gap-2 rounded-sm border border-border px-2 py-0.5">
                 <span className={clsx('min-w-0 truncate', kernelDone && 'text-success', kernelFailed && 'text-error')}>
                   {kernelBusy || kernelDone || kernelFailed
                     ? kernelUpdateLabel(language, kernelUpdateProgress)
@@ -212,6 +220,7 @@ export function App(): React.JSX.Element {
                 ) : kernelFailed ? (
                   <button
                     type="button"
+                    title={t(language, 'updateOrderHint')}
                     onClick={() => void installKernelUpdate()}
                     className="titlebar-no-drag shrink-0 rounded-sm border border-error px-2 py-0.5 font-medium text-error transition-colors hover:border-error-hover"
                   >
@@ -220,6 +229,7 @@ export function App(): React.JSX.Element {
                 ) : kernelDone ? null : (
                   <button
                     type="button"
+                    title={t(language, 'updateOrderHint')}
                     onClick={() => void installKernelUpdate()}
                     disabled={!updateInfo?.kernel.downloadUrl}
                     className="titlebar-no-drag shrink-0 rounded-sm border border-border-strong px-2 py-0.5 font-medium text-muted transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
