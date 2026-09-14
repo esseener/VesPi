@@ -1179,6 +1179,10 @@ export interface AppSettings {
   // Show OS desktop notifications when a turn finishes, fails, or waits for
   // approval in a workspace the user is not currently looking at.
   desktopNotifications: boolean
+  /** Play a short chime when a turn finishes. */
+  completionChime: boolean
+  /** Peak loudness of that chime, 0-1. */
+  completionChimeVolume: number
   // Launch a dedicated Chromium-family browser on a loopback debugging port and
   // point the agent's `browser` tool at it, so the model drives a browser the
   // user can see and take over — instead of its own invisible headless one.

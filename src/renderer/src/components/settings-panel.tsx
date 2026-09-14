@@ -1,4 +1,5 @@
 import { useAppStore } from '../store'
+import { playCompletionChime } from '../completion-chime'
 import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/agent-engine-label'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { clsx } from 'clsx'
@@ -88,6 +89,8 @@ export function SettingsPanel(): React.JSX.Element {
   const [showThinking, setShowThinking] = useState(draft0.showThinking ?? settings?.showThinking ?? DEFAULT_SETTINGS.showThinking)
   const [autoScroll, setAutoScroll] = useState(draft0.autoScroll ?? settings?.autoScroll ?? DEFAULT_SETTINGS.autoScroll)
   const [desktopNotifications, setDesktopNotifications] = useState(draft0.desktopNotifications ?? settings?.desktopNotifications ?? DEFAULT_SETTINGS.desktopNotifications)
+  const [completionChime, setCompletionChime] = useState(draft0.completionChime ?? settings?.completionChime ?? DEFAULT_SETTINGS.completionChime)
+  const [completionChimeVolume, setCompletionChimeVolume] = useState(draft0.completionChimeVolume ?? settings?.completionChimeVolume ?? DEFAULT_SETTINGS.completionChimeVolume)
   const [agentBrowserEnabled, setBrowserCdpEnabled] = useState(draft0.agentBrowserEnabled ?? settings?.agentBrowserEnabled ?? DEFAULT_SETTINGS.agentBrowserEnabled)
   const [resumeLastSession, setResumeLastSession] = useState(draft0.resumeLastSession ?? settings?.resumeLastSession ?? DEFAULT_SETTINGS.resumeLastSession)
   const [openToHomeOnLaunch, setOpenToHomeOnLaunch] = useState(draft0.openToHomeOnLaunch ?? settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch)
@@ -256,6 +259,8 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(draft.showThinking ?? settings.showThinking)
     setAutoScroll(draft.autoScroll ?? settings.autoScroll)
     setDesktopNotifications(draft.desktopNotifications ?? settings.desktopNotifications)
+    setCompletionChime(draft.completionChime ?? settings.completionChime)
+    setCompletionChimeVolume(draft.completionChimeVolume ?? settings.completionChimeVolume)
     setBrowserCdpEnabled(draft.agentBrowserEnabled ?? settings.agentBrowserEnabled)
     setResumeLastSession(draft.resumeLastSession ?? settings.resumeLastSession)
     setOpenToHomeOnLaunch(draft.openToHomeOnLaunch ?? settings.openToHomeOnLaunch)
@@ -484,6 +489,8 @@ export function SettingsPanel(): React.JSX.Element {
       showThinking: DEFAULT_SETTINGS.showThinking,
       autoScroll: DEFAULT_SETTINGS.autoScroll,
       desktopNotifications: DEFAULT_SETTINGS.desktopNotifications,
+      completionChime: DEFAULT_SETTINGS.completionChime,
+      completionChimeVolume: DEFAULT_SETTINGS.completionChimeVolume,
       agentBrowserEnabled: DEFAULT_SETTINGS.agentBrowserEnabled,
       resumeLastSession: DEFAULT_SETTINGS.resumeLastSession,
       openToHomeOnLaunch: DEFAULT_SETTINGS.openToHomeOnLaunch,
@@ -500,6 +507,8 @@ export function SettingsPanel(): React.JSX.Element {
     setShowThinking(defaults.showThinking!)
     setAutoScroll(defaults.autoScroll!)
     setDesktopNotifications(defaults.desktopNotifications!)
+    setCompletionChime(defaults.completionChime!)
+    setCompletionChimeVolume(defaults.completionChimeVolume!)
     setBrowserCdpEnabled(defaults.agentBrowserEnabled!)
 
     setResumeLastSession(defaults.resumeLastSession!)
@@ -776,6 +785,41 @@ export function SettingsPanel(): React.JSX.Element {
             description={t(language, 'desktopNotificationsHint')}
           >
             <Toggle checked={desktopNotifications} onChange={(v) => { setDesktopNotifications(v); persistSettingPatch({ desktopNotifications: v }) }} />
+          </SettingsRow>
+
+          <SettingsRow label={t(language, 'completionChime')} description={t(language, 'completionChimeHint')}>
+            <Toggle checked={completionChime} onChange={(v) => { setCompletionChime(v); persistSettingPatch({ completionChime: v }) }} />
+          </SettingsRow>
+
+          <SettingsRow label={t(language, 'completionChimeVolume')} description={t(language, 'completionChimeVolumeHint')}>
+            <div className="flex items-center gap-3">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                value={Math.round(completionChimeVolume * 100)}
+                disabled={!completionChime}
+                onChange={(e) => {
+                  const next = Number(e.target.value) / 100
+                  setCompletionChimeVolume(next)
+                  previewSettingPatch({ completionChimeVolume: next })
+                }}
+                onPointerUp={(e) => {
+                  const next = Number((e.target as HTMLInputElement).value) / 100
+                  persistSettingPatch({ completionChimeVolume: next })
+                  // Play it back at the level just chosen — a volume slider the
+                  // user cannot hear is a guess.
+                  playCompletionChime(next)
+                }}
+                onKeyUp={(e) => {
+                  const next = Number((e.target as HTMLInputElement).value) / 100
+                  persistSettingPatch({ completionChimeVolume: next })
+                  playCompletionChime(next)
+                }}
+                className="flex-1 accent-accent disabled:opacity-40"
+              />
+              <span className="w-8 text-right text-sm text-muted">{Math.round(completionChimeVolume * 100)}</span>
+            </div>
           </SettingsRow>
 
           <SettingsRow

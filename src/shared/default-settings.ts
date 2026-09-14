@@ -35,6 +35,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTrayOnClose: false,
   hasSeenTrayHint: false,
   desktopNotifications: true,
+  /** Chime when a model turn finishes. */
+  completionChime: true,
+  /** Peak loudness of that chime, 0-1. 0.5 is already louder than the old fixed chime. */
+  completionChimeVolume: 0.5,
   // On by default: the agent gets a browser it can actually drive, and the user
   // gets to watch it. Turning it off leaves the model with its own invisible
   // headless browser.

@@ -23,7 +23,11 @@ export function usePiEvents(): void {
     return useAppStore.subscribe((state) => {
       if (state.completionChimeAt !== lastChimeAt.current && state.completionChimeAt > 0) {
         lastChimeAt.current = state.completionChimeAt
-        playCompletionChime()
+        // Read the settings at play time so a change applies immediately without
+        // re-subscribing. An older settings file has no `completionChime`, and an
+        // absent flag means enabled — the chime existed before the setting did.
+        const settings = useAppStore.getState().settings
+        if (settings?.completionChime !== false) playCompletionChime(settings?.completionChimeVolume)
       }
     })
   }, [])
