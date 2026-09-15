@@ -19,6 +19,12 @@ const PERMISSIONS_EXTENSION_PATH = app.isPackaged
   ? join(process.resourcesPath, 'resources', 'pi-desktop-permissions.ts')
   : join(app.getAppPath(), 'resources', 'pi-desktop-permissions.ts')
 
+// Puts the kernel's goal tool in front of the model — see resources/vespi-goal.ts
+// for why the kernel ships goal mode without exposing it.
+const GOAL_EXTENSION_PATH = app.isPackaged
+  ? join(process.resourcesPath, 'resources', 'vespi-goal.ts')
+  : join(app.getAppPath(), 'resources', 'vespi-goal.ts')
+
 /**
  * Shell-level context appended to the system prompt on every start. It is
  * VesPi-authored content about the GUI the model is running inside — the
@@ -92,9 +98,11 @@ export function applyPermissionModeToStartOptions(
     ? [...removeToolArgs(options.args ?? []), '--tools', toolList]
     : [...(options.args ?? [])]
   const globalRulesPath = getGlobalPermissionRulesPath()
-  const withExtension = existsSync(PERMISSIONS_EXTENSION_PATH)
-    ? [...args, '-e', PERMISSIONS_EXTENSION_PATH]
-    : args
+  const withExtension = [
+    ...args,
+    ...(existsSync(PERMISSIONS_EXTENSION_PATH) ? ['-e', PERMISSIONS_EXTENSION_PATH] : []),
+    ...(existsSync(GOAL_EXTENSION_PATH) ? ['-e', GOAL_EXTENSION_PATH] : []),
+  ]
 
   // Hand the model the shell's own context — the permission gate, the
   // user-driven Git conveyor, the panes the user sees. The kernel reads a

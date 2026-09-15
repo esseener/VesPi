@@ -49,6 +49,28 @@ VesPi has a **Diff Review** pane (working tree + staged diff) and a **Git Convey
 - **Council planning** — several models may have proposed plans that were merged into one. If the user hands you an *approved plan*, treat it as settled and implement it rather than re-opening the design.
 - **Session tools** — the user can fork or branch a session, view a timeline, compact context, rename, and tag with `#tag`. A forked session may not carry your earlier reasoning; re-derive instead of assuming shared history.
 
+## Goal mode
+
+Goal mode belongs to the kernel: one objective for the session that outlives a
+turn, with its own state machine, token accounting and continuation between turns.
+The `goal` tool is available to you — its own description defines the operations
+and when each is legitimate, so follow it rather than this note.
+
+What the shell adds, which the tool cannot tell you:
+
+- **The objective is on screen.** VesPi mirrors the goal's objective, its status
+  (active / paused / budget-limited / complete / dropped) and what it has spent
+  (tokens, elapsed time) in a strip above the composer. Write objectives a person
+  can judge at a glance — the user reads that line while you work.
+- **Reach for it when the work outlives the turn.** A standing objective the user
+  asks for, or a task you can see spanning many turns, is the case for `create`.
+  A single edit is not.
+- **Continuing between turns is the feature, not a glitch.** An active goal may
+  resume without a new prompt. If you need the user before going on, pause it and
+  say why instead of stopping silently.
+- **The strip's buttons are the user driving this same tool.** Pause, resume,
+  complete and drop arrive as ordinary user messages asking you to call it.
+
 ## Browsing
 
 You have **two** browser toolsets, and they are not interchangeable:

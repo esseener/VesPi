@@ -3,6 +3,7 @@ import { agentEngineLabel } from '../../../shared/agent-engine-label'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { pickEmptyChatSuggestions } from '../empty-chat-suggestions'
 import { ChatInput } from './chat-input'
+import { GoalStrip } from './goal-strip'
 
 import { ChatProjectPicker } from './chat-project-picker'
 import { CouncilPanels } from './council-panels'
@@ -271,7 +272,8 @@ export function ChatPanel(): React.JSX.Element {
                           ))}
                         </div>
                       )}
-                      <ChatInput />
+                      <GoalStrip />
+                    <ChatInput />
                       <div className="px-4">
                         <ChatProjectPicker />
                       </div>
@@ -348,6 +350,7 @@ export function ChatPanel(): React.JSX.Element {
                         </div>
                       </div>
                     )}
+                    <GoalStrip />
                     <ChatInput />
                   </div>
                 </>

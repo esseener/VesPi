@@ -17,6 +17,7 @@ import {
   type ConsultantResult,
 } from '../../shared/council-config'
 import type {
+  GoalModeState,
   PiRpcEvent,
   PiStatus,
   AgentEngineKind,
@@ -301,6 +302,11 @@ interface AppState {
   // Extension status entries (setStatus fire-and-forget). Keyed by statusKey.
   extensionStatuses: Record<string, string>
   // Live subagent progress from tool_execution_update events (subagent tool).
+  /**
+   * Goal mode as the kernel reports it (objective, status, tokens, time).
+   * Null when no goal is set. See PiGoalUpdatedEvent.
+   */
+  goalState: GoalModeState | null
   subagentProgress: Array<{
     toolCallId: string
     agent: string
@@ -946,6 +952,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   workspaceActivity: {},
   workflowRuns: [],
   extensionStatuses: {},
+  goalState: null,
   subagentProgress: [],
   confirmRequest: null,
 
@@ -1055,7 +1062,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // so its streaming state and queue counters go too — otherwise the newly
   // loaded session inherits a stuck spinner and a stale "queued steers" badge.
   clearMessages: () =>
-    set({ messages: [], promptHistory: [], subagentProgress: [], ...idleTurnState() }),
+    set({ messages: [], promptHistory: [], goalState: null, subagentProgress: [], ...idleTurnState() }),
 
   // Append a sent prompt to the recall history. Ignores blanks and consecutive
   // duplicates (shell-style), and caps the list so it can't grow unbounded.
@@ -2445,6 +2452,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
             sessionList: nextList,
           }
         })
+        break
+      }
+
+      // Goal mode is kernel-owned; the shell mirrors it so the objective, its
+      // status and the token/time spend stay visible while it runs.
+      case 'goal_updated': {
+        set({ goalState: (event as unknown as { state: GoalModeState | null }).state ?? null })
         break
       }
 

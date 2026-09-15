@@ -670,6 +670,34 @@ export interface PiMessageEndEvent {
   message: Record<string, unknown>
 }
 
+/** A goal-mode objective as the kernel reports it. */
+export interface GoalInfo {
+  id: string
+  objective: string
+  status: 'active' | 'paused' | 'budget-limited' | 'complete' | 'dropped'
+  tokensUsed: number
+  timeUsedSeconds: number
+  createdAt: number
+  updatedAt: number
+}
+
+export interface GoalModeState {
+  enabled: boolean
+  mode?: string
+  goal?: GoalInfo
+}
+
+/**
+ * Goal-mode state, pushed by the kernel whenever a goal is created, paused,
+ * resumed, completed or dropped — and repeatedly while one runs, so the token
+ * and time figures move. `goal`/`state` are null once nothing is set.
+ */
+export interface PiGoalUpdatedEvent {
+  type: 'goal_updated'
+  goal: GoalInfo | null
+  state: GoalModeState | null
+}
+
 export interface PiStatusChangeEvent {
   type: 'status_change'
   status: PiProcessStatus
@@ -739,6 +767,7 @@ export type PiRpcEvent =
   | PiResponseEvent
   | PiExtensionUiRequest
   | PiStatusChangeEvent
+  | PiGoalUpdatedEvent
   | PiSessionInfoChangedEvent
   | PiSessionInfoUpdateEvent
   | PiAvailableCommandsUpdateEvent
