@@ -555,6 +555,24 @@ async function installKernelUpdateInner(): Promise<{ ok: true; version: string }
       await unlink(staged)
     }
     if (process.platform !== 'win32') await chmod(dest, 0o755)
+
+    // Read the result back before claiming success. Every call above returned
+    // without throwing, but "the calls returned" is not evidence that the file
+    // on disk changed — and a kernel update that reports success while leaving
+    // the old binary in place is worse than one that fails loudly, because the
+    // user then waits for a version that never arrives and nothing in the log
+    // says why. Seen in the wild on 2026-09-14: the log said `Installed OMP
+    // kernel 18.1.21` while the file was still 18.1.20, with no `.bak` left to
+    // explain it. Throwing here instead turns that into a loud failure that the
+    // rollback below undoes.
+    const installedVersion = await probeBinaryVersion(dest)
+    if (!installedVersion) {
+      throw new Error('The installed kernel does not run; restoring the previous one')
+    }
+    if (!sameVersion(installedVersion, kernel.latestVersion)) {
+      throw new Error(`The installed kernel reports ${installedVersion} but should be ${kernel.latestVersion}`)
+    }
+
     // We know exactly what we just put there, so record it instead of making the
     // next update check spawn the kernel to ask.
     writeKernelVersionMarker(dest, kernel.latestVersion)

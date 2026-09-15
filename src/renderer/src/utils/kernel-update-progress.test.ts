@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert'
 import { describe, it } from 'node:test'
 import type { KernelUpdateProgress } from '../../../shared/ipc-contracts'
-import { kernelUpdateBarPercent, kernelUpdateBusy, visibleUpdateRows } from './kernel-update-progress'
+import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel, visibleUpdateRows } from './kernel-update-progress'
 
 const progress = (phase: KernelUpdateProgress['phase']): KernelUpdateProgress => ({
   phase,
@@ -80,5 +80,30 @@ describe('kernelUpdateBarPercent', () => {
     assert.equal(kernelUpdateBarPercent(progress('installing')), 100)
     assert.equal(kernelUpdateBarPercent(progress('restarting')), 100)
     assert.equal(kernelUpdateBarPercent(progress('done')), 100)
+  })
+})
+
+describe('kernelUpdateLabel', () => {
+  // The download phase is the longest one for BOTH channels, and its two message
+  // keys used to be hard-coded to the kernel wording. A downloading VesPi update
+  // therefore announced itself as "正在下载内核 xx%" — so both rows read alike and
+  // the user could not tell which update was which. This is that regression.
+  it('never describes the VesPi channel with the kernel wording', () => {
+    for (const phase of ['checking', 'downloading', 'installing', 'done', 'error'] as const) {
+      const ui = kernelUpdateLabel('zh', progress(phase), 'ui')
+      const kernel = kernelUpdateLabel('zh', progress(phase), 'kernel')
+      assert.ok(!ui.includes('内核'), `ui/${phase} read as the kernel: ${ui}`)
+      assert.ok(kernel.includes('内核'), `kernel/${phase} lost its wording: ${kernel}`)
+      assert.notEqual(ui, kernel, phase)
+    }
+  })
+
+  it('names the channel while downloading with a byte breakdown', () => {
+    const counted = { ...progress('downloading'), receivedBytes: 512, totalBytes: 1024 }
+    const ui = kernelUpdateLabel('zh', counted, 'ui')
+    const kernel = kernelUpdateLabel('zh', counted, 'kernel')
+    assert.ok(ui.includes('VesPi'), ui)
+    assert.ok(!ui.includes('内核'), ui)
+    assert.ok(kernel.includes('内核'), kernel)
   })
 })

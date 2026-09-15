@@ -55,14 +55,19 @@ export function kernelUpdateLabel(
   if (progress.phase === 'error') return t(language, failed, { error: progress.error ?? '' })
   if (progress.phase === 'done') return t(language, done, { version: progress.version ?? '' })
   const percent = String(progress.percent)
+  // The download phase is the longest one for both channels, and these two keys
+  // used to be hard-coded to the kernel wording — so a downloading VesPi update
+  // announced itself as "downloading the kernel", making both rows read alike.
+  const withBytes = kind === 'ui' ? 'uiUpdateDownloadingBytes' : 'kernelUpdateDownloadingBytes'
+  const withoutBytes = kind === 'ui' ? 'uiUpdateDownloading' : 'kernelUpdateDownloading'
   if (progress.totalBytes > 0) {
-    return t(language, 'kernelUpdateDownloadingBytes', {
+    return t(language, withBytes, {
       percent,
       received: formatBytes(progress.receivedBytes),
       total: formatBytes(progress.totalBytes),
     })
   }
-  return t(language, 'kernelUpdateDownloading', { percent })
+  return t(language, withoutBytes, { percent })
 }
 
 export function kernelUpdateBarPercent(progress: KernelUpdateProgress | null): number {
