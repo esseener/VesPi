@@ -16,6 +16,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   const sessionState = useAppStore((state) => state.sessionState)
   const setModel = useAppStore((state) => state.setModel)
   const piStatus = useAppStore((state) => state.piStatus)
+  const startPi = useAppStore((state) => state.startPi)
   const settings = useAppStore((state) => state.settings)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const customModels = useAppStore((state) => state.customModels)
@@ -150,8 +151,20 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
           )}
 
           {piStatus !== 'running' && (
-            <div className="border-b border-border px-3 py-2 text-xs text-dim">
-              {t(language, 'startToListModels')}
+            <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-dim">
+              <span className="min-w-0 flex-1">{t(language, 'startToListModels')}</span>
+              {/* The hint already tells the user the kernel has to run; leaving
+                  it without the control sent them hunting through settings for
+                  one. */}
+              <button
+                type="button"
+                onClick={() => {
+                  void startPi()
+                }}
+                className="shrink-0 rounded-md border border-border-strong px-2 py-0.5 text-[11px] text-secondary transition-colors hover:border-accent-fg hover:text-primary"
+              >
+                {t(language, 'startKernel')}
+              </button>
             </div>
           )}
           {!hasConfiguredChatModel(customModels) && (

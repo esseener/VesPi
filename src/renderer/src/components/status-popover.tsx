@@ -16,6 +16,7 @@ import {
   Loader2,
   ChevronRight,
   RefreshCw,
+  Play,
   Server,
   Plug,
   FileText,
@@ -50,6 +51,28 @@ export function StatusPopover(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const piPid = useAppStore((state) => state.piPid)
   const piError = useAppStore((state) => state.piError)
+  const startPi = useAppStore((state) => state.startPi)
+  const restartPi = useAppStore((state) => state.restartPi)
+  const [kernelBusy, setKernelBusy] = useState(false)
+  // Sessions other than the active one can hold a kernel of their own; the
+  // status below is the active session's, so this keeps "stopped" from reading
+  // as "no kernel on this machine".
+  const backgroundKernels = useAppStore(
+    (state) =>
+      Object.values(state.sessionRuntimes).filter(
+        (runtime) => runtime.status === 'running' && runtime.runtimeId !== state.activeSessionRuntimeId
+      ).length
+  )
+  const piStatusLabel =
+    piStatus === 'running'
+      ? t(language, 'statusReady')
+      : piStatus === 'starting'
+        ? t(language, 'statusStarting')
+        : piStatus === 'stopped'
+          ? t(language, 'statusStopped')
+          : piStatus === 'error'
+            ? t(language, 'statusError')
+            : piStatus
   const [errorCopied, setErrorCopied] = useState(false)
   const [probeState, setProbeState] = useState<{ busy: boolean; text: string; ok: boolean } | null>(null)
   const sessionState = useAppStore((state) => state.sessionState)
@@ -186,11 +209,37 @@ export function StatusPopover(): React.JSX.Element {
                 value={
                   <span className="flex items-center gap-1.5">
                     <span className={clsx('h-1.5 w-1.5 rounded-full', statusColor)} />
-                    {piStatus === 'running' ? t(language, 'ready') : piStatus}
+                    {piStatusLabel}
                     {piPid && <span className="text-faint">(PID: {piPid})</span>}
                   </span>
                 }
               />
+              {/* The kernel belongs to a session, so "stopped" here never means
+                  "this machine has no kernel": a session left running in the
+                  background keeps one alive. Say which is the case, and put the
+                  control to start or restart it where its status is shown — a
+                  status that reports a stopped kernel with no way to start it
+                  reads as a broken app. */}
+              {piStatus !== 'running' && backgroundKernels > 0 && (
+                <div className="mt-1 text-[11px] text-dim">
+                  {t(language, 'kernelRunningElsewhere', { count: String(backgroundKernels) })}
+                </div>
+              )}
+              <div className="mt-2 flex gap-1.5">
+                <button
+                  type="button"
+                  disabled={kernelBusy}
+                  onClick={() => {
+                    setKernelBusy(true)
+                    const action = piStatus === 'running' ? restartPi() : startPi()
+                    void action.finally(() => setKernelBusy(false))
+                  }}
+                  className="flex items-center gap-1.5 rounded-md border border-border-strong px-2 py-1 text-[11px] text-secondary transition-colors hover:border-accent-fg hover:text-primary disabled:opacity-50"
+                >
+                  {kernelBusy ? <Loader2 size={11} className="animate-spin" /> : piStatus === 'running' ? <RefreshCw size={11} /> : <Play size={11} />}
+                  {piStatus === 'running' ? t(language, 'restartKernel') : t(language, 'startKernel')}
+                </button>
+              </div>
               {piError && (
                 <div className="mt-2 rounded-md border border-error-bg bg-error-bg p-2">
                   <div className="flex items-center justify-between mb-1">

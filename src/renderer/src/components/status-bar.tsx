@@ -18,6 +18,16 @@ export function StatusBar(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   const piStatus = useAppStore((state) => state.piStatus)
+  // The status below belongs to the ACTIVE session. A session left running in
+  // the background has a kernel of its own, so a bare "stopped" here read as
+  // "this app has no kernel" and sent the user looking for a way to reconnect
+  // one. Count them so the bar can say which case it is.
+  const backgroundKernels = useAppStore(
+    (state) =>
+      Object.values(state.sessionRuntimes).filter(
+        (runtime) => runtime.status === 'running' && runtime.runtimeId !== state.activeSessionRuntimeId
+      ).length
+  )
   const sessionStats = useAppStore((state) => state.sessionStats)
   const isStreaming = useAppStore((state) => state.isStreaming)
   const hasChatMessages = useAppStore((state) => state.messages.length > 0 || state.isStreaming)
@@ -86,7 +96,10 @@ export function StatusBar(): React.JSX.Element {
           <span className="text-dim">
             {piStatus === 'running' ? t(language, 'statusReady')
               : piStatus === 'starting' ? t(language, 'statusStarting')
-              : piStatus === 'stopped' ? t(language, 'statusStopped')
+              : piStatus === 'stopped'
+                ? backgroundKernels > 0
+                  ? t(language, 'kernelRunningElsewhere', { count: String(backgroundKernels) })
+                  : t(language, 'statusStopped')
               : piStatus === 'error' ? t(language, 'statusError')
               : piStatus}
           </span>
