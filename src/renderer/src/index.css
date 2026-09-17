@@ -425,12 +425,10 @@
     to { background-position: 200% 50%; }
   }
 
-  /* Decorative border-only sweep — and the composer's ONLY edge: the container's
-     own 1px is painted transparent below. A second, static border underneath
-     showed through as a hard line (most visible along the bottom, where it read
-     as a white edge) and made the sweep look like a fixed glow rather than light
-     travelling around the box. The fixed inset and pointer-events rule keep the
-     textarea, popups, and toolbar layout unchanged. */
+  /* The composer's only edge is this travelling light: the container's own 1px
+     is transparent, and there is deliberately no solid rim underneath it. A
+     static border is what made the sweep look like "a white line with a bit of
+     light on it" instead of light running around the box. */
   #vespi-composer,
   #vespi-composer:focus-within {
     border-color: transparent;
@@ -444,15 +442,15 @@
     pointer-events: none;
     border-radius: inherit;
     padding: 1px;
-    background:
-      linear-gradient(
-        110deg,
-        transparent 0%,
-        color-mix(in srgb, var(--color-accent-fg) 45%, transparent) 50%,
-        transparent 100%
-      ),
-      var(--color-border-strong);
-    background-size: 200% 100%, 100% 100%;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 38%,
+      color-mix(in srgb, var(--color-accent-fg) 90%, transparent) 50%,
+      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 62%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -460,18 +458,17 @@
     animation: composer-border-flow 8s linear infinite;
   }
 
+  /* While the model is writing: the same ring, brighter and much faster. */
   #vespi-composer.composer-streaming::before {
-    background:
-      linear-gradient(
-        110deg,
-        transparent 0%,
-        color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
-        var(--color-accent-fg) 50%,
-        color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
-        transparent 100%
-      ),
-      color-mix(in srgb, var(--color-accent-fg) 35%, transparent);
-    background-size: 200% 100%, 100% 100%;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
+      var(--color-accent-fg) 50%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
     animation-duration: 1.15s;
   }
 
