@@ -10,6 +10,7 @@ import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
 import { updateOrder } from '../update-order'
+import { beginInstallerHandover, confirmInstallerHandover } from '../installer-handoff'
 import {
   formatInstalledKernelMarker,
   installedKernelMarkerPath,
@@ -637,6 +638,13 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     // not be in flight when it runs. The kernel is a local file swap that
     // finishes in milliseconds, so it goes first and this waits for it.
     await updateOrder.waitForKernelApply()
+    // The installer rewrites the whole install directory — VesPi.exe and the
+    // kernel bundled beside it — so this app must exit for it to finish. Ask
+    // before anything is launched: a refusal then costs a cancelled update,
+    // not an installer running against an app that will not let go.
+    if (!(await confirmInstallerHandover())) {
+      return { ok: false, error: '更新已取消：请先保存未保存的改动，然后再试一次。' }
+    }
     const opened = await shell.openPath(dest)
     if (opened) throw new Error(opened)
     openedInstaller = true
@@ -644,6 +652,10 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     // "done" means the verified installer was launched; installation itself is
     // owned by Windows and can still be cancelled by the user.
     broadcastUiProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
+    // Quit on purpose, a moment from now: the installer cannot overwrite a
+    // running VesPi.exe or its kernel child, and on locked-down machines its own
+    // close-the-app step cannot find the latter at all. See installer-handoff.ts.
+    beginInstallerHandover()
     return { ok: true, version: vespi.latestVersion }
   } catch (err) {
     appLog.warn('updates', 'VesPi UI installer download or verification failed', err)

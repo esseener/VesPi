@@ -425,6 +425,34 @@ After the user confirms:
 
 If either is newer, show all three surfaces together: top banner, About **有更新**, sidebar About dot. Do not hide a kernel update behind a UI-only notice, or a UI update behind a kernel-only notice.
 
+### The UI update ends by quitting the app
+
+The UI channel is not electron-updater: the app downloads the NSIS package,
+verifies it against the release `SHA256SUMS.txt`, opens it — and then **leaves**
+(`installer-handoff.ts`). The installer rewrites the whole install directory,
+including `VesPi.exe` and the ~153 MB kernel bundled at
+`resources/runtime/omp/omp.exe`, and neither can be written while this app or its
+kernel child still holds it. The installer's own close-the-app step matches on
+image name wherever PowerShell is unavailable, so an orphaned `omp.exe` is
+invisible to it: the copy retries five times and then parks the user on an
+**app cannot be closed** dialog whose Retry loops forever. Users hit exactly
+that — the install stalling part-way on one machine and completing by hand on
+another with the same package.
+
+The order is fixed, and all of it lives in one place:
+
+1. download → `verifyReleaseAsset` → `updateOrder.waitForKernelApply()`
+2. ask the user when the editor has unsaved work (a refusal cancels the update,
+   before anything is launched)
+3. `shell.openPath(installer)`
+4. ~2 s later: mark quitting, release the tray, stop the kernel — `stopAll()`
+   **plus** `sweepSurvivingKernel()`, which is what reaches the subagents OMP
+   spawns on Windows — flush, then `app.exit(0)`. A hard exit, so the
+   `before-quit` guards are skipped on purpose.
+
+Never launch the installer without arming the handover: an install that cannot
+overwrite the running app is worse than no install at all.
+
 ## Kernel freshness is a release gate
 
 The OMP kernel is half the product, and the installer bundles a copy of it

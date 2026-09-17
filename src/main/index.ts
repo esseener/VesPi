@@ -12,6 +12,7 @@ import { configureGuiDataDir, getCanonicalUserDataDir, getExternalGuiDataDir, mi
 import { setupTray, setTrayEnabled, isTrayEnabled, isTrayAvailable, destroyTray, notifyFirstHide } from './tray-manager'
 import { shouldHideToTray } from './tray-decision'
 import { createEditorGuard } from './editor-guard'
+import { setupInstallerHandoff, sweepSurvivingKernel } from './installer-handoff'
 import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
 import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp, vespiProfileAgentDir } from './vespi-runtime'
@@ -691,6 +692,45 @@ app.whenReady().then(async () => {
   setPiExecutableOverride(settings.piExecutablePath, settings.piEngine)
   createApplicationMenu(settings.language)
 
+
+  // The UI update ends by handing this app over to the Windows installer, which
+  // then needs VesPi.exe and the bundled kernel unlocked before it can rewrite
+  // them. Only this module owns the quit guard, the tray and the kernel
+  // children, so the handover is wired with them here. See installer-handoff.ts
+  // for why the app has to leave on its own at all.
+  setupInstallerHandoff({
+    confirmQuit: async () => {
+      if (!editorGuard.needsPrompt()) return true
+      const discard = await confirmEditorDiscard(mainWindow)
+      if (discard) editorGuard.confirmDiscard()
+      return discard
+    },
+    markQuitting: () => {
+      isQuitting = true
+    },
+    releaseTray: () => destroyTray(),
+    stopKernel: async () => {
+      // stopAll() signals the children, but on Windows that reaches the kernel
+      // itself and not the subagents it spawned, so confirm nobody is left
+      // holding the binary inside the install directory.
+      workspaceManager?.stopAll()
+      const free = await sweepSurvivingKernel()
+      if (!free) {
+        appLog.warn('updates', 'A kernel process survived the handover; the installer may still hold its files')
+      }
+    },
+    beforeExit: () => {
+      // A hard exit skips the before-quit handler, which is where these live.
+      activityStatsStore.flushSync()
+      appLog.flushSync()
+      cleanupPiChildTempDir()
+    },
+    exit: (code) => app.exit(code),
+    log: (message, detail) => {
+      if (detail === undefined) appLog.info('updates', message)
+      else appLog.warn('updates', message, detail)
+    },
+  })
 
   // Register IPC handlers before creating windows. The window getter is a
   // lazy closure — mainWindow is created later and the notification wiring
