@@ -1,4 +1,4 @@
-import { AlertCircle, CheckCircle2, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Loader2, XCircle } from 'lucide-react'
 import type { SessionRuntimeInfo } from '../../../shared/ipc-contracts'
 import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/agent-engine-label'
 
@@ -12,7 +12,11 @@ export function SessionRuntimeIndicator({ runtime }: { runtime: SessionRuntimeIn
   const agent = agentEngineLabel(runtime.engine) ?? DEFAULT_AGENT_ENGINE_LABEL
 
   if (working) {
-    return <span className="run-silver h-3 w-3 shrink-0 rounded-full" aria-label={`${agent} is working`} />
+    // A thin spinning arc, like every other "working" spot in the app (streaming
+    // bubble, empty-state loader, tool rows). The spinning conic-gradient ball
+    // this replaces smeared into a blob at 12 px and read as a lump next to the
+    // flat icons the other states in this slot use.
+    return <Loader2 size={12} className="shrink-0 animate-spin text-muted" aria-label={`${agent} is working`} />
   }
   if (needsApproval) {
     return <AlertCircle size={12} className="shrink-0 text-warning" aria-label={`${agent} is waiting for approval`} />

@@ -396,13 +396,19 @@
     100% { transform: translateX(320%); }
   }
 
-  @keyframes silver-spin {
-    to { transform: rotate(360deg); }
+  @keyframes run-breathe {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.85); }
   }
 
+  /* Busy marker. It used to be a spinning conic gradient, which smeared into a
+     blob at the 6–12 px sizes this app uses — it read as "a lump turning over"
+     next to hairline chrome. It was also a fixed near-white, which disappeared
+     in the light theme. A quiet breathing dot in the theme's foreground colour
+     reads at every size. */
   .run-silver {
-    background: conic-gradient(from 0deg, #5a5a5a, #f4f4f4, #8a8a8a, #f4f4f4, #5a5a5a);
-    animation: silver-spin 1.1s linear infinite;
+    background: var(--color-text-primary);
+    animation: run-breathe 1.5s ease-in-out infinite;
   }
 
   .text-run-silver {
@@ -419,8 +425,17 @@
     to { background-position: 200% 50%; }
   }
 
-  /* Decorative border-only sweep. The fixed inset and pointer-events rule keep
-     the textarea, popups, and toolbar layout unchanged. */
+  /* Decorative border-only sweep — and the composer's ONLY edge: the container's
+     own 1px is painted transparent below. A second, static border underneath
+     showed through as a hard line (most visible along the bottom, where it read
+     as a white edge) and made the sweep look like a fixed glow rather than light
+     travelling around the box. The fixed inset and pointer-events rule keep the
+     textarea, popups, and toolbar layout unchanged. */
+  #vespi-composer,
+  #vespi-composer:focus-within {
+    border-color: transparent;
+  }
+
   #vespi-composer::before {
     content: '';
     position: absolute;
@@ -429,15 +444,15 @@
     pointer-events: none;
     border-radius: inherit;
     padding: 1px;
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-border-strong) 45%, transparent) 35%,
-      color-mix(in srgb, var(--color-accent-fg) 70%, transparent) 50%,
-      color-mix(in srgb, var(--color-border-strong) 45%, transparent) 65%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
+    background:
+      linear-gradient(
+        110deg,
+        transparent 0%,
+        color-mix(in srgb, var(--color-accent-fg) 45%, transparent) 50%,
+        transparent 100%
+      ),
+      var(--color-border-strong);
+    background-size: 200% 100%, 100% 100%;
     -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
     -webkit-mask-composite: xor;
     mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
@@ -446,15 +461,17 @@
   }
 
   #vespi-composer.composer-streaming::before {
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
-      var(--color-accent-fg) 50%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
+    background:
+      linear-gradient(
+        110deg,
+        transparent 0%,
+        color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
+        var(--color-accent-fg) 50%,
+        color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
+        transparent 100%
+      ),
+      color-mix(in srgb, var(--color-accent-fg) 35%, transparent);
+    background-size: 200% 100%, 100% 100%;
     animation-duration: 1.15s;
   }
 
