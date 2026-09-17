@@ -1,0 +1,153 @@
+name: Build
+
+# Nothing builds on a normal push. A version tag (e.g. v1.0.41) is the deliberate
+# "cut a release" step: it builds the Windows installer and attaches it — plus the
+# checksum manifest the in-app updater refuses to install without — to a GitHub
+# release. A manual run (Actions tab / `gh workflow run build.yml`) builds the
+# same artefacts and uploads them as artifacts, touching no release: that is how
+# to rehearse the pipeline before tagging.
+#
+# Windows only, deliberately. VesPi ships one platform, and it bundles the private
+# OMP kernel for it (`extraResources` pins `runtime/omp/omp.exe`); a macOS or Linux
+# job would need a per-platform kernel fetch first. Add them here once that exists.
+#
+# Release notes are NOT generated here. Create the release (draft/tag with notes)
+# before pushing the tag — the publish step keeps an existing body and only
+# attaches files. A tag pushed without a release gets one with an empty body.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+# Cancel superseded runs for the same ref to save runner time.
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint & test
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Unit tests
+        # Enumerate the files instead of passing a `**` glob: tsx forwards file
+        # arguments to Node, and glob expansion there needs a newer runtime than
+        # the runner is guaranteed to have. `resources/` holds the shared
+        # permission-rules engine's tests, so include it too.
+        shell: bash
+        run: npx --no-install tsx --test --test-concurrency=1 $(find src resources -name '*.test.ts')
+
+      - name: Kernel gate
+        # The kernel is half the product and the lock pins which build ships.
+        # Exit 1 = the lock is behind the newest release, exit 2 = unknowable
+        # (offline, API error) — both must stop the build rather than ship a
+        # package whose kernel is already stale.
+        run: npm run kernel:check
+
+  build:
+    name: Build installer
+    needs: verify
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Fetch bundled kernel
+        # Not in git (200 MB+). Downloads the binary the lock pins and verifies
+        # its SHA-256 against the manifest.
+        run: npm run prepare:runtime:release
+
+      - name: Check release consistency
+        # App version, lock, version marker and the actual binary bytes have to
+        # agree. Runs after the fetch, because it hashes the binary.
+        run: npm run check:release
+
+      - name: Build renderer/main/preload
+        run: npm run build
+
+      - name: Package (NSIS)
+        run: npx --no-install electron-builder --win nsis --publish never
+
+      - name: Write checksum manifest
+        run: npm run checksums:release
+
+      - name: Assert the names the updater looks for
+        # Two contracts the in-app updater depends on: the exact asset name
+        # (`vespiInstallerAssetName`) and a SHA256SUMS.txt beside it. Breaking
+        # either one silently strands every installed client on its old version,
+        # so fail here instead of shipping it.
+        shell: bash
+        run: |
+          ver=$(node -p "require('./package.json').version")
+          test -f "release/VesPi-Setup-${ver}-win-x64.exe" \
+            || { echo "::error::expected release/VesPi-Setup-${ver}-win-x64.exe"; ls -l release; exit 1; }
+          test -f release/SHA256SUMS.txt \
+            || { echo "::error::missing release/SHA256SUMS.txt — the updater refuses to install without it"; exit 1; }
+          echo "ok: VesPi-Setup-${ver}-win-x64.exe + SHA256SUMS.txt"
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: installers-windows
+          path: |
+            release/*.exe
+            release/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    name: Publish release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Attach installers to the release
+        # `prerelease` must stay false: the in-app update check ignores
+        # prereleases, so publishing one would make the new version invisible to
+        # every installed client.
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: false
+          make_latest: true
+          fail_on_unmatched_files: true
+          files: dist/**/*
