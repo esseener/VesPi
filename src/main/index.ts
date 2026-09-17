@@ -1,5 +1,5 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeImage, session, shell } from 'electron'
-import { existsSync, mkdirSync } from 'fs'
+import { existsSync, mkdirSync, unlinkSync } from 'fs'
 import { basename, join, resolve as resolvePath } from 'path'
 import { isTrustedRendererUrl, RENDERER_INDEX_PATH } from './renderer-origin'
 import { workspaceTrustStore } from './workspace-trust'
@@ -19,7 +19,8 @@ import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpens
 import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
 import { isWebviewAttachAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
-import { initAgentBrowser, startAgentBrowser, chromeExecutableCandidates, pickChromeExecutable } from './browser-cdp'
+import { initAgentBrowser, startAgentBrowser, chromeExecutableCandidates, pickChromeExecutable, isCdpUp, resetBrowserCdpState, browserCdpOverlayPath } from './browser-cdp'
+import { createAgentBrowserLifecycle, isBrowserToolName } from './agent-browser-lifecycle'
 import {
   PANEL_MCP_NAME,
   browserMcpEntry,
@@ -174,63 +175,105 @@ const agentBrowser = initAgentBrowser({
   guiDataDir: userDataDir,
   appDataDir: app.getPath('appData'),
 })
-if (agentBrowser.port !== null) {
-  const mcpPath = join(vespiProfileAgentDir(), 'mcp.json')
-  void startAgentBrowser({
-    guiDataDir: userDataDir,
-    appDataDir: app.getPath('appData'),
-    port: agentBrowser.port,
-    onStatus: (status, detail) => {
-      if (status === 'unavailable') {
-        appLog.warn(
-          'browser',
-          'No browser available for the agent; the browser tool will fall back to its own headless browser',
-          detail
-        )
-        // Drop any entry from a previous run, so OMP does not keep spawning a
-        // server pointed at an endpoint nobody is listening on.
-        removeAgentBrowserMcp({ mcpPath })
-        return
-      }
-      appLog.info('browser', `Agent browser ${status} on 127.0.0.1:${detail.port}`, detail)
 
-      // Ship the semantic toolset too: Playwright's browser_* tools drive the
-      // same endpoint, and everything they need is already inside the install.
-      const cliPath = unpackedModulePath(
-        process.resourcesPath,
-        app.isPackaged,
-        app.getAppPath(),
-        '@playwright',
-        'mcp',
-        'cli.js'
-      )
-      if (!existsSync(cliPath)) {
-        appLog.warn('browser', 'Playwright MCP missing from this build; the agent keeps the built-in browser tool', {
-          cliPath,
-        })
-        removeAgentBrowserMcp({ mcpPath })
-        return
-      }
+const agentBrowserMcpPath = join(vespiProfileAgentDir(), 'mcp.json')
 
-      const configured = ensureAgentBrowserMcp({
-        mcpPath,
-        entry: browserMcpEntry({
-          nodeExecutable: process.execPath,
-          cliPath,
-          endpoint: `http://127.0.0.1:${detail.port}`,
-          executablePath: pickChromeExecutable(chromeExecutableCandidates()),
-        }),
-      })
-      appLog[configured ? 'info' : 'warn'](
-        'browser',
-        configured
-          ? 'Vendored Playwright browser tools configured for the agent'
-          : 'Could not write the Playwright MCP config; the agent keeps the built-in browser tool',
-        { mcpPath }
-      )
-    },
+/**
+ * Point the agent's tooling at the endpoint. Only ever called while something
+ * actually answers there — see agent-browser-lifecycle.ts for why publishing
+ * and being up are one decision.
+ */
+function publishAgentBrowser(port: number): void {
+  // Ship the semantic toolset too: Playwright's browser_* tools drive the same
+  // endpoint, and everything they need is already inside the install.
+  const cliPath = unpackedModulePath(
+    process.resourcesPath,
+    app.isPackaged,
+    app.getAppPath(),
+    '@playwright',
+    'mcp',
+    'cli.js'
+  )
+  if (!existsSync(cliPath)) {
+    appLog.warn('browser', 'Playwright MCP missing from this build; the agent keeps the built-in browser tool', {
+      cliPath,
+    })
+    removeAgentBrowserMcp({ mcpPath: agentBrowserMcpPath })
+    return
+  }
+
+  const configured = ensureAgentBrowserMcp({
+    mcpPath: agentBrowserMcpPath,
+    entry: browserMcpEntry({
+      nodeExecutable: process.execPath,
+      cliPath,
+      endpoint: `http://127.0.0.1:${port}`,
+      executablePath: pickChromeExecutable(chromeExecutableCandidates()),
+    }),
   })
+  appLog[configured ? 'info' : 'warn'](
+    'browser',
+    configured
+      ? 'Vendored Playwright browser tools configured for the agent'
+      : 'Could not write the Playwright MCP config; the agent keeps the built-in browser tool',
+    { mcpPath: agentBrowserMcpPath }
+  )
 }
+
+/**
+ * Take the endpoint back — overlay, env and tool entry. A dangling entry is not
+ * harmless: OMP waits 5 s for a configured endpoint and then fails the call,
+ * whereas an absent one makes it launch its own browser and keep going.
+ */
+function withdrawAgentBrowser(): void {
+  resetBrowserCdpState()
+  try {
+    unlinkSync(browserCdpOverlayPath(userDataDir))
+  } catch {
+    // Already gone — nothing to undo.
+  }
+  removeAgentBrowserMcp({ mcpPath: agentBrowserMcpPath })
+}
+
+const agentBrowserLifecycle = createAgentBrowserLifecycle({
+  enabled: agentBrowser.enabled,
+  port: agentBrowser.port,
+  isUp: async () => (agentBrowser.port === null ? false : await isCdpUp(agentBrowser.port)),
+  start: async () => {
+    if (agentBrowser.port === null) return 'unavailable'
+    return await startAgentBrowser({
+      guiDataDir: userDataDir,
+      appDataDir: app.getPath('appData'),
+      port: agentBrowser.port,
+      onStatus: (status, detail) => {
+        if (status === 'unavailable') {
+          appLog.warn(
+            'browser',
+            'No browser available for the agent; the browser tool will fall back to its own headless browser',
+            detail
+          )
+          // Drop any entry from a previous run, so OMP does not keep spawning a
+          // server pointed at an endpoint nobody is listening on.
+          withdrawAgentBrowser()
+          return
+        }
+        publishAgentBrowser(detail.port)
+      },
+    })
+  },
+  withdraw: withdrawAgentBrowser,
+  log: (message, detail) => {
+    if (detail === undefined) appLog.info('browser', message)
+    else appLog.warn('browser', message, detail)
+  },
+})
+
+// Nothing is launched here. The browser used to come up on every app start,
+// before the window existed, whether or not anything was going to browse —
+// which is a blank Chromium window appearing next to VesPi for no reason. It is
+// now brought up the first time the agent actually reaches for one (the tool
+// call trigger wired below), and until then the kernel gets no endpoint at all.
+void agentBrowserLifecycle.sync('startup')
 
 // The kernel cannot reach the embedded panel at all: its target type is
 // `webview`, and the kernel's browser tools only accept `page` (verified in OMP
@@ -730,6 +773,19 @@ app.whenReady().then(async () => {
       if (detail === undefined) appLog.info('updates', message)
       else appLog.warn('updates', message, detail)
     },
+  })
+
+  // The agent's browser comes up the first time the agent actually reaches for
+  // one. A browser tool call is the first honest signal that it needs a real
+  // browser, and the endpoint only has to exist from then on — so nothing is
+  // launched at startup, and a window only appears when browsing is really
+  // happening. The kernel's own `browser` prelude and the vendored Playwright
+  // tools both arrive here by name.
+  workspaceManager.onPiManager((manager) => {
+    manager.on('tool_execution_start', (event: { toolName?: unknown }) => {
+      const toolName = typeof event?.toolName === 'string' ? event.toolName : ''
+      if (isBrowserToolName(toolName)) void agentBrowserLifecycle.ensure('browser-tool')
+    })
   })
 
   // Register IPC handlers before creating windows. The window getter is a
