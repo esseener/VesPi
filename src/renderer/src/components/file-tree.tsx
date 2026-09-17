@@ -48,6 +48,7 @@ function toFileUrl(absolutePath: string): string {
 const SAFETY_POLL_MS = 15000
 
 export function FileTree(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [tree, setTree] = useState<FileTreeNode | null>(null)
   const [gitStatus, setGitStatus] = useState<Record<string, GitFileStatus>>({})
   const [gitBranch, setGitBranch] = useState<string | null>(null)
@@ -160,11 +161,10 @@ export function FileTree(): React.JSX.Element {
       return (
         <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-dim">
           <FolderOpen size={24} className="mb-2 text-warning/70" />
-          <p className="text-xs text-warning">Folder not found</p>
+          <p className="text-xs text-warning">{t(language, 'fileTreeFolderNotFound')}</p>
           <p className="mt-1 break-all text-[11px] text-dim">{activeWorkspace.path}</p>
           <p className="mt-2 text-[11px] text-faint">
-            The folder may have moved or been deleted. Right-click the workspace in the
-            sidebar and choose “Change folder…” to point it somewhere else.
+            {t(language, 'fileTreeFolderNotFoundHint')}
           </p>
         </div>
       )
@@ -172,9 +172,9 @@ export function FileTree(): React.JSX.Element {
     return (
       <div className="flex flex-col items-center justify-center px-4 py-8 text-center text-dim">
         <FolderOpen size={24} className="mb-2 text-faint" />
-        <p className="text-xs">No workspace open</p>
+        <p className="text-xs">{t(language, 'fileTreeNoWorkspace')}</p>
         <p className="mt-1 text-[11px] text-faint">
-          Switch to a project folder from the workspace switcher in the sidebar.
+          {t(language, 'fileTreeNoWorkspaceHint')}
         </p>
       </div>
     )

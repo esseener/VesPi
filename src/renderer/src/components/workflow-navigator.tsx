@@ -217,7 +217,17 @@ function resultItemFields(item: ResultRecord): Array<[string, unknown]> {
   return Object.entries(item).filter(([key]) => !resultIdentityKeys.includes(key.toLowerCase()))
 }
 
+/**
+ * The UI language, read where it is needed. These result renderers recurse into
+ * each other (field → value → list → field), so threading a prop through every
+ * level would touch the whole tree for a handful of labels.
+ */
+function useLanguage(): AppLanguage {
+  return useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+}
+
 function ResultField({ label, value, depth }: { label: string; value: unknown; depth: number }): React.JSX.Element {
+  const language = useLanguage()
   if (typeof value === 'string' && isLongResultText(value)) {
     return (
       <div className="space-y-1.5">
@@ -240,7 +250,7 @@ function ResultField({ label, value, depth }: { label: string; value: unknown; d
     <details className="rounded-lg border border-border/70 bg-card/20">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-xs text-secondary marker:hidden">
         <span className="font-medium text-primary">{resultLabel(label)}</span>
-        <span className="text-[10px] text-faint">{resultShape(value)}</span>
+        <span className="text-[10px] text-faint">{resultShape(value, language)}</span>
       </summary>
       <div className="border-t border-border/70 px-3 py-2">
         <ResultValue value={value} depth={depth + 1} />
@@ -250,6 +260,7 @@ function ResultField({ label, value, depth }: { label: string; value: unknown; d
 }
 
 function ResultObjectList({ items, depth = 0 }: { items: ResultRecord[]; depth?: number }): React.JSX.Element {
+  const language = useLanguage()
   const [openItems, setOpenItems] = useState<Record<number, boolean>>((): Record<number, boolean> => depth === 0 ? { 0: true } : {})
   const shown = items.slice(0, 40)
   return (
@@ -274,12 +285,14 @@ function ResultObjectList({ items, depth = 0 }: { items: ResultRecord[]; depth?:
                 {resultItemTitle(item, index)}
               </span>
               <span className="shrink-0 text-[10px] text-faint">
-                {fields.length ? `${fields.length} detail${fields.length === 1 ? '' : 's'}` : 'No details'}
+                {fields.length
+                  ? t(language, fields.length === 1 ? 'workflowDetailsOne' : 'workflowDetailsMany', { n: String(fields.length) })
+                  : t(language, 'workflowNoDetails')}
               </span>
             </summary>
             <div className="border-t border-border/70 px-3 pb-3 pt-2.5">
               {fields.length === 0 ? (
-                <div className="text-xs italic text-faint">No additional details.</div>
+                <div className="text-xs italic text-faint">{t(language, 'workflowNoAdditionalDetails')}</div>
               ) : (
                 <div className="space-y-2">
                   {fields.map(([key, value]) => (
@@ -291,17 +304,18 @@ function ResultObjectList({ items, depth = 0 }: { items: ResultRecord[]; depth?:
           </details>
         )
       })}
-      {items.length > shown.length && <div className="px-1 text-xs italic text-dim">+ {items.length - shown.length} more items</div>}
+      {items.length > shown.length && <div className="px-1 text-xs italic text-dim">{t(language, 'workflowMoreItems', { n: String(items.length - shown.length) })}</div>}
     </div>
   )
 }
 
 function ResultValue({ value, depth = 0 }: { value: unknown; depth?: number }): React.JSX.Element {
-  if (depth >= 6) return <span className="text-xs italic text-faint">Nested details hidden</span>
+  const language = useLanguage()
+  if (depth >= 6) return <span className="text-xs italic text-faint">{t(language, 'workflowNestedDetailsHidden')}</span>
   if (!Array.isArray(value) && !isResultRecord(value)) return <ResultScalar value={value} />
 
   if (Array.isArray(value)) {
-    if (value.length === 0) return <span className="text-xs italic text-faint">No items</span>
+    if (value.length === 0) return <span className="text-xs italic text-faint">{t(language, 'workflowNoItems')}</span>
     if (value.every(isResultRecord)) return <ResultObjectList items={value} depth={depth} />
     const shown = value.slice(0, 40)
     return (
@@ -309,18 +323,18 @@ function ResultValue({ value, depth = 0 }: { value: unknown; depth?: number }): 
         {shown.map((item, index) => (
           isResultRecord(item) || Array.isArray(item) ? (
             <details key={index} className="w-full rounded-lg border border-border/70 bg-card/20">
-              <summary className="cursor-pointer list-none px-3 py-2 text-xs text-secondary marker:hidden">Item {index + 1}</summary>
+              <summary className="cursor-pointer list-none px-3 py-2 text-xs text-secondary marker:hidden">{t(language, 'workflowItemLabel', { n: String(index + 1) })}</summary>
               <div className="border-t border-border/70 px-3 py-2"><ResultValue value={item} depth={depth + 1} /></div>
             </details>
           ) : <ResultScalar key={index} value={item} />
         ))}
-        {value.length > shown.length && <div className="w-full px-1 text-xs italic text-dim">+ {value.length - shown.length} more items</div>}
+        {value.length > shown.length && <div className="w-full px-1 text-xs italic text-dim">{t(language, 'workflowMoreItems', { n: String(value.length - shown.length) })}</div>}
       </div>
     )
   }
 
   const entries = Object.entries(value)
-  if (entries.length === 0) return <span className="text-xs italic text-faint">No details</span>
+  if (entries.length === 0) return <span className="text-xs italic text-faint">{t(language, 'workflowNoDetails')}</span>
   return (
     <div className="space-y-2">
       {entries.map(([key, item]) => <ResultField key={key} label={key} value={item} depth={depth} />)}
@@ -328,24 +342,33 @@ function ResultValue({ value, depth = 0 }: { value: unknown; depth?: number }): 
   )
 }
 
-function resultShape(value: unknown): string {
-  if (Array.isArray(value)) return `${value.length} item${value.length === 1 ? '' : 's'}`
+function resultShape(value: unknown, language: AppLanguage): string {
+  if (Array.isArray(value)) {
+    return t(language, value.length === 1 ? 'workflowShapeItemsOne' : 'workflowShapeItemsMany', {
+      n: String(value.length),
+    })
+  }
   if (isResultRecord(value)) {
     const count = Object.keys(value).length
-    return `${count} field${count === 1 ? '' : 's'}`
+    return t(language, count === 1 ? 'workflowShapeFieldsOne' : 'workflowShapeFieldsMany', { n: String(count) })
   }
-  if (typeof value === 'string') return `${value.length} character${value.length === 1 ? '' : 's'}`
-  if (value === null || value === undefined) return 'empty'
+  if (typeof value === 'string') {
+    return t(language, value.length === 1 ? 'workflowShapeCharsOne' : 'workflowShapeCharsMany', {
+      n: String(value.length),
+    })
+  }
+  if (value === null || value === undefined) return t(language, 'workflowShapeEmpty')
   return typeof value
 }
 
 function ResultSection({ label, value }: { label: string; value: unknown }): React.JSX.Element {
+  const language = useLanguage()
   const isMarkdown = typeof value === 'string' && isLongResultText(value)
   return (
     <section className="border-b border-border/70 pb-4 last:border-0 last:pb-0">
       <div className="mb-2 flex items-center justify-between gap-3 px-1">
         <h3 className="text-xs font-semibold text-primary">{resultLabel(label)}</h3>
-        <span className="shrink-0 text-[10px] text-faint">{resultShape(value)}</span>
+        <span className="shrink-0 text-[10px] text-faint">{resultShape(value, language)}</span>
       </div>
       {isMarkdown ? (
         <div className="rounded-lg bg-card/20 px-3 py-3 text-xs leading-relaxed text-secondary">
@@ -389,7 +412,7 @@ function WorkflowResult({ text }: { text: string }): React.JSX.Element {
           <div className="min-w-0">
             <h3 className="text-xs font-semibold text-primary">{t(language, 'wfOutput')}</h3>
             <p className="text-[11px] text-dim">
-              {entries ? t(language, 'wfSections', { count: String(entries.length) }) : resultShape(value)}
+              {entries ? t(language, 'wfSections', { count: String(entries.length) }) : resultShape(value, language)}
             </p>
           </div>
         </div>

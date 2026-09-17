@@ -247,7 +247,7 @@ export function DiagnosticsPanel(): React.JSX.Element {
 
             <DiagSection title={t(language, 'diagnosticsRecentErrors')}>
               {report.recentErrors.length === 0 ? (
-                <p className="text-xs text-dim">No warnings or errors recorded this run.</p>
+                <p className="text-xs text-dim">{t(language, 'diagnosticsNoWarnings')}</p>
               ) : (
                 <div className="space-y-1">
                   {report.recentErrors.slice(-MAX_VISIBLE_LOG_ENTRIES).map((entry, index) => (

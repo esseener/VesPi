@@ -7,7 +7,7 @@ import type {
   ActivityModelUsage,
 } from '../../../shared/ipc-contracts'
 import { buildWeeks, intensityLevel, type IntensityLevel } from '../utils/heatmap-grid'
-import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 import { useAppStore } from '../store'
 
 type Tab = 'overview' | 'models'
@@ -148,15 +148,17 @@ function TokenChart({
   days,
   orderedModels,
   modelColor,
+  language,
 }: {
   days: ActivityStatsDay[]
   orderedModels: string[] // largest-first; stacking order (top → bottom)
   modelColor: Map<string, string>
+  language: AppLanguage
 }): React.JSX.Element {
   const buckets = useMemo(() => bucketTokens(days), [days])
 
   if (buckets.length === 0) {
-    return <div className="py-10 text-center text-xs text-faint">No token usage in this range.</div>
+    return <div className="py-10 text-center text-xs text-faint">{t(language, 'statsNoTokenUsage')}</div>
   }
 
   const max = buckets.reduce((m, b) => Math.max(m, b.total), 0)
@@ -223,13 +225,15 @@ function TokenChart({
 function ModelLegend({
   models,
   modelColor,
+  language,
 }: {
   models: ActivityModelUsage[]
   modelColor: Map<string, string>
+  language: AppLanguage
 }): React.JSX.Element {
   const grandTotal = models.reduce((s, m) => s + m.input + m.output, 0)
   if (models.length === 0) {
-    return <div className="py-4 text-center text-xs text-faint">No model usage in this range.</div>
+    return <div className="py-4 text-center text-xs text-faint">{t(language, 'statsNoModelUsage')}</div>
   }
   return (
     <div className="space-y-1.5">
@@ -346,9 +350,9 @@ export function StatsPanel(): React.JSX.Element | null {
         </>
       ) : (
         <>
-          <TokenChart days={rangedDays} orderedModels={orderedModels} modelColor={modelColor} />
+          <TokenChart days={rangedDays} orderedModels={orderedModels} modelColor={modelColor} language={language} />
           <div className="mt-4 border-t border-border pt-3">
-            <ModelLegend models={stats.models} modelColor={modelColor} />
+            <ModelLegend models={stats.models} modelColor={modelColor} language={language} />
           </div>
         </>
       )}

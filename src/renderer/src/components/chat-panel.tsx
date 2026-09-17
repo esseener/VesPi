@@ -343,9 +343,9 @@ export function ChatPanel(): React.JSX.Element {
                       <div className="pointer-events-auto mx-auto mb-2 w-full max-w-5xl px-4">
                         <div className="flex items-center gap-2.5 rounded-sm border border-border-strong bg-transparent px-4 py-2.5 text-sm text-primary">
                           <span className="run-silver h-3 w-3 shrink-0 rounded-full" aria-hidden="true" />
-                          <span className="shrink-0 font-medium">still working</span>
+                          <span className="shrink-0 font-medium">{t(language, 'reattachedStillWorking')}</span>
                           <span className="min-w-0 flex-1 truncate text-dim">
-                            The response appears here the moment it finishes.
+                            {t(language, 'reattachedStillWorkingHint')}
                           </span>
                         </div>
                       </div>
