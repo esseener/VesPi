@@ -59,7 +59,12 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
   }, [thinking])
 
   return (
-    <div className="mb-4 animate-fade-in">
+    // No fade-in here: this subtree re-renders on every token, and on a
+    // mid-turn attach it mounts already holding the whole turn — animating it
+    // reads as the answer "materializing" instead of growing out of the
+    // composer. Committed messages keep their fade; the live stream must look
+    // instantaneous.
+    <div className="mb-4">
       <div className="flex items-start gap-3">
         <div className="flex h-7 w-7 shrink-0 items-center justify-center">
           <AgentBotIcon size={22} className="agent-live-glyph" />

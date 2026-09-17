@@ -177,6 +177,40 @@ function idleTurnState(): Pick<
 }
 
 /**
+ * The stream buffers a live-turn snapshot fills, or null when it carries
+ * nothing. Shared by the guarded restore and the adopt path so both build the
+ * tool-call map the same way — the map is mutable and must never be shared.
+ */
+function liveTurnBuffers(snapshot: LiveTurnSnapshot | null): Pick<
+  AppState,
+  'streamingContent' | 'streamingThinking' | 'streamingToolCalls'
+> | null {
+  if (!snapshot) return null
+  const streamingContent = snapshot.streamingContent ?? ''
+  const streamingThinking = snapshot.streamingThinking ?? ''
+  const streamingToolCalls = snapshot.streamingToolCalls ?? []
+  if (streamingContent === '' && streamingThinking === '' && streamingToolCalls.length === 0) return null
+  return {
+    streamingContent,
+    streamingThinking,
+    streamingToolCalls: new Map(
+      streamingToolCalls.map((tc) => [
+        tc.id,
+        {
+          name: tc.name,
+          args: tc.args ?? '',
+          isExecuting: tc.isExecuting,
+          startedAt: tc.startedAt ?? 0,
+          ...(tc.result !== undefined ? { result: tc.result } : {}),
+          ...(tc.isError !== undefined ? { isError: tc.isError } : {}),
+          ...(tc.durationMs !== undefined ? { durationMs: tc.durationMs } : {}),
+        },
+      ])
+    ),
+  }
+}
+
+/**
  * Whether a workspace's Pi is reachable right now.
  *
  * Only the runtime main marked active backs that workspace's Pi manager, so a
@@ -453,6 +487,11 @@ interface AppActions {
   refreshSessionState: (generation?: number, runtimeId?: string | null) => Promise<void>
   refreshSessionStats: (generation?: number, runtimeId?: string | null) => Promise<void>
   restoreLiveTurnSnapshot: (runtimeId?: string, generation?: number) => Promise<void>
+  adoptLiveTurn: (
+    runtimeId?: string,
+    generation?: number,
+    activity?: SessionRuntimeInfo['activity']
+  ) => Promise<void>
   refreshSessionList: () => Promise<void>
   setSessionName: (name: string) => Promise<void>
   loadForkMessages: () => Promise<void>
@@ -1579,7 +1618,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           return
         }
         const runtime = result && 'runtimeId' in result ? result : null
-        const reattaching = runtime?.activity === 'working' || runtime?.activity === 'needs-approval'
         if (get().activeWorkspace?.id) void window.piDesktop.ui.flushPendingPrompts(get().activeWorkspace!.id)
         set({
           currentView: 'chat',
@@ -1600,12 +1638,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // every per-turn field. Armed first, both flags die before the first
         // await — the reply then streams into a chat that looks idle and the
         // turn end commits only the post-switch suffix as a truncated message.
-        if (reattaching) {
-          set({ isStreaming: true, reattachedMidTurn: true })
-          // Show the in-progress stream state (partial text + tool calls) that
-          // this renderer never saw while the turn ran elsewhere.
-          void get().restoreLiveTurnSnapshot(runtime?.runtimeId, gen)
-        }
+        //
+        // adoptLiveTurn shows the in-progress stream state (partial text + tool
+        // calls) that this renderer never saw while the turn ran elsewhere, and
+        // decides for itself whether there is a live turn to adopt: the activity
+        // flag alone left a running session rendering as idle whenever it was
+        // missing, which is what a switch-back to a busy session looked like.
+        void get().adoptLiveTurn(runtime?.runtimeId, gen, runtime?.activity)
         scheduleSessionListRefresh(get)
       } catch (err) {
         if (gen !== sessionLoadGeneration) return
@@ -1768,7 +1807,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     if (!targetRuntimeId) return
     try {
       const snapshot = (await window.piDesktop.session.getLiveTurn(targetRuntimeId)) as LiveTurnSnapshot | null
-      if (!snapshot) return
+      const buffers = liveTurnBuffers(snapshot)
+      if (!buffers) return
       const state = get()
       if (
         targetGeneration !== sessionLoadGeneration ||
@@ -1781,23 +1821,63 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         state.streamingThinking !== '' ||
         state.streamingToolCalls.size > 0
       ) return
+      set(buffers)
+    } catch {
+      // Non-fatal: the next stream event (or the turn-end backfill) catches up.
+    }
+  },
+
+  /**
+   * Adopt a turn that is already running in the runtime we just attached to.
+   *
+   * `activity` is main's "a turn is in flight" flag, and it is only a hint: it
+   * is derived from the runtime's own events, so a renderer attaching to a
+   * runtime whose agent_start it never observed has nothing to arm on — the
+   * session then renders as idle while the model is actually writing, and the
+   * message being written is nowhere on screen until the turn commits. Main's
+   * live-turn tracker is the stronger signal: it holds content only for a turn
+   * that has not ended, so a content-bearing snapshot is proof of a live turn
+   * on its own.
+   *
+   * Adopting also pins the chat to the bottom: the user just arrived at a
+   * session that is writing, and its tail is what they came to see.
+   */
+  adoptLiveTurn: async (runtimeId, generation, activity) => {
+    const targetRuntimeId = runtimeId ?? get().activeSessionRuntimeId
+    const targetGeneration = generation ?? sessionLoadGeneration
+    const busy = activity === 'working' || activity === 'needs-approval'
+    // Nothing bound yet (the switch is still settling): the activity map is all
+    // we have, and the working indicator it advertised must not be dropped just
+    // because the runtime snapshot has not landed. The turn's own events fill
+    // the buffers once it does.
+    if (!targetRuntimeId) {
+      if (busy && !get().isStreaming) set({ isStreaming: true, reattachedMidTurn: true })
+      return
+    }
+    try {
+      const snapshot = (await window.piDesktop.session.getLiveTurn(targetRuntimeId)) as LiveTurnSnapshot | null
+      const state = get()
+      if (targetGeneration !== sessionLoadGeneration) return
+      const bound = state.activeSessionRuntimeId
+      // A different runtime is on screen now — its own state owns the buffers.
+      if (bound !== null && bound !== targetRuntimeId) return
+      const buffers = liveTurnBuffers(snapshot)
+      // Neither the flag nor the tracker reports a turn: this session is idle,
+      // and anything the previous session left in the buffers went with the
+      // chat that was cleared on the way in.
+      if (!busy && !buffers) return
+      const streaming =
+        state.streamingContent !== '' || state.streamingThinking !== '' || state.streamingToolCalls.size > 0
+      if (streaming) {
+        // Deltas are already flowing — only make sure the indicator is on.
+        if (!state.isStreaming) set({ isStreaming: true, reattachedMidTurn: true })
+        return
+      }
       set({
-        streamingContent: snapshot.streamingContent ?? '',
-        streamingThinking: snapshot.streamingThinking ?? '',
-        streamingToolCalls: new Map(
-          (snapshot.streamingToolCalls ?? []).map((tc) => [
-            tc.id,
-            {
-              name: tc.name,
-              args: tc.args ?? '',
-              isExecuting: tc.isExecuting,
-              startedAt: tc.startedAt ?? 0,
-              ...(tc.result !== undefined ? { result: tc.result } : {}),
-              ...(tc.isError !== undefined ? { isError: tc.isError } : {}),
-              ...(tc.durationMs !== undefined ? { durationMs: tc.durationMs } : {}),
-            },
-          ])
-        ),
+        isStreaming: true,
+        reattachedMidTurn: true,
+        ...(buffers ?? {}),
+        chatScrollBottomNonce: state.chatScrollBottomNonce + 1,
       })
     } catch {
       // Non-fatal: the next stream event (or the turn-end backfill) catches up.
@@ -2169,6 +2249,15 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
 
       case 'message_update':
+        // A delta for the active session is proof of a live turn, whatever the
+        // switch that delivered us here believed. ActiveStreamingBubble renders
+        // only while isStreaming, so without this the buffers filled invisibly
+        // and the model's output stayed off screen until the turn ended and
+        // committed — the "switched in and saw no output" report. reattachedMidTurn
+        // keeps the message_end commit out of the way: this renderer never saw
+        // the turn's prefix, so committing the suffix as a message would
+        // duplicate what the turn-end backfill brings in whole.
+        if (!get().isStreaming) set({ isStreaming: true, reattachedMidTurn: true })
         handleMessageUpdate(event as PiMessageUpdateEvent, set)
         break
 
@@ -2813,14 +2902,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       if (live && options?.awaitingSession !== true) {
         void get().reloadActiveSession({ refreshList: false })
         // A turn may already be running here (that is what the sidebar dot
-        // advertised). Arm the mid-turn attach so the next turn boundary
-        // backfills the prefix the stream buffers never saw.
+        // advertised). adoptLiveTurn arms the mid-turn attach and restores what
+        // has streamed so far, so the chat shows the live turn instead of
+        // looking idle until it commits.
         const activeRuntime = activeRuntimeForWorkspace(get().sessionRuntimes, workspaceId)
         const activity = activeRuntime?.activity ?? get().workspaceActivity[workspaceId]?.state
-        if (activity === 'working' || activity === 'needs-approval') {
-          set({ isStreaming: true, reattachedMidTurn: true })
-          void get().restoreLiveTurnSnapshot(get().activeSessionRuntimeId ?? undefined, sessionLoadGeneration)
-        }
+        void get().adoptLiveTurn(
+          get().activeSessionRuntimeId ?? activeRuntime?.runtimeId ?? undefined,
+          sessionLoadGeneration,
+          activity
+        )
       }
       return true
     } catch (err) {
@@ -2885,15 +2976,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         await get().reloadActiveSession({ refreshList: false })
         // A turn may already be running here (that is what the sidebar dot
         // advertised). The reload above only shows persisted messages, so
-        // without this the chat looks idle while Pi is mid-response. Show the
-        // working indicator and mark the attach so the next turn boundary
-        // backfills from the session (the stream buffers missed the prefix).
+        // without this the chat looks idle while Pi is mid-response.
+        // adoptLiveTurn arms the attach, shows the working indicator and
+        // restores what has streamed so far.
         const activeRuntime = activeRuntimeForWorkspace(get().sessionRuntimes, workspaceId)
         const activity = activeRuntime?.activity ?? get().workspaceActivity[workspaceId]?.state
-        if (activity === 'working' || activity === 'needs-approval') {
-          set({ isStreaming: true, reattachedMidTurn: true })
-          void get().restoreLiveTurnSnapshot(get().activeSessionRuntimeId ?? undefined, sessionLoadGeneration)
-        }
+        void get().adoptLiveTurn(
+          get().activeSessionRuntimeId ?? activeRuntime?.runtimeId ?? undefined,
+          sessionLoadGeneration,
+          activity
+        )
       } else if (get().piStatus !== 'running') {
         // Idle workspace: the empty new-session view renders instantly. No
         // spinner, no process — Pi starts when the first prompt is sent.

@@ -590,6 +590,118 @@ test('switchSession onto a working runtime restores the in-progress turn snapsho
   assert.equal(state.streamingToolCalls.get('tc-1')?.isExecuting, true)
 })
 
+// Regression: main's activity flag is derived from the runtime's own events, so
+// a renderer that attaches late — the runtime was busier than its last
+// broadcast, or the flag never made it — is handed a running session with
+// nothing to arm on. The session then rendered as idle and the message being
+// written was nowhere on screen until the turn committed. Main's live-turn
+// tracker is the stronger signal: it holds content only for a turn that has not
+// ended, so a content-bearing snapshot proves a live turn by itself.
+test('switchSession adopts a live turn even when the activity flag is missing', async () => {
+  switchResult = {
+    runtimeId: 'rt-quiet',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 9,
+    error: null,
+    activity: null,
+    active: true,
+  }
+  liveTurnResult = {
+    streamingContent: 'half an answer',
+    streamingThinking: 'weighing options',
+    streamingToolCalls: [
+      { id: 'tc-9', name: 'edit', args: '{}', isExecuting: true, startedAt: 0 },
+    ],
+  }
+  useAppStore.setState({ chatScrollBottomNonce: 0 })
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  const state = useAppStore.getState()
+  assert.equal(state.isStreaming, true, 'a live turn must not render as idle because the flag went missing')
+  assert.equal(state.reattachedMidTurn, true, 'the turn end still has to backfill the prefix')
+  assert.equal(state.streamingContent, 'half an answer', 'the text written so far must be on screen')
+  assert.equal(state.streamingThinking, 'weighing options')
+  assert.equal(state.streamingToolCalls.size, 1)
+  assert.equal(state.chatScrollBottomNonce, 1, 'arriving at a live turn must pin the chat to its tail')
+})
+
+// The other side of the same decision: no flag and nothing in the tracker means
+// an idle session, which must stay idle — arming on every switch is what would
+// leave a phantom "working" bubble behind.
+test('switchSession onto an idle runtime arms nothing', async () => {
+  switchResult = {
+    runtimeId: 'rt-idle-quiet',
+    workspaceId: WORKSPACE_ONE.id,
+    sessionPath: SESSION_PATH,
+    sessionId: 'session',
+    status: 'running',
+    pid: 9,
+    error: null,
+    activity: null,
+    active: true,
+  }
+  liveTurnResult = { streamingContent: '', streamingThinking: '', streamingToolCalls: [] }
+
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  await new Promise((resolve) => setTimeout(resolve, 20))
+
+  const state = useAppStore.getState()
+  assert.equal(state.isStreaming, false)
+  assert.equal(state.reattachedMidTurn, false)
+  assert.equal(state.streamingContent, '')
+})
+
+test('a live turn for a runtime that is no longer bound is not adopted', async () => {
+  // The switch moved on to another runtime while the snapshot was in flight;
+  // its content belongs to a session that is no longer on screen.
+  liveTurnResult = { streamingContent: 'someone else’s answer', streamingThinking: '', streamingToolCalls: [] }
+  useAppStore.setState({
+    activeSessionRuntimeId: 'rt-current',
+    isStreaming: false,
+    streamingContent: '',
+    streamingThinking: '',
+    streamingToolCalls: new Map(),
+  })
+
+  await useAppStore.getState().adoptLiveTurn('rt-superseded', undefined, 'working')
+
+  const state = useAppStore.getState()
+  assert.equal(state.streamingContent, '', 'a stale runtime must not write into the on-screen chat')
+  assert.equal(state.isStreaming, false)
+})
+
+// The last line of defence for the same report: whatever the attach decided, if
+// tokens for the session on screen start arriving, the bubble has to come up.
+// It renders only while isStreaming, so an unarmed renderer accumulated content
+// invisibly and showed the answer only once the turn committed.
+test('a streamed delta lights the bubble even when the attach never armed it', () => {
+  useAppStore.setState({
+    isStreaming: false,
+    streamingContent: '',
+    reattachedMidTurn: false,
+  })
+
+  useAppStore.getState().handlePiEvent({
+    type: 'message_update',
+    message: {},
+    assistantMessageEvent: { type: 'text_delta', delta: 'late token' },
+  } as never)
+
+  const state = useAppStore.getState()
+  assert.equal(state.isStreaming, true, 'live content with the bubble hidden is content the user never sees')
+  assert.equal(state.streamingContent, 'late token')
+  assert.equal(
+    state.reattachedMidTurn,
+    true,
+    'the prefix was never received, so the turn end must backfill instead of committing this suffix'
+  )
+})
+
 // Regression: main broadcasts the runtime it just activated, and
 // handleSessionRuntime reacts by reloading the persisted history. That reload
 // must not reach the live streaming buffers — clearMessages() also resets

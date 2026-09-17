@@ -327,13 +327,22 @@ export function useChatScroll(active: boolean): {
       const grew = len > prevStreamLen.current
       prevStreamLen.current = len
       if (!grew) return
+      // Streamed text is arriving, which is exactly the content a pending
+      // restore was waiting for. It cannot clear itself: the layout effect only
+      // re-runs when `messages` changes, and a mid-turn attach has no committed
+      // messages to change — the kernel withholds a running turn. Left set, it
+      // vetoed this follower for the whole turn, so the chat sat parked at its
+      // old offset and the answer only appeared once the turn ended and
+      // committed in one piece. The restore already positioned the view on its
+      // own pass, so release both gates here — including the forced jump, whose
+      // layout pass runs before this animation frame.
+      pendingRestore.current = false
+      forceBottom.current = false
       if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
       requestAnimationFrame(() => {
         const el = ref.current
         if (!el) return
         if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
-        // A pending restore/forced jump owns the scroll position — don't fight it.
-        if (pendingRestore.current || forceBottom.current) return
         el.scrollTop = el.scrollHeight
         syncAtBottom()
       })
