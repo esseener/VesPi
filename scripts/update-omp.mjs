@@ -12,6 +12,7 @@ import {
   createReadStream,
   createWriteStream,
   existsSync,
+  mkdirSync,
   readFileSync,
   renameSync,
   statSync,
@@ -142,6 +143,12 @@ async function main() {
   const backup = `${ompPath}.bak`
   let backedUp = false
   try {
+    // The runtime lives BESIDE the checkout (`../runtime/omp`), not inside it —
+    // .gitignore keeps the 200 MB binary out of git. On a fresh clone that
+    // directory does not exist yet, and the staged write below used to die with
+    // ENOENT (which is what kept CI red on every push while local builds, where
+    // the directory survives from earlier runs, worked). Create it first.
+    mkdirSync(runtimeDir, { recursive: true })
     log(`downloading locked OMP ${lock.version} (${lock.asset.name})`)
     await downloadTo(url, staged)
     const actual = await sha256Of(staged)

@@ -1,9 +1,12 @@
 name: CI
 
+# Verification gate for ordinary pushes and pull requests. Version tags are
+# deliberately NOT handled here: build.yml runs these same checks in its own
+# `verify` job and then packages and publishes, so reacting to tags here would
+# run the whole suite a second time for every release.
 on:
   push:
     branches: [master]
-    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
