@@ -1,5 +1,5 @@
 import { ipcMain, app, BrowserWindow, net, session, shell } from 'electron'
-import { createWriteStream, createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
+import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } from 'fs'
 import { createHash } from 'crypto'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
@@ -17,13 +17,22 @@ import {
   readInstalledKernelVersion,
 } from '../kernel-version-marker'
 import { extractVersionLine } from '../diagnostics-report'
+import { downloadFile, RANGE_UNSUPPORTED, type PartSource } from '../multi-part-download'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'
 
 const UPDATE_REPO = 'esseener/VesPi'
 const KERNEL_REPO = 'can1357/oh-my-pi'
 const UPDATE_CHECK_TIMEOUT_MS = 8000
-const KERNEL_DOWNLOAD_TIMEOUT_MS = 10 * 60_000
+/**
+ * How long a *connection* may go without delivering bytes before the download is
+ * abandoned. This is deliberately not a deadline for the whole transfer: the old
+ * 10-minute cap meant a 210 MB installer needed a sustained 350 KB/s or it failed
+ * with "timed out" on links that were merely slow but perfectly healthy.
+ */
+const DOWNLOAD_INACTIVITY_TIMEOUT_MS = 45_000
+/** Backstop so a pathological link cannot hang the update forever. */
+const DOWNLOAD_OVERALL_TIMEOUT_MS = 60 * 60_000
 const USER_AGENT = 'VesPi'
 
 interface GithubAsset {
@@ -123,6 +132,12 @@ function githubHostAllowed(url: string): boolean {
 function friendlyNetworkError(err: unknown): string {
   const raw = err instanceof Error ? err.message : String(err)
   const lower = raw.toLowerCase()
+  if (lower.includes('403')) {
+    return 'GitHub 拒绝了这次请求（403）。最常见的原因是接口限流：未登录请求每小时只有 60 次、按出口 IP 计，而代理或 VPN 的出口常被多人共用，配额容易被用光。等几分钟再试，或换一个节点。'
+  }
+  if (lower.includes('no data for')) {
+    return '下载中断：连续 45 秒没有收到任何数据。网络看着是通的、但这条连接已经卡死了。若用代理或 VPN，请确认 *.githubusercontent.com 也在代理规则里——安装包是从这个域名下载的，只代理 github.com 的话大文件往往走不到代理。'
+  }
   if (lower.includes('abort') || lower.includes('timed out') || lower.includes('timeout')) {
     return '连接 GitHub 超时。更新走 api.github.com，请开系统代理或 TUN/增强模式后重试。'
   }
@@ -324,62 +339,122 @@ function broadcastKernelProgress(progress: KernelUpdateProgress): void {
   }
 }
 
+/**
+ * Byte-range source built on Electron's `net`, so downloads use the same session
+ * — and therefore the same proxy rules — as the rest of the app.
+ *
+ * `headOnly` resolves on the response headers and hangs up: a probe must not
+ * depend on a body ever arriving, and the asset's first bytes are not needed to
+ * learn its size.
+ */
+function netPartSource(url: string): PartSource {
+  if (!isHttpsUrl(url) || !githubHostAllowed(url)) {
+    throw new Error('Download URL is not an allowed GitHub HTTPS host')
+  }
+
+  const send = (
+    range: { start: number; end: number },
+    onChunk: (chunk: Buffer) => void,
+    signal: AbortSignal,
+    options: { headOnly?: boolean; requireRange?: boolean } = {},
+  ): Promise<{ status: number; contentRange: string | null; contentLength: number | null }> =>
+    new Promise((resolve, reject) => {
+      const req = netRequest(url)
+      req.setHeader('User-Agent', USER_AGENT)
+      req.setHeader('Accept', 'application/octet-stream')
+      req.setHeader('Range', `bytes=${range.start}-${range.end}`)
+
+      const abort = (): void => {
+        req.abort()
+        reject(new Error('aborted'))
+      }
+      if (signal.aborted) {
+        abort()
+        return
+      }
+      signal.addEventListener('abort', abort, { once: true })
+
+      req.on('response', (res) => {
+        const status = res.statusCode ?? 0
+        const contentRange = (res.headers['content-range'] as string | undefined) ?? null
+        const contentLength = res.headers['content-length']
+          ? Number(res.headers['content-length'])
+          : null
+        if (status >= 400) {
+          res.on('data', () => {})
+          res.on('end', () => reject(new Error(`Download failed: ${status} ${res.statusMessage ?? ''}`.trim())))
+          res.on('error', reject)
+          return
+        }
+        // A part fetch that gets the whole file back must not write it into the
+        // range's file: stop before a single chunk lands and let the downloader
+        // fall back to one connection. A probe reports 200 too, and that is
+        // simply "this endpoint does not do ranges" — hence `requireRange`.
+        if (options.requireRange === true && status !== 206) {
+          res.on('data', () => {})
+          res.on('error', () => {})
+          req.abort()
+          reject(new Error(RANGE_UNSUPPORTED))
+          return
+        }
+        if (options.headOnly === true) {
+          res.on('error', () => {})
+          res.on('data', () => {})
+          resolve({ status, contentRange, contentLength })
+          req.abort()
+          return
+        }
+        res.on('data', (chunk) => onChunk(Buffer.from(chunk)))
+        res.on('end', () => resolve({ status, contentRange, contentLength }))
+        res.on('error', reject)
+      })
+      req.on('error', (err: Error) => {
+        // An abort we asked for is reported by the caller's own message.
+        if (!signal.aborted) reject(err)
+      })
+      req.end()
+    })
+
+  return {
+    probe: async () => {
+      const controller = new AbortController()
+      // A probe that never answers must not become the new way to hang: the
+      // download-wide backstop is an hour long.
+      const timer = setTimeout(() => controller.abort(), UPDATE_CHECK_TIMEOUT_MS)
+      try {
+        // Ask for a byte that is *not* the first one: some CDNs answer `bytes=0-0`
+        // with the whole file, which would look like "ranges unsupported".
+        const head = await send({ start: 1, end: 1 }, () => {}, controller.signal, { headOnly: true })
+        if (head.status === 206 && head.contentRange) {
+          const total = Number(head.contentRange.split('/')[1])
+          return { total: Number.isFinite(total) ? total : null, acceptsRanges: true }
+        }
+        return { total: head.contentLength, acceptsRanges: false }
+      } finally {
+        clearTimeout(timer)
+      }
+    },
+    get: async (start, end, onChunk, signal, options) => {
+      await send({ start, end }, onChunk, signal, { requireRange: options?.requireRange === true })
+    },
+  }
+}
+
 async function downloadToFile(
   url: string,
   dest: string,
   onProgress?: (received: number, total: number) => void,
 ): Promise<void> {
-  if (!isHttpsUrl(url) || !githubHostAllowed(url)) {
-    throw new Error('Download URL is not an allowed GitHub HTTPS host')
-  }
   await mkdir(dirname(dest), { recursive: true })
-  await new Promise<void>((resolve, reject) => {
-    const req = netRequest(url)
-    req.setHeader('User-Agent', USER_AGENT)
-    req.setHeader('Accept', 'application/octet-stream')
-    const timer = setTimeout(() => {
-      req.abort()
-      reject(new Error('timed out'))
-    }, KERNEL_DOWNLOAD_TIMEOUT_MS)
-    req.on('response', (res) => {
-      if ((res.statusCode ?? 0) >= 400) {
-        clearTimeout(timer)
-        reject(new Error(`Download failed: ${res.statusCode} ${res.statusMessage ?? ''}`.trim()))
-        return
-      }
-      const total = Number(res.headers['content-length'] ?? 0)
-      let received = 0
-      onProgress?.(0, total)
-      const out = createWriteStream(dest)
-      res.on('data', (chunk) => {
-        const buf = Buffer.from(chunk)
-        received += buf.length
-        onProgress?.(received, total)
-        out.write(buf)
-      })
-      res.on('end', () => {
-        clearTimeout(timer)
-        out.end(() => {
-          onProgress?.(received, total || received)
-          resolve()
-        })
-      })
-      res.on('error', (err) => {
-        clearTimeout(timer)
-        out.destroy()
-        reject(err)
-      })
-      out.on('error', (err) => {
-        clearTimeout(timer)
-        reject(err)
-      })
-    })
-    req.on('error', (err) => {
-      clearTimeout(timer)
-      reject(err)
-    })
-    req.end()
+  const result = await downloadFile({
+    source: netPartSource(url),
+    dest,
+    ...(onProgress !== undefined ? { onProgress } : {}),
+    inactivityTimeoutMs: DOWNLOAD_INACTIVITY_TIMEOUT_MS,
+    overallTimeoutMs: DOWNLOAD_OVERALL_TIMEOUT_MS,
+    log: (message) => appLog.info('updates', message),
   })
+  appLog.info('updates', `Downloaded ${result.bytes} bytes over ${result.connections} connection(s)`)
 }
 
 async function fetchBytes(url: string, timeoutMs: number): Promise<Buffer> {
