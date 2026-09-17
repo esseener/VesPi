@@ -1,8 +1,16 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mkdtemp, writeFile, mkdir, readFile } from 'fs/promises'
+import { realpathSync } from 'node:fs'
 import { join } from 'path'
 import { tmpdir } from 'os'
+
+// Canonicalize the temp root: Windows' fs.watch (libuv) asserts when the watched
+// path's case differs from what the filesystem reports — which is exactly what a
+// CI runner's temp path produces (...\RUNNER~1\..., mixed case), and the assert
+// aborts the whole test file ('Assertion failed: !_wcsnicmp(filename, dir, dirlen)').
+// The native realpath resolves the long, correctly-cased name.
+const TEMP_ROOT = realpathSync.native(tmpdir())
 import {
   buildNewFileDiff,
   describeGitError,
@@ -27,7 +35,7 @@ test('isPathInsideWorkspace rejects traversal and outside-absolute paths', () =>
 })
 
 test('readFileContent reads inside the workspace but refuses traversal', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pi-fs-read-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'pi-fs-read-'))
   await writeFile(join(dir, 'ok.txt'), 'inside')
   const service = new FileService(dir)
   assert.equal(await service.readFileContent('ok.txt'), 'inside')
@@ -36,7 +44,7 @@ test('readFileContent reads inside the workspace but refuses traversal', async (
 })
 
 test('writeFileContent writes inside the workspace but refuses traversal', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'pi-fs-write-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'pi-fs-write-'))
   const service = new FileService(dir)
   await service.writeFileContent('out.txt', 'data')
   assert.equal(await readFile(join(dir, 'out.txt'), 'utf-8'), 'data')
@@ -81,7 +89,7 @@ function waitForChange(timeoutMs: number): {
 }
 
 async function testWatcherEmitsOnChange(): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), 'pi-fs-watch-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'pi-fs-watch-'))
   const service = new FileService(dir)
   const { promise, onChange } = waitForChange(3000)
 
@@ -98,7 +106,7 @@ async function testWatcherEmitsOnChange(): Promise<void> {
 }
 
 async function testWatcherIgnoresHeavyDirs(): Promise<void> {
-  const dir = await mkdtemp(join(tmpdir(), 'pi-fs-ignore-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'pi-fs-ignore-'))
   await mkdir(join(dir, 'node_modules'), { recursive: true })
   const service = new FileService(dir)
   const { promise, onChange } = waitForChange(1500)
@@ -143,14 +151,14 @@ test('describeGitError prefers the first stderr line over the message', () => {
 })
 
 test('getGitStatus returns empty for a non-repo directory', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'fs-nonrepo-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'fs-nonrepo-'))
   const service = new FileService(dir)
   const status = await service.getGitStatus()
   assert.equal(status.size, 0)
 })
 
 test('getFileDiff and getStagedDiff return empty for a non-repo directory', async () => {
-  const dir = await mkdtemp(join(tmpdir(), 'fs-nonrepo-'))
+  const dir = await mkdtemp(join(TEMP_ROOT, 'fs-nonrepo-'))
   const service = new FileService(dir)
   assert.equal(await service.getFileDiff(), '')
   assert.equal(await service.getStagedDiff(), '')

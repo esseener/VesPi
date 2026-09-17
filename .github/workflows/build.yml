@@ -52,6 +52,13 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Fetch bundled kernel
+        # Not in git (200 MB+), and three engine-resolution tests assert that the
+        # private binary resolves — the same precondition a developer's machine
+        # satisfies from earlier builds. ci.yml fetches it before its own checks
+        # for the same reason. Runs here, before the tests.
+        run: npm run prepare:runtime:release
+
       - name: Unit tests
         # Enumerate the files instead of passing a `**` glob: tsx forwards file
         # arguments to Node, and glob expansion there needs a newer runtime than
