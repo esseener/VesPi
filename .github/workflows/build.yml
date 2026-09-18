@@ -152,6 +152,9 @@ jobs:
           # Scroll follow (1.0.44): the decision module and the rate-limit backoff.
           assert_marker "scroll follow decision" "shouldFollowContent"
           assert_marker "update check backoff" "updateCheckBackoffUntil"
+          # Provider editor (1.0.45): the row round-trip and the retired-provider filter.
+          assert_marker "provider row round-trip" "rowsToConfig"
+          assert_marker "retired provider filter" "isProviderRetired"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
