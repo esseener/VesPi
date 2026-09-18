@@ -124,6 +124,30 @@ jobs:
             || { echo "::error::missing release/SHA256SUMS.txt — the updater refuses to install without it"; exit 1; }
           echo "ok: VesPi-Setup-${ver}-win-x64.exe + SHA256SUMS.txt"
 
+      - name: Assert the shipped bundle carries the current changes
+        # "I changed it but the installed app still looks the same" happened more
+        # than once, always for the same reason: a stale `out/`, or a change that
+        # never made it into the package. These markers exist only in the current
+        # build, so the release fails here rather than shipping a bundle that is
+        # quietly older than the tag says.
+        shell: bash
+        run: |
+          asar=release/win-unpacked/resources/app.asar
+          test -f "$asar" || { echo "::error::$asar is missing"; exit 1; }
+          assert_marker() {
+            if ! grep -q "$2" "$asar"; then
+              echo "::error::bundle is missing the marker for: $1 ($2)"
+              exit 1
+            fi
+            echo "ok: $1"
+          }
+          # Multi-part downloader (1.0.42): its fallback marker is a code constant.
+          assert_marker "multi-part downloader" "RANGE_UNSUPPORTED"
+          # Sidebar runtime indicator (1.0.43): the working spinner's class combo.
+          assert_marker "sidebar working indicator" "animate-spin text-accent-fg"
+          # Sidebar idle ring (1.0.43): its accessibility label.
+          assert_marker "sidebar idle ring" "is running"
+
       - name: Upload installers
         uses: actions/upload-artifact@v4
         with:
