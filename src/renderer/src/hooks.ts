@@ -256,6 +256,10 @@ export function useChatScroll(active: boolean): {
   // token, and this hook runs inside ChatPanel, so subscribing would re-render
   // the whole message list per token. It is tracked imperatively below instead.
   const scrollBottomNonce = useAppStore((state) => state.chatScrollBottomNonce)
+  // Whether the session on screen is still writing. Switching to (or back to) a
+  // session mid-answer has to show the tail and keep following it, rather than
+  // restoring a reading position captured before the turn moved on.
+  const sessionIsStreaming = useAppStore((state) => state.isStreaming)
 
   const positions = useRef<Map<string, ScrollAnchor>>(new Map())
   const activeSession = useRef<string | null>(null)
@@ -277,6 +281,10 @@ export function useChatScroll(active: boolean): {
   activeRef.current = active
   const autoScrollRef = useRef(autoScroll)
   autoScrollRef.current = autoScroll
+  // Mirror for the layout effect, which must read the current value rather than
+  // the one captured when the effect was defined.
+  const streamingRef = useRef(sessionIsStreaming)
+  streamingRef.current = sessionIsStreaming
 
   // Whether the viewport is at (or within a hair of) the bottom. `atBottom` (state)
   // drives the jump-to-bottom button; `atBottomRef` is read synchronously in the
@@ -398,7 +406,13 @@ export function useChatScroll(active: boolean): {
 
     if (pendingRestore.current) {
       const saved = positions.current.get(sessionKey)
-      if (forceBottom.current || saved === undefined) {
+      // A session that is still writing shows its tail. The saved anchor is from
+      // before this turn produced output, so restoring it parked the view up in
+      // the history with the live text below the fold — and that restore then
+      // counted as "the user scrolled away", which switched the follower off
+      // until the user scrolled down by hand.
+      const followLiveTurn = streamingRef.current || forceBottom.current
+      if (followLiveTurn || saved === undefined) {
         el.scrollTop = el.scrollHeight
       } else {
         restoreAnchor(el, saved)
@@ -416,7 +430,7 @@ export function useChatScroll(active: boolean): {
         forceBottom.current = false
       }
       syncAtBottom()
-      userDetached.current = !atBottomRef.current
+      userDetached.current = followLiveTurn ? false : !atBottomRef.current
       return
     }
 
@@ -426,7 +440,10 @@ export function useChatScroll(active: boolean): {
     // leaving the now-stale scrollTop, which would show different content.
     if (becameActive) {
       const saved = positions.current.get(sessionKey)
-      if (forceBottom.current || saved === undefined) {
+      // Same rule as a session switch: a session that is still writing shows its
+      // tail, and anything else goes back to where it was being read.
+      const followLiveTurn = streamingRef.current || forceBottom.current
+      if (followLiveTurn || saved === undefined) {
         el.scrollTop = el.scrollHeight
       } else {
         restoreAnchor(el, saved)
@@ -436,7 +453,7 @@ export function useChatScroll(active: boolean): {
       // height may have changed while hidden (e.g. Show Thinking toggled), so the
       // stale at-bottom state would otherwise hide the chevron until the next scroll.
       syncAtBottom()
-      userDetached.current = !atBottomRef.current
+      userDetached.current = followLiveTurn ? false : !atBottomRef.current
       return
     }
 
@@ -458,7 +475,7 @@ export function useChatScroll(active: boolean): {
     }
 
     syncAtBottom()
-  }, [active, sessionId, messages, scrollBottomNonce, autoScroll, syncAtBottom])
+  }, [active, sessionId, messages, scrollBottomNonce, autoScroll, sessionIsStreaming, syncAtBottom])
 
   return { scrollRef: ref, onScroll, atBottom, scrollToBottom }
 }

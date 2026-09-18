@@ -1877,8 +1877,14 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       const streaming =
         state.streamingContent !== '' || state.streamingThinking !== '' || state.streamingToolCalls.size > 0
       if (streaming) {
-        // Deltas are already flowing — only make sure the indicator is on.
+        // Deltas are already flowing — make sure the indicator is on, and pull the
+        // view back to the tail. Re-attaching used to return here without asking
+        // the chat to scroll, so switching back to a session that was mid-answer
+        // landed on the saved reading position: the live text sat below the fold
+        // and the follower had counted that restore as "the user scrolled away",
+        // so it stayed off until they scrolled down by hand.
         if (!state.isStreaming) set({ isStreaming: true, reattachedMidTurn: true })
+        get().requestChatScrollToBottom()
         return
       }
       set({

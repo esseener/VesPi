@@ -675,6 +675,34 @@ test('a live turn for a runtime that is no longer bound is not adopted', async (
   assert.equal(state.isStreaming, false)
 })
 
+// Switching back to a session that is mid-answer has to land on the tail. Deltas
+// were already flowing, so the attach took the "just make sure the indicator is
+// on" path and never asked the chat to scroll: the view stayed on the reading
+// position captured before the turn moved on, the live text sat below the fold,
+// and the follower had counted that restore as a deliberate scroll away.
+test('adopting a live turn with content already flowing asks the chat for its tail', async () => {
+  liveTurnResult = {
+    streamingContent: 'a partial answer',
+    streamingThinking: '',
+    streamingToolCalls: [],
+  } as LiveTurnSnapshot
+  useAppStore.setState({
+    activeSessionRuntimeId: 'rt-live',
+    isStreaming: true,
+    streamingContent: 'a partial answer',
+    streamingThinking: '',
+    streamingToolCalls: new Map(),
+    chatScrollBottomNonce: 0,
+  })
+
+  await useAppStore.getState().adoptLiveTurn('rt-live', undefined, 'working')
+
+  const state = useAppStore.getState()
+  assert.equal(state.chatScrollBottomNonce, 1, 'the chat is asked to show the tail')
+  assert.equal(state.isStreaming, true, 'the indicator stays on')
+  assert.equal(state.streamingContent, 'a partial answer', 'the live text is left alone')
+})
+
 // The last line of defence for the same report: whatever the attach decided, if
 // tokens for the session on screen start arriving, the bubble has to come up.
 // It renders only while isStreaming, so an unarmed renderer accumulated content
