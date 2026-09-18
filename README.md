@@ -5,8 +5,6 @@
   </picture>
 </p>
 
-<h1 align="center">VesPi</h1>
-
 <p align="center">
   <b>Windows 上的 OMP 桌面客户端</b><br>
   把 Oh My Pi 的完整执行能力，收进一个可监督的窗口
