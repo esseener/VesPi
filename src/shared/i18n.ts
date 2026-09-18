@@ -125,6 +125,7 @@ const ZH = {
   dismissUpdate: '关闭更新提示',
   checkUpdates: '检查更新',
   checkingUpdates: '正在检查更新…',
+  updateCheckWillRetry: '这不会影响正常使用；稍后会自动重试。',
   updateCurrent: '已是最新：VesPi {vespi}，OMP {omp}',
   updateOrderHint: '两个可以一起点：下载同时进行；内核会先完成，安装程序最后启动。',
   // Goal mode (see resources/vespi-goal.ts). The kernel owns the objective and
@@ -1214,6 +1215,7 @@ const EN: Record<keyof typeof ZH, string> = {
   checkUpdates: 'Check for updates',
   checkingUpdates: 'Checking for updates…',
   updateCurrent: 'You are up to date: VesPi {vespi}, OMP {omp}',
+  updateCheckWillRetry: 'Nothing is broken — this retries on its own shortly.',
   updateOrderHint: 'Both can be started together: the downloads run at the same time, the kernel finishes first, and the installer starts last.',
   goalStatusActive: 'Active',
   goalStatusPaused: 'Paused',

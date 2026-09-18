@@ -1225,6 +1225,13 @@ export interface AppSettings {
 
 // ─── Update Check Types ─────────────────────────────────────────────────────
 
+/**
+ * Why a release check failed. The UI needs this to tell a transient quota limit
+ * ('wait and it retries itself') from a real failure worth showing in red — a
+ * rate-limited check is not a broken app.
+ */
+export type UpdateCheckErrorKind = 'rate-limit' | 'network' | 'other'
+
 export interface KernelUpdateInfo {
   updateAvailable: boolean
   currentVersion: string
@@ -1232,6 +1239,7 @@ export interface KernelUpdateInfo {
   url: string
   downloadUrl: string
   checkError?: string
+  checkErrorKind?: UpdateCheckErrorKind
 }
 
 export type KernelUpdatePhase = 'checking' | 'downloading' | 'installing' | 'restarting' | 'done' | 'error'
@@ -1259,6 +1267,7 @@ export interface UpdateCheckResult {
   name?: string
   /** Set when the VesPi GitHub check itself failed (network / proxy). */
   checkError?: string
+  checkErrorKind?: UpdateCheckErrorKind
   kernel: KernelUpdateInfo
 }
 

@@ -242,9 +242,23 @@ export function AboutPanel(): React.JSX.Element {
               </p>
             )}
             {checked && (updateInfo?.checkError || updateInfo?.kernel.checkError || !updateInfo) && (
-              <p className="text-xs text-error">
-                {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
-              </p>
+              // A rate-limited check is not a fault: the exit IP (a shared proxy,
+              // typically) ran out of GitHub's anonymous quota, and the periodic
+              // re-check backs off and tries again. Showing that in red next to a
+              // dialog called "检查更新" reads as "the app is broken", so it gets a
+              // warning tone plus what happens next.
+              (updateInfo?.checkErrorKind ?? updateInfo?.kernel.checkErrorKind) === 'rate-limit' ? (
+                <div className="space-y-1">
+                  <p className="text-xs text-warning">
+                    {updateInfo?.checkError || updateInfo?.kernel.checkError}
+                  </p>
+                  <p className="text-xs text-dim">{t(language, 'updateCheckWillRetry')}</p>
+                </div>
+              ) : (
+                <p className="text-xs text-error">
+                  {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
+                </p>
+              )
             )}
           </div>
           <p className="text-center text-[11px] tracking-wide text-faint">{t(language, 'poweredBy')}</p>

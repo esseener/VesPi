@@ -6,7 +6,12 @@ import { promisify } from 'util'
 import { chmod, copyFile, mkdir, mkdtemp, rename, rm, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
-import type { KernelUpdateInfo, KernelUpdateProgress, UpdateCheckResult } from '../../shared/ipc-contracts'
+import type {
+  KernelUpdateInfo,
+  KernelUpdateProgress,
+  UpdateCheckErrorKind,
+  UpdateCheckResult,
+} from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { appLog } from '../app-log'
 import { updateOrder } from '../update-order'
@@ -33,7 +38,38 @@ const UPDATE_CHECK_TIMEOUT_MS = 8000
 const DOWNLOAD_INACTIVITY_TIMEOUT_MS = 45_000
 /** Backstop so a pathological link cannot hang the update forever. */
 const DOWNLOAD_OVERALL_TIMEOUT_MS = 60 * 60_000
+/**
+ * How long a kernel release check is reused. The kernel lands roughly weekly, and
+ * every check spends one of the 60 anonymous GitHub requests per hour that the
+ * whole proxy exit shares — so there is nothing to gain from asking every half
+ * hour. Cleared when a kernel is installed, so the next check is honest.
+ */
+const KERNEL_CHECK_TTL_MS = 2 * 60 * 60_000
+let kernelCheckCache: { info: KernelUpdateInfo; at: number } | null = null
 const USER_AGENT = 'VesPi'
+
+/**
+ * Sorts a failed release check into the three cases the UI treats differently:
+ * a shared-exit quota limit (wait, it retries itself), a network/proxy problem,
+ * or something else. The raw message still goes to the user — this only decides
+ * the tone and whether an automatic retry is worth scheduling.
+ */
+function classifyNetworkError(err: unknown): UpdateCheckErrorKind {
+  const raw = (err instanceof Error ? err.message : String(err)).toLowerCase()
+  if (raw.includes('403')) return 'rate-limit'
+  if (
+    raw.includes('timed out') ||
+    raw.includes('timeout') ||
+    raw.includes('abort') ||
+    raw.includes('proxy') ||
+    raw.includes('enotfound') ||
+    raw.includes('econn') ||
+    raw.includes('socket')
+  ) {
+    return 'network'
+  }
+  return 'other'
+}
 
 interface GithubAsset {
   name: string
@@ -298,11 +334,14 @@ async function checkVespiUpdate(): Promise<Omit<UpdateCheckResult, 'kernel'>> {
     }
   } catch (err) {
     appLog.warn('updates', 'VesPi update check failed', err)
-    return { ...none, checkError: friendlyNetworkError(err) }
+    return { ...none, checkError: friendlyNetworkError(err), checkErrorKind: classifyNetworkError(err) }
   }
 }
 
 async function checkKernelUpdate(): Promise<KernelUpdateInfo> {
+  if (kernelCheckCache && Date.now() - kernelCheckCache.at < KERNEL_CHECK_TTL_MS) {
+    return kernelCheckCache.info
+  }
   const currentVersion = await currentOmpVersion()
   const none = emptyKernel(currentVersion)
   try {
@@ -314,16 +353,19 @@ async function checkKernelUpdate(): Promise<KernelUpdateInfo> {
     if (!latest) return none
     const latestVersion = latest.tag_name.replace(/^v/, '')
     const asset = latest.assets?.find((item) => item.name === ompAssetName())
-    return {
+    const info: KernelUpdateInfo = {
       updateAvailable: currentVersion ? isNewerVersion(latestVersion, currentVersion) : Boolean(asset),
       currentVersion,
       latestVersion,
       url: latest.html_url,
       downloadUrl: asset?.browser_download_url ?? '',
     }
+    // Only a successful check is worth caching; a failure has to be retryable.
+    kernelCheckCache = { info, at: Date.now() }
+    return info
   } catch (err) {
     appLog.warn('updates', 'OMP kernel update check failed', err)
-    return { ...none, checkError: friendlyNetworkError(err) }
+    return { ...none, checkError: friendlyNetworkError(err), checkErrorKind: classifyNetworkError(err) }
   }
 }
 
@@ -652,6 +694,9 @@ async function installKernelUpdateInner(): Promise<{ ok: true; version: string }
     // We know exactly what we just put there, so record it instead of making the
     // next update check spawn the kernel to ask.
     writeKernelVersionMarker(dest, kernel.latestVersion)
+    // The cached check predates this install; without dropping it the About page
+    // would keep offering the version that is already on disk.
+    kernelCheckCache = null
     appLog.warn('updates', `Installed OMP kernel ${kernel.latestVersion} at ${dest}`)
     broadcastKernelProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
     return { ok: true, version: kernel.latestVersion }

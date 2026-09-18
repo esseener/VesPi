@@ -439,6 +439,8 @@ interface AppState {
    * not every time the periodic re-check runs.
    */
   updateSignature: string | null
+  /** Automatic re-checks stand down until this timestamp after a rate-limited check. */
+  updateCheckBackoffUntil: number
   kernelUpdateProgress: KernelUpdateProgress | null
   uiUpdateProgress: KernelUpdateProgress | null
 
@@ -642,8 +644,9 @@ interface AppActions {
   startNoteFromText: (text: string) => void
   clearNoteDraft: () => void
 
-  // Update check
-  checkForUpdates: () => Promise<void>
+  // Update check. `automatic` marks the periodic re-check, which stands down
+  // while a rate-limited check is backing off; a manual check always runs.
+  checkForUpdates: (options?: { automatic?: boolean }) => Promise<void>
   installKernelUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   installUiUpdate: () => Promise<{ ok: true; version: string } | { ok: false; error: string }>
   handleKernelUpdateProgress: (progress: KernelUpdateProgress) => void
@@ -746,6 +749,13 @@ const pendingLocalEchoes: { text: string; sentAt: number }[] = []
 const autoNamedSessions = new Set<string>()
 const LOCAL_ECHO_TTL_MS = 5 * 60 * 1000
 const LOCAL_ECHO_MAX = 50
+/**
+ * How long automatic update checks stand down after GitHub rate-limits us. The
+ * quota is per exit IP, so on a shared proxy it is not ours to spend: hammering
+ * the endpoint every half hour only produces the same 403 and eats the budget
+ * other things on that exit need. Manual checks ignore this.
+ */
+const UPDATE_CHECK_RATE_LIMIT_BACKOFF_MS = 2 * 60 * 60 * 1000
 
 function recordLocalEcho(text: string): void {
   pendingLocalEchoes.push({ text, sentAt: Date.now() })
@@ -1035,6 +1045,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   updateInfo: null,
   updateDismissed: false,
   updateSignature: null,
+  updateCheckBackoffUntil: 0,
   kernelUpdateProgress: null,
   uiUpdateProgress: null,
 
@@ -3487,7 +3498,12 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   // ─── Update check ─────────────────────────────────────────────────────
 
-  checkForUpdates: async () => {
+  checkForUpdates: async (options) => {
+    // A rate-limited check (the shared proxy exit ran out of GitHub's anonymous
+    // quota) must not be retried on the next tick: it would fail the same way,
+    // and each attempt spends more of a budget that is not ours. A manual check
+    // always goes through — that is the user asking.
+    if (options?.automatic && Date.now() < get().updateCheckBackoffUntil) return
     try {
       const info = await window.piDesktop.updates.check()
       set((state) => {
@@ -3501,9 +3517,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           info.kernel.checkError ? 'kernel-error' : '',
         ].join('|')
         const offerChanged = state.updateSignature !== signature
+        const rateLimited =
+          info.checkErrorKind === 'rate-limit' || info.kernel.checkErrorKind === 'rate-limit'
         return {
           updateInfo: info,
           updateSignature: signature,
+          updateCheckBackoffUntil: rateLimited
+            ? Date.now() + UPDATE_CHECK_RATE_LIMIT_BACKOFF_MS
+            : info.checkError
+              ? state.updateCheckBackoffUntil
+              : 0,
           // A dismissal sticks until the offer itself changes. This is what
           // makes a periodic re-check safe: it must not re-open a banner the
           // user already closed, while a genuinely newer release (or a new

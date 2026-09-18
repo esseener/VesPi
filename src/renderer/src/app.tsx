@@ -110,14 +110,19 @@ export function App(): React.JSX.Element {
   // empty-chat center prompt is the "minimal" launch surface when not opening Home.
   const isHome = currentView === 'home' || currentView === 'model-setup'
   const showChrome = !isHome
+  const checkErrorKind = updateInfo?.checkErrorKind ?? updateInfo?.kernel.checkErrorKind
   const updateCheckFailed = Boolean(updateInfo?.checkError || updateInfo?.kernel.checkError)
+  // A rate-limited check is transient — the periodic re-check backs off and tries
+  // again — so it does not raise a banner the user has to dismiss. The About page
+  // still explains it, with the reason, whenever they go looking.
+  const updateCheckFailedNotably = updateCheckFailed && checkErrorKind !== 'rate-limit'
   // Every clause must answer to the X: the available-update clause via
   // updateDismissed, the transient install clauses via the progress objects,
   // the failed-check clause via the checkError fields — dismissUpdate clears
   // all three. (A global !updateDismissed gate would wrongly hide the
   // "installed" banner, because checkForUpdates re-arms the flag after a
   // successful kernel install.)
-  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || uiBusy || uiDone || uiFailed || updateCheckFailed || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
+  const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || uiBusy || uiDone || uiFailed || updateCheckFailedNotably || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
   const globalWorkflowOpen =
     showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
@@ -162,7 +167,7 @@ export function App(): React.JSX.Element {
             the "these are two separate things" reading without needing two rows.
           */}
           <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1">
-            {updateCheckFailed && !kernelBusy && (
+            {updateCheckFailedNotably && !kernelBusy && (
               <div className="min-w-0 truncate text-error">
                 {updateInfo?.checkError || updateInfo?.kernel.checkError || t(language, 'updateCheckFailed')}
               </div>

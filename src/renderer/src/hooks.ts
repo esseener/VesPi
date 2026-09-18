@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useCallback, useState } from 'react'
 import { useAppStore } from './store'
+import { shouldFollowContent, shouldFollowStream } from './scroll-follow'
 import { DEFAULT_SETTINGS } from '../../shared/default-settings'
 import { hasConfiguredChatModel } from '../../shared/models-config'
 import { BUILTIN_SOURCE, type PiCommand } from '../../shared/pi-command'
@@ -362,11 +363,17 @@ export function useChatScroll(active: boolean): {
       // layout pass runs before this animation frame.
       pendingRestore.current = false
       forceBottom.current = false
-      if (!activeRef.current || !autoScrollRef.current || userDetached.current) return
+      const shouldFollow = (): boolean =>
+        shouldFollowStream({
+          autoScroll: autoScrollRef.current,
+          active: activeRef.current,
+          userDetached: userDetached.current,
+        })
+      if (!shouldFollow()) return
       requestAnimationFrame(() => {
         const el = ref.current
         if (!el) return
-        if (!activeRef.current || !autoScrollRef.current || userDetached.current) return
+        if (!shouldFollow()) return
         el.scrollTop = el.scrollHeight
         syncAtBottom()
       })
@@ -470,7 +477,7 @@ export function useChatScroll(active: boolean): {
 
     // Follow new/streamed content unless the user scrolled away to read. Auto
     // Scroll off means the view never moves on its own.
-    if (autoScroll && (lastIsUser || (grew && !userDetached.current))) {
+    if (shouldFollowContent({ autoScroll, grew, lastIsUser, userDetached: userDetached.current })) {
       el.scrollTop = el.scrollHeight
     }
 
@@ -659,13 +666,15 @@ export function useInitialize(): void {
   //
   // Kept in its own effect rather than folded into the one-shot init above,
   // because that one returns early on every later run (the `initialized` ref)
-  // and would therefore never re-register a timer. GitHub allows 60 anonymous
-  // requests/hour and one check costs two, so half-hourly stays well inside
-  // the budget. checkForUpdates is signature-aware, so this cannot re-open a
-  // banner the user already dismissed for the same offer.
+  // and would therefore never re-register a timer. The kernel half of a check is
+  // cached in main for two hours and the periodic check stands down entirely for
+  // two hours after GitHub rate-limits the exit IP, so half-hourly ticks cost
+  // well under the 60 anonymous requests/hour that exit has to share.
+  // checkForUpdates is signature-aware, so this cannot re-open a banner the user
+  // already dismissed for the same offer.
   useEffect(() => {
     const timer = setInterval(() => {
-      void useAppStore.getState().checkForUpdates()
+      void useAppStore.getState().checkForUpdates({ automatic: true })
     }, UPDATE_RECHECK_INTERVAL_MS)
     return () => clearInterval(timer)
   }, [])
