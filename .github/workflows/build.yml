@@ -180,6 +180,25 @@ jobs:
           # Goal strip fixes (1.0.49): terminal-goal cleanup and click feedback.
           assert_marker "goal terminal cleanup" "normalizeGoalState"
           assert_marker "goal pending feedback" "goalPending"
+          # Goal strip control (1.0.50): a click dispatches the kernel's goal
+          # extension command instead of posting a chat message, and the
+          # extension steers a hidden instruction at the model. The channel name
+          # and the renderer action live in app.asar; the extension itself is an
+          # extraResource, so it is checked as a file rather than through grep.
+          assert_marker "goal control channel" "pi:goal-control"
+          assert_marker "goal control dispatched" "goalControl"
+          goal_ext=release/win-unpacked/resources/resources/vespi-goal.ts
+          if [ ! -f "$goal_ext" ]; then
+            echo "::error::$goal_ext is missing from the package"
+            exit 1
+          fi
+          for marker in "VESPI-GOAL-CONTROL" "GOAL_CONTROL_COMMAND = 'vespi-goal'"; do
+            if ! grep -q -e "$marker" "$goal_ext"; then
+              echo "::error::the shipped goal extension is missing: $marker"
+              exit 1
+            fi
+            echo "ok: goal extension carries $marker"
+          done
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

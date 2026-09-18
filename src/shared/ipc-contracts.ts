@@ -23,6 +23,8 @@ export const IPC_CHANNELS = {
   PI_ABORT: 'pi:abort',
   PI_BASH: 'pi:bash',
   PI_ABORT_BASH: 'pi:abort-bash',
+  // Goal strip buttons: dispatches `/vespi-goal <op>` into the kernel.
+  PI_GOAL_CONTROL: 'pi:goal-control',
 
   // Session management
   SESSION_NEW: 'session:new',

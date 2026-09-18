@@ -1,5 +1,6 @@
 import type { GoalInfo, GoalModeState } from '../../../shared/ipc-contracts'
 import type { MessageKey } from '../../../shared/i18n'
+import type { GoalControlFailure } from '../../../shared/vespi'
 
 /** Compact token count: 16920 → "16.9k", 940 → "940". */
 export function formatTokenCount(tokens: number): string {
@@ -80,4 +81,24 @@ export function normalizeGoalState(state: GoalModeState | null | undefined): Goa
   const status: GoalInfo['status'] = state.goal.status
   if (status === 'dropped' || status === 'complete') return null
   return state
+}
+
+/**
+ * i18n key explaining why a click never reached the kernel. The distinction that
+ * matters: a missing extension means the button can never work as long as that
+ * process lives (the caller must say so instead of silently retrying), while a
+ * transport failure is worth another click.
+ */
+export function goalControlFailureKey(reason?: GoalControlFailure): MessageKey {
+  switch (reason) {
+    case 'extension-missing':
+      return 'goalControlFailedExtension'
+    case 'pi-not-running':
+    case 'no-pi':
+      return 'goalControlFailedRuntime'
+    case 'timeout':
+    case 'dispatch-failed':
+    default:
+      return 'goalControlFailedGeneric'
+  }
 }

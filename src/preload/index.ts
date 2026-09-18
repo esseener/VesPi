@@ -75,6 +75,7 @@ import type {
   GitConveyorPullRequestOptions,
   GitConveyorPullRequestResult,
 } from '../shared/ipc-contracts'
+import type { GoalControlOp, GoalControlResult } from '../shared/vespi'
 import type { ThemeFile } from '../shared/theme/theme-file'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
 
@@ -98,6 +99,8 @@ interface PiDesktopAPI {
     abort(): Promise<unknown>
     bash(command: string): Promise<unknown>
     abortBash(): Promise<unknown>
+    /** Runs a goal-strip button through the kernel's `/vespi-goal` command. */
+    goalControl(op: GoalControlOp): Promise<GoalControlResult>
   }
 
   // Session management
@@ -383,6 +386,7 @@ const api: PiDesktopAPI = {
     abort: () => ipcRenderer.invoke(IPC_CHANNELS.PI_ABORT),
     bash: (command) => ipcRenderer.invoke(IPC_CHANNELS.PI_BASH, command),
     abortBash: () => ipcRenderer.invoke(IPC_CHANNELS.PI_ABORT_BASH),
+    goalControl: (op) => ipcRenderer.invoke(IPC_CHANNELS.PI_GOAL_CONTROL, op),
   },
 
   session: {

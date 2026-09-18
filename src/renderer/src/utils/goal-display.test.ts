@@ -4,6 +4,7 @@ import {
   formatGoalTime,
   formatTokenCount,
   goalActions,
+  goalControlFailureKey,
   goalStatusKey,
   normalizeGoalState,
 } from './goal-display'
@@ -106,5 +107,23 @@ describe('normalizeGoalState', () => {
     assert.equal(normalizeGoalState(undefined), null)
     assert.equal(normalizeGoalState({ enabled: true }), null)
     assert.equal(normalizeGoalState({ enabled: true, goal: undefined }), null)
+  })
+})
+
+describe('goalControlFailureKey', () => {
+  it('says the extension is missing when the command was never registered', () => {
+    // Not retryable by clicking again: the same process keeps answering no.
+    assert.equal(goalControlFailureKey('extension-missing'), 'goalControlFailedExtension')
+  })
+
+  it('blames the runtime when there is no live kernel to talk to', () => {
+    assert.equal(goalControlFailureKey('pi-not-running'), 'goalControlFailedRuntime')
+    assert.equal(goalControlFailureKey('no-pi'), 'goalControlFailedRuntime')
+  })
+
+  it('falls back to a retry hint for transport failures', () => {
+    assert.equal(goalControlFailureKey('timeout'), 'goalControlFailedGeneric')
+    assert.equal(goalControlFailureKey('dispatch-failed'), 'goalControlFailedGeneric')
+    assert.equal(goalControlFailureKey(undefined), 'goalControlFailedGeneric')
   })
 })

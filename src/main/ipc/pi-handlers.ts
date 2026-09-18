@@ -7,6 +7,30 @@ import { loadAppSettings } from './settings'
 import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
 import type { IpcContext } from './context'
 import { detectPiInstallations, getConfiguredEngineKind } from '../pi-rpc-manager'
+import type { PiRpcManager } from '../pi-rpc-manager'
+import {
+  isGoalControlOp,
+  VESPI_GOAL_CONTROL_COMMAND,
+  type GoalControlFailure,
+  type GoalControlResult,
+} from '../../shared/vespi'
+
+/**
+ * Probe for the goal extension command in this Pi process. Without the gate an
+ * unloaded extension would leave the command unknown, and the prompt would fall
+ * through to a real LLM turn — the strip would then report success for a click
+ * that merely started a chat.
+ */
+async function hasGoalControlExtension(pi: PiRpcManager): Promise<boolean> {
+  const command = pi.getEngineKind() === 'omp' ? 'get_available_commands' : 'get_commands'
+  const response = (await pi.sendCommand({ type: command })) as
+    | { success?: boolean; data?: { commands?: Array<{ name?: unknown; source?: unknown }> } }
+    | null
+  if (!response?.success || !Array.isArray(response.data?.commands)) return false
+  return response.data.commands.some(
+    (candidate) => candidate?.name === VESPI_GOAL_CONTROL_COMMAND && candidate?.source === 'extension'
+  )
+}
 
 export function registerPiHandlers(ctx: IpcContext): void {
   const { workspaceManager, getActivePi } = ctx
@@ -143,4 +167,43 @@ export function registerPiHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.PI_ABORT_BASH, async () => {
     return getActivePi().sendCommand({ type: 'abort_bash' })
   })
+
+  // ─── Goal strip control ──────────────────────────────────────────────────
+
+  /**
+   * Runs a goal-strip button. Goal mode is kernel-owned and has no client entry
+   * point (no RPC verb, no extension API), so the click becomes an extension
+   * command: `/vespi-goal <op>` — the same route `/workflows` controls take.
+   * Extension commands execute immediately even while a turn streams, and the
+   * extension steers a hidden message at the model from inside the kernel.
+   */
+  ipcMain.handle(
+    IPC_CHANNELS.PI_GOAL_CONTROL,
+    async (_event, op: unknown): Promise<GoalControlResult> => {
+      if (!isGoalControlOp(op)) throw new Error('op must be resume, complete or drop')
+      const fail = (reason: GoalControlFailure): GoalControlResult => ({ op, ok: false, reason })
+
+      let pi: PiRpcManager
+      try {
+        pi = getActivePi()
+      } catch {
+        return fail('no-pi')
+      }
+      if (pi.getStatus().status !== 'running') return fail('pi-not-running')
+
+      try {
+        if (!(await hasGoalControlExtension(pi))) return fail('extension-missing')
+      } catch {
+        return fail('extension-missing')
+      }
+
+      try {
+        await pi.sendCommand({ type: 'prompt', message: `/${VESPI_GOAL_CONTROL_COMMAND} ${op}` })
+        return { op, ok: true, dispatched: true }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        return fail(/timed out/i.test(message) ? 'timeout' : 'dispatch-failed')
+      }
+    }
+  )
 }

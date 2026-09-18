@@ -64,6 +64,7 @@ import type {
 } from '../../shared/ipc-contracts'
 
 import { DEFAULT_LANGUAGE, t, type MessageKey } from '../../shared/i18n'
+import type { GoalControlOp, GoalControlResult } from '../../shared/vespi'
 export type { DisplayAttachment, DisplayMessage } from './message-parsing'
 
 // ─── Preview Target ──────────────────────────────────────────────────────────
@@ -476,6 +477,12 @@ interface AppActions {
   sendPrompt: (message: string, options?: { images?: PromptImage[]; attachments?: DisplayAttachment[] }) => Promise<void>
   sendSteer: (message: string, options?: { images?: PromptImage[] }) => Promise<void>
   sendFollowUp: (message: string) => Promise<void>
+  /**
+   * Runs a goal-strip button. It dispatches the kernel's `/vespi-goal` extension
+   * command rather than sending a chat message, so nothing lands in the
+   * conversation and the click works mid-turn.
+   */
+  goalControl: (op: GoalControlOp) => Promise<GoalControlResult>
   runCouncil: (request: string) => Promise<void>
   approveCouncilPlan: () => Promise<void>
   reviseCouncilPlan: (feedback: string) => Promise<void>
@@ -1260,6 +1267,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       await window.piDesktop.commands.followUp(message)
     } catch (err) {
       get().addMessage(notice('sysFollowUpError', { detail: errDetail(err) }))
+    }
+  },
+
+  goalControl: async (op) => {
+    // The failure modes are all reported as data (the main process decides), so
+    // only a transport-level throw needs a fallback here.
+    try {
+      return await window.piDesktop.commands.goalControl(op)
+    } catch {
+      return { op, ok: false, reason: 'dispatch-failed' }
     }
   },
 
