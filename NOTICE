@@ -1,0 +1,12 @@
+VesPi
+Copyright 2026 VesPi
+
+This product includes software developed as part of the Pi Desktop project
+(https://github.com/FaqFirebase/pi-desktop), licensed under the Apache License,
+Version 2.0. The desktop interface in this repository is derived from that work;
+its copyright notices and license terms are reproduced here in accordance with
+Section 4 of the License.
+
+This product also ships and runs the Oh My Pi (OMP) agent runtime
+(https://github.com/can1357/oh-my-pi) as the unmodified upstream Windows binary
+at runtime/omp/omp.exe, distributed under its own upstream terms.

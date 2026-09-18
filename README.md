@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/icon-512.png" width="88" alt="VesPi">
-</p>
-
 <h1 align="center">VesPi</h1>
 
 <p align="center">
@@ -43,6 +39,12 @@ VesPi 是 Windows 上的 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-
 | 运行时依赖 | **无**。不需要 Node、Bun，也不需要 PATH 上有 `omp` |
 | 会话位置 | `~/.omp/profiles/VesPi/agent/sessions` |
 | 数据 | 会话、用量统计与配置保存在本机，不上传 |
+
+## 界面
+
+<p align="center">
+  <img src="docs/promo/frames/slide_01.png" width="360" alt="VesPi：首页用量看板与最近工作区">
+</p>
 
 ## 功能
 
@@ -147,8 +149,8 @@ SHA-256 准备并校验内核，产物输出到 `release/`。
 
 ## 许可证
 
-Apache-2.0，见 [LICENSE](LICENSE)。桌面界面由 [Pi Desktop](https://github.com/FaqFirebase/pi-desktop)
-（Apache-2.0）改造而来，保留其 NOTICE；Agent 执行由上游 [oh-my-pi](https://github.com/can1357/oh-my-pi) 提供。
+Apache-2.0，见 [LICENSE](LICENSE)。本项目包含源自上游 Apache-2.0 项目的桌面界面代码，
+其版权与许可声明见 [NOTICE](NOTICE)；Agent 执行由 [oh-my-pi](https://github.com/can1357/oh-my-pi) 提供。
 
 ---
 
@@ -186,6 +188,7 @@ Build from source with Node.js 22+:
 npm install && npm run dev
 ```
 
-Licensed under Apache-2.0, incorporating Pi Desktop (Apache-2.0).
+Licensed under Apache-2.0. See [NOTICE](NOTICE) for the upstream attribution of the desktop
+UI code.
 
 </details>

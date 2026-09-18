@@ -211,6 +211,9 @@ jobs:
           # separate rounded cards with a gap, not flush caps sharing its edge — the
           # two rings animate independently and snagged at the seam.
           assert_marker "detached composer notice" "rounded-[14px]"
+          # Composer attachment drop (1.0.54): files dropped on the composer are
+          # read as attachments, while folders keep going to the workspace opener.
+          assert_marker "composer attachment drop" "attachableDropPaths"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

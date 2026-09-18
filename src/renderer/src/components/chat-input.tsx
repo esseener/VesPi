@@ -16,6 +16,7 @@ import {
   type FileSearchResult,
 } from '../../../shared/ipc-contracts'
 import { formatUntrustedBlock } from '../../../shared/untrusted-data'
+import { attachableDropPaths } from '../../../shared/composer-drop'
 import { rankFileResults } from '../utils/rank-file-results'
 import { ScaledImage } from '../utils/image-thumbnail'
 import {
@@ -152,6 +153,7 @@ export function ChatInput(): React.JSX.Element {
 
   const [attachments, setAttachments] = useState<Attachment[]>([])
   const [attachError, setAttachError] = useState<string | null>(null)
+  const [dropActive, setDropActive] = useState(false)
   const [midTurnDraft, setMidTurnDraft] = useState<string | null>(null)
   // Whether the composer holds text. The textarea is uncontrolled, so this is
   // tracked explicitly — it lets the send button disable itself when there is
@@ -374,6 +376,16 @@ export function ChatInput(): React.JSX.Element {
     [resizeTextarea]
   )
 
+  /** Read one path into a staged attachment. Shared by the picker and drag-drop. */
+  const attachPath = useCallback(async (path: string): Promise<void> => {
+    const result = await window.piDesktop.files.readAttachment(path)
+    const next: Attachment =
+      result.kind === 'image'
+        ? { kind: 'image', name: result.name, path, image: result.image }
+        : { kind: 'text', name: result.name, path, content: result.content }
+    setAttachments((prev) => (prev.some((a) => a.path === path) ? prev : [...prev, next]))
+  }, [])
+
   const handleAttachFile = useCallback(async () => {
     setAttachError(null)
     try {
@@ -386,16 +398,11 @@ export function ChatInput(): React.JSX.Element {
         ],
       })
       if (!path) return
-      const result = await window.piDesktop.files.readAttachment(path)
-      const next: Attachment =
-        result.kind === 'image'
-          ? { kind: 'image', name: result.name, path, image: result.image }
-          : { kind: 'text', name: result.name, path, content: result.content }
-      setAttachments((prev) => (prev.some((a) => a.path === path) ? prev : [...prev, next]))
+      await attachPath(path)
     } catch (err) {
       setAttachError(err instanceof Error ? err.message : 'Could not attach file')
     }
-  }, [])
+  }, [attachPath])
 
   const attachImageFile = useCallback(async (file: File): Promise<void> => {
     const mime = file.type.toLowerCase()
@@ -467,6 +474,53 @@ export function ChatInput(): React.JSX.Element {
     [attachImageFile, isDisabled]
   )
 
+  /**
+   * Dropping files onto the composer stages them as attachments — same result as
+   * the paperclip, and the same reader (`readAttachment`), so text files inline
+   * and images become image attachments either way.
+   *
+   * Folders are deliberately left alone: the window-level folder drop opens them
+   * as workspaces. `attachableDropPaths` makes that call (it can only be made on
+   * drop, since `webkitGetAsEntry()` is null while dragging), and when it returns
+   * nothing this handler does not touch the event so the folder drop still runs.
+   */
+  const handleComposerDragOver = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      if (isDisabled) return
+      if (!e.dataTransfer?.types?.includes('Files')) return
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      setDropActive(true)
+    },
+    [isDisabled]
+  )
+
+  const handleComposerDragLeave = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    // Moving between the composer's own children must not flicker the highlight.
+    if (e.currentTarget.contains(e.relatedTarget as Node | null)) return
+    setDropActive(false)
+  }, [])
+
+  const handleComposerDrop = useCallback(
+    async (e: React.DragEvent<HTMLDivElement>) => {
+      setDropActive(false)
+      if (isDisabled) return
+      const paths = attachableDropPaths(e.dataTransfer, (file) =>
+        window.piDesktop.system.getPathForFile(file as File)
+      )
+      if (paths.length === 0) return
+      e.preventDefault()
+      e.stopPropagation()
+      setAttachError(null)
+      try {
+        for (const path of paths) await attachPath(path)
+      } catch (err) {
+        setAttachError(err instanceof Error ? err.message : 'Could not attach file')
+      }
+    },
+    [attachPath, isDisabled]
+  )
+
   const removeAttachment = useCallback((index: number) => {
     setAttachments((prev) => prev.filter((_, i) => i !== index))
   }, [])
@@ -517,7 +571,10 @@ export function ChatInput(): React.JSX.Element {
 
       <div
         id="vespi-composer"
-        className={`pointer-events-auto relative flex flex-col rounded-[18px] border border-transparent bg-transparent transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
+        onDragOver={handleComposerDragOver}
+        onDragLeave={handleComposerDragLeave}
+        onDrop={handleComposerDrop}
+        className={`pointer-events-auto relative flex flex-col rounded-[18px] border border-transparent bg-transparent transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'} ${dropActive ? 'ring-1 ring-accent-fg' : ''}`}
       >
         {/* Everything pinned above the composer stacks here, in one column at the
             composer's own width. Each piece is its own rounded card with a gap
