@@ -484,7 +484,7 @@ export function ChatInput(): React.JSX.Element {
 
       <div
         id="vespi-composer"
-        className={`pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
+        className={`pointer-events-auto relative flex flex-col rounded-[18px] border border-transparent bg-transparent transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
       >
         {/* Everything pinned above the composer stacks here, in one column at the
             composer's own width. The pieces used to disagree on all of it — a
@@ -494,7 +494,7 @@ export function ChatInput(): React.JSX.Element {
             sits nearest the input, the explanatory notice above it. */}
         <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-20 flex flex-col gap-1">
           {reattachedMidTurn && (
-            <div className="composer-top-strip relative overflow-hidden rounded-t-xl border border-b-0 border-transparent bg-surface/95 px-3 py-2 backdrop-blur-sm">
+            <div className="composer-top-strip relative overflow-hidden rounded-t-[18px] border border-b-0 border-transparent bg-surface/95 px-3 py-2 backdrop-blur-sm">
               <div className="flex items-center gap-2 text-xs">
                 <span className="run-silver h-2.5 w-2.5 shrink-0 rounded-full" aria-hidden="true" />
                 <span className="shrink-0 font-medium text-primary">{t(language, 'reattachedStillWorking')}</span>
@@ -538,7 +538,7 @@ export function ChatInput(): React.JSX.Element {
         )}
 
         {slashOpen && (
-          <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl">
+          <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden surface-floating shadow-2xl">
             <div className="max-h-80 overflow-y-auto py-1">
               <CommandResults
                 grouped={slashResults.grouped}
@@ -555,7 +555,7 @@ export function ChatInput(): React.JSX.Element {
         )}
 
         {mentionOpen && (
-          <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl">
+          <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden surface-floating shadow-2xl">
             <div className="max-h-80 overflow-y-auto py-1">
               {mentionResults.map((result, i) => (
                 <button

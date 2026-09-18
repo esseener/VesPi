@@ -221,7 +221,7 @@ export function ThemeEditor({
         if (event.target === event.currentTarget) cancel()
       }}
     >
-      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border border-border-strong bg-surface shadow-xl">
+      <div className="flex max-h-[90vh] w-full max-w-2xl flex-col surface-floating shadow-xl">
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
           <h2 className="text-base font-semibold text-primary">
             {t(language, isUserTheme ? 'themeEditTitle' : 'themeCreateTitle')}

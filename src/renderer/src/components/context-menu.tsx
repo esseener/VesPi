@@ -195,7 +195,7 @@ export function useContextMenu(): {
         ref={menuRef}
         role="menu"
         aria-orientation="vertical"
-        className="fixed z-[9999] min-w-[180px] max-h-[70vh] overflow-y-auto rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40 animate-fade-in"
+        className="fixed z-[9999] min-w-[180px] max-h-[70vh] overflow-y-auto surface-floating py-1 shadow-xl shadow-black/40 animate-fade-in"
         style={{ left: state.x, top: state.y }}
       >
       {state.items.map((item) => {

@@ -59,7 +59,7 @@ export function TaskLauncher(): React.JSX.Element | null {
       role="presentation"
     >
       <section
-        className="w-full max-w-xl overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl"
+        className="w-full max-w-xl overflow-hidden surface-floating shadow-2xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="task-launcher-title"

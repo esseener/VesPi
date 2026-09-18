@@ -162,7 +162,7 @@ export function ThemeGallery({ onClose, onInstalled }: ThemeGalleryProps): React
       onClick={onClose}
     >
       <div
-        className="flex max-h-[85vh] w-full max-w-3xl flex-col rounded-lg border border-border-strong bg-surface shadow-xl"
+        className="flex max-h-[85vh] w-full max-w-3xl flex-col surface-floating shadow-xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-border px-4 py-3">

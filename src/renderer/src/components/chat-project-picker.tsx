@@ -129,7 +129,7 @@ export function ChatProjectPicker(): React.JSX.Element {
       </button>
 
       {pickerOpen && (
-        <div className="absolute left-1.5 top-full z-30 mt-1 max-h-64 w-72 overflow-y-auto rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40">
+        <div className="absolute left-1.5 top-full z-30 mt-1 max-h-64 w-72 overflow-y-auto surface-floating py-1 shadow-xl shadow-black/40">
           <button
             type="button"
             onClick={() => void applySelection(null)}

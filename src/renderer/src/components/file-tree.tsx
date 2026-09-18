@@ -429,7 +429,7 @@ export function FileSearch({ isOpen, onClose }: FileSearchProps): React.JSX.Elem
     <div
       ref={panelRef}
       role="listbox"
-      className="fixed z-50 w-[28rem] overflow-hidden rounded-lg border border-border-strong bg-surface shadow-xl shadow-black/40 origin-bottom"
+      className="fixed z-50 w-[28rem] overflow-hidden surface-floating shadow-xl shadow-black/40 origin-bottom"
       style={{ left: anchor.left, bottom: anchor.bottom }}
     >
       <div className="flex items-center gap-2 border-b border-border px-3 py-2">

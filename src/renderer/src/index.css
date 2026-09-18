@@ -420,105 +420,90 @@
     animation: fleet-shimmer 1.4s linear infinite;
   }
 
-  @keyframes composer-border-flow {
-    from { background-position: 0% 50%; }
-    to { background-position: 200% 50%; }
+  /* ── Model-running light ──────────────────────────────────────────────────
+     Ported from the ZCode theme (v13.1) — the version that reads as ONE light
+     travelling around the box. Two details do the work:
+
+     1. The sweep is a CONIC gradient whose angle is an animated custom property,
+        so it turns with the border's own geometry. The version before this slid a
+        linear gradient's background-position along the edge, and where that
+        straight gradient met the corner radius the stroke broke into seams and
+        speckle — the broken, specks-of-light look in the screenshot.
+     2. A drop-shadow glues the stroke together, so a 2px line reads as one solid
+        light instead of a thin aliased ring.
+
+     Same recipe as ZCode: 2px stroke, light confined to a 260–360° arc with a
+     solid core, slow turn by default, fast while the model writes. */
+  @property --vespi-flow-angle {
+    syntax: '<angle>';
+    initial-value: 0deg;
+    inherits: false;
   }
 
-  /* The composer's only edge is this travelling light: the container's own 1px
-     is transparent, and there is deliberately no solid rim underneath it. A
-     static border is what made the sweep look like "a white line with a bit of
-     light on it" instead of light running around the box. */
+  @keyframes vespi-flow {
+    to {
+      --vespi-flow-angle: 360deg;
+    }
+  }
+
+  #vespi-composer::before,
+  #vespi-composer .composer-top-strip::before {
+    content: '';
+    position: absolute;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--vespi-flow-angle),
+      transparent 0deg,
+      transparent 260deg,
+      color-mix(in srgb, var(--color-accent-fg) 12%, transparent) 285deg,
+      color-mix(in srgb, var(--color-accent-fg) 72%, transparent) 310deg,
+      var(--color-accent-fg) 332deg,
+      color-mix(in srgb, var(--color-accent-fg) 46%, transparent) 348deg,
+      transparent 360deg
+    );
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    filter: drop-shadow(0 0 5px color-mix(in srgb, var(--color-accent-fg) 72%, transparent));
+    animation: vespi-flow 8s linear infinite;
+  }
+
+  /* The composer has no border of its own (kept transparent below): this ring IS
+     its edge, and it only exists while the model is writing — an idle composer
+     shows no outline at all, as in the ZCode build. The strips above the composer
+     only exist while something is running, so they always carry the light. */
   #vespi-composer,
   #vespi-composer:focus-within {
     border-color: transparent;
   }
 
   #vespi-composer::before {
-    content: '';
-    position: absolute;
-    inset: -1px;
-    z-index: 0;
-    pointer-events: none;
-    border-radius: inherit;
-    padding: 1px;
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 38%,
-      color-mix(in srgb, var(--color-accent-fg) 90%, transparent) 50%,
-      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 62%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    animation: composer-border-flow 8s linear infinite;
+    inset: -2px;
+    padding: 2px;
+    opacity: 0;
   }
 
-  /* While the model is writing: the same ring, brighter and much faster. */
   #vespi-composer.composer-streaming::before {
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
-      var(--color-accent-fg) 50%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation-duration: 1.15s;
+    opacity: 1;
+    animation-duration: 2.2s;
   }
 
-  /* The subagent strip rides on the composer's top edge. It used to paint its own
-     static 1 px border, which sat directly above the composer's animated one and
-     read as two mismatched outlines — the strip looked bolted on, and its still
-     edge clashed with the light running around the box below. It is drawn by the
-     same sweep now: same masked ring, same colours, same speed, and no bottom
-     edge (padding 0 there), so its side strokes land exactly on the composer's
-     top edge and the light reads as one outline around both. */
   #vespi-composer .composer-top-strip::before {
-    content: '';
-    position: absolute;
+    /* No bottom stroke: its side lines land on the composer's own edge. */
     inset: 0;
-    z-index: 0;
-    pointer-events: none;
-    border-radius: inherit;
+    padding: 2px 2px 0 2px;
     border-bottom-left-radius: 0;
     border-bottom-right-radius: 0;
-    padding: 1px 1px 0 1px;
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 38%,
-      color-mix(in srgb, var(--color-accent-fg) 90%, transparent) 50%,
-      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 62%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    -webkit-mask-composite: xor;
-    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-    mask-composite: exclude;
-    animation: composer-border-flow 8s linear infinite;
   }
 
   #vespi-composer.composer-streaming .composer-top-strip::before {
-    background: linear-gradient(
-      110deg,
-      transparent 0%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
-      var(--color-accent-fg) 50%,
-      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
-      transparent 100%
-    );
-    background-size: 200% 100%;
-    animation-duration: 1.15s;
+    animation-duration: 2.2s;
   }
 
-  /* The strip's own content sits above its ring, like the composer's does. */
+  /* Content sits above the ring. */
   #vespi-composer .composer-top-strip > * {
     position: relative;
     z-index: 1;
@@ -531,15 +516,28 @@
 
   @media (prefers-reduced-motion: reduce) {
     #vespi-composer::before,
-    #vespi-composer.composer-streaming::before {
+    #vespi-composer .composer-top-strip::before {
       animation: none;
-      background: var(--color-border-strong);
     }
   }
 
   @keyframes stop-breath {
     0%, 100% { opacity: 0.35; }
     50% { opacity: 1; }
+  }
+
+  /* ── Floating surfaces ────────────────────────────────────────────────────
+     Menus, palettes, popovers and dialogs share one treatment, from the ZCode
+     theme: a soft 24px blur over a 0.82-opaque surface, a generous radius, and a
+     border quiet enough to disappear into the panel behind it. Applied by class
+     swap (the element's own radius class goes away with it) so every floating
+     thing in the app reads as the same material. */
+  .surface-floating {
+    border-radius: 14px;
+    border: 1px solid color-mix(in srgb, var(--color-border-strong) 55%, transparent);
+    background: color-mix(in srgb, var(--color-surface) 82%, transparent);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
   }
 
   .stop-breath-core {

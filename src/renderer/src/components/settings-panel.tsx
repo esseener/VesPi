@@ -989,7 +989,7 @@ export function SettingsPanel(): React.JSX.Element {
 
       {showCouncilWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md rounded-lg border border-border-strong bg-surface p-6 shadow-xl">
+          <div className="w-full max-w-md surface-floating p-6 shadow-xl">
             <h3 className="mb-3 text-base font-semibold text-primary">
               {t(language, 'enableCouncilTitle')}
             </h3>

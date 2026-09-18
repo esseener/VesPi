@@ -195,7 +195,7 @@ export function CommandPalette(): React.JSX.Element | null {
       onClick={close}
     >
       <div
-        className="w-full max-w-lg overflow-hidden rounded-lg border border-border-strong bg-surface shadow-2xl"
+        className="w-full max-w-lg overflow-hidden surface-floating shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center gap-2 border-b border-border px-3 py-2.5">

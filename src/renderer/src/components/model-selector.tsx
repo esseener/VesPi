@@ -145,7 +145,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 z-50 mb-1 w-72 rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40 animate-fade-in">
+        <div className="absolute bottom-full right-0 z-50 mb-1 w-72 surface-floating py-1 shadow-xl shadow-black/40 animate-fade-in">
           {currentModel && (
             <div className="border-b border-border px-3 py-2">
               <div className="text-xs text-muted">{t(language, 'currentModel')}</div>

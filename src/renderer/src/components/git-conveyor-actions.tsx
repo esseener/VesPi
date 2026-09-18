@@ -212,7 +212,7 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
           }}
         >
           <form
-            className="w-full max-w-lg rounded-lg border border-border-strong bg-surface p-4 shadow-2xl"
+            className="w-full max-w-lg surface-floating p-4 shadow-2xl"
             onSubmit={(event) => {
               event.preventDefault()
               submitDialog()

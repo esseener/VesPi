@@ -106,7 +106,7 @@ function NotifyToast({
 
   return (
     <div className="fixed bottom-10 right-4 animate-fade-in" style={{ zIndex: NOTIFY_TOAST_Z_INDEX }}>
-      <div className="flex items-center gap-3 rounded-lg border border-border-strong bg-surface px-4 py-3 shadow-lg">
+      <div className="flex items-center gap-3 surface-floating px-4 py-3 shadow-lg">
         {iconMap[request.notifyType ?? 'info'] ?? iconMap.info}
         <span className="text-sm text-primary">{request.message ?? 'Notification'}</span>
         <button onClick={onDismiss} className="ml-2 text-dim hover:text-secondary">
@@ -406,7 +406,7 @@ function DialogOverlay({
           onContextMenu={(e) => e.preventDefault()}
           aria-hidden
         />
-        <div className="relative z-10 overflow-hidden rounded-xl border border-border-strong bg-surface shadow-2xl animate-fade-in">
+        <div className="relative z-10 overflow-hidden surface-floating shadow-2xl animate-fade-in">
           {children}
         </div>
       </>,
