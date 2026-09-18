@@ -1,4 +1,4 @@
-import type { GoalInfo } from '../../../shared/ipc-contracts'
+import type { GoalInfo, GoalModeState } from '../../../shared/ipc-contracts'
 import type { MessageKey } from '../../../shared/i18n'
 
 /** Compact token count: 16920 → "16.9k", 940 → "940". */
@@ -43,19 +43,21 @@ export function goalStatusKey(status: GoalStatus): MessageKey {
   }
 }
 
-export type GoalAction = 'pause' | 'resume' | 'complete' | 'drop'
+export type GoalAction = 'resume' | 'complete' | 'drop'
 
 /**
  * Which buttons a goal should offer.
  *
  * The kernel owns the state machine; the shell only offers the transitions that
- * make sense from the current state, so a paused goal cannot be paused again and
- * a finished one cannot be resumed.
+ * make sense from the current state, and only the ones the kernel's `goal` tool
+ * actually accepts. Measured on 18.2.5, the tool's op union is
+ * `create | get | complete | resume | drop` — there is no `pause`, so a pause
+ * button could never work and is not offered.
  */
 export function goalActions(status: GoalStatus): GoalAction[] {
   switch (status) {
     case 'active':
-      return ['pause', 'complete', 'drop']
+      return ['complete', 'drop']
     case 'paused':
     case 'budget-limited':
       return ['resume', 'drop']
@@ -64,4 +66,18 @@ export function goalActions(status: GoalStatus): GoalAction[] {
     default:
       return []
   }
+}
+
+/**
+ * Terminal goals are normalized away because the kernel never clears them: the
+ * drop/complete path emits one final `goal_updated` that still carries the
+ * finished goal object (with `enabled: false`) and never follows up with a
+ * null state. The strip is for LIVE goals — showing a dead one forever reads
+ * as "my click did nothing".
+ */
+export function normalizeGoalState(state: GoalModeState | null | undefined): GoalModeState | null {
+  if (!state?.goal) return null
+  const status: GoalInfo['status'] = state.goal.status
+  if (status === 'dropped' || status === 'complete') return null
+  return state
 }

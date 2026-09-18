@@ -1,6 +1,7 @@
 import { create } from 'zustand'
 import { applyTheme, setUserThemes, watchSystemTheme } from './utils/theme'
 import { buildPlanningPrompt } from './utils/planning-prompt'
+import { normalizeGoalState } from './utils/goal-display'
 import { parseAgentMessage, type DisplayAttachment, type DisplayMessage } from './message-parsing'
 import type { PiCommand } from '../../shared/pi-command'
 import { normalizeForkMessages, type ForkPoint } from '../../shared/fork-point'
@@ -2588,9 +2589,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       }
 
       // Goal mode is kernel-owned; the shell mirrors it so the objective, its
-      // status and the token/time spend stay visible while it runs.
+      // status and the token/time spend stay visible while it runs. Terminal
+      // goals are normalized away (the kernel's drop/complete path never sends
+      // a clearing event — see normalizeGoalState) so the strip cannot stick.
       case 'goal_updated': {
-        set({ goalState: (event as unknown as { state: GoalModeState | null }).state ?? null })
+        set({ goalState: normalizeGoalState((event as unknown as { state: GoalModeState | null }).state ?? null) })
         break
       }
 

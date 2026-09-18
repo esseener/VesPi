@@ -66,10 +66,16 @@ What the shell adds, which the tool cannot tell you:
   asks for, or a task you can see spanning many turns, is the case for `create`.
   A single edit is not.
 - **Continuing between turns is the feature, not a glitch.** An active goal may
-  resume without a new prompt. If you need the user before going on, pause it and
-  say why instead of stopping silently.
-- **The strip's buttons are the user driving this same tool.** Pause, resume,
-  complete and drop arrive as ordinary user messages asking you to call it.
+  resume without a new prompt. If you need the user before going on, end your
+  turn and say why — there is no pause: the user decides from the strip whether
+  to resume or drop.
+- **The strip's buttons are the user driving this same tool.** Resume, complete
+  and drop arrive as ordinary user messages asking you to call it — when a turn
+  is already running they land as a queued follow-up, so honor them as soon as
+  you see them. When the user asks to pause, explain the tool cannot pause and
+  offer drop instead. A budget-limited goal that is resumed has no headroom
+  left: it re-limits on the next usage flush, so say that plainly with the
+  numbers instead of resuming in a silent loop.
 
 ## Browsing
 
