@@ -520,14 +520,14 @@ export function ChatInput(): React.JSX.Element {
         className={`pointer-events-auto relative flex flex-col rounded-[18px] border border-transparent bg-transparent transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
       >
         {/* Everything pinned above the composer stacks here, in one column at the
-            composer's own width. The pieces used to disagree on all of it — a
-            full-width square notice beside a 90%-wide rounded pill, one of them
-            overlapping the box — which read as debris sitting on the composer
-            rather than as part of it. Order is deliberate: the live subagent list
-            sits nearest the input, the explanatory notice above it. */}
-        <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-20 flex flex-col gap-1">
+            composer's own width. Each piece is its own rounded card with a gap
+            between it and the next — they used to be flush caps sharing the
+            composer's edge, which made their independently animated outlines
+            collide at the seam. Order is deliberate: the live subagent list sits
+            nearest the input, the explanatory notice above it. */}
+        <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-20 flex flex-col gap-1.5">
           {reattachedMidTurn && (
-            <div className="composer-top-strip relative overflow-hidden rounded-t-[18px] border border-b-0 border-transparent bg-surface/95 px-3 py-2 backdrop-blur-sm">
+            <div className="composer-top-strip relative overflow-hidden rounded-[14px] border border-transparent bg-surface/95 px-3 py-2 backdrop-blur-sm">
               <div className="flex items-center gap-2 text-xs">
                 <span className="run-silver h-2.5 w-2.5 shrink-0 rounded-full" aria-hidden="true" />
                 <span className="shrink-0 font-medium text-primary">{t(language, 'reattachedStillWorking')}</span>

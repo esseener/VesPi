@@ -141,9 +141,10 @@ jobs:
           asar=release/win-unpacked/resources/app.asar
           test -f "$asar" || { echo "::error::$asar is missing"; exit 1; }
           assert_marker() {
-            # `-e` matters: a marker that begins with `--` (a CSS custom property)
-            # would otherwise be read as a grep option and reported as missing.
-            if ! grep -q -e "$2" "$asar"; then
+            # `-F` because some markers are literals containing regex syntax
+            # (`rounded-[14px]`); `-e` because a marker may begin with `--` (a CSS
+            # custom property) and would otherwise be read as a grep option.
+            if ! grep -q -F -e "$2" "$asar"; then
               echo "::error::bundle is missing the marker for: $1 ($2)"
               exit 1
             fi
@@ -206,6 +207,10 @@ jobs:
           # on screen instead of only at mount, and says when it last did.
           assert_marker "stats refresh interval" "STATS_REFRESH_INTERVAL_MS"
           assert_marker "stats updated stamp" "statsUpdatedAt"
+          # Detached composer notices (1.0.53): the strips above the composer are
+          # separate rounded cards with a gap, not flush caps sharing its edge — the
+          # two rings animate independently and snagged at the seam.
+          assert_marker "detached composer notice" "rounded-[14px]"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

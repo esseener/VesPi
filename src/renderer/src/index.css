@@ -492,11 +492,15 @@
   }
 
   #vespi-composer .composer-top-strip::before {
-    /* No bottom stroke: its side lines land on the composer's own edge. */
+    /* A complete ring of its own. The strip used to be a cap on the composer —
+       no bottom stroke, square bottom corners — so its two side lines landed on
+       the composer's edge and the whole thing read as one box. But this ring and
+       the composer's ring animate independently, and their phases never lined up
+       at that shared seam: the joint showed as the light snagging on the border,
+       which is exactly where the two rings overlapped. Two cards with their own
+       closed edges cannot disagree about where the light is. */
     inset: 0;
-    padding: 2px 2px 0 2px;
-    border-bottom-left-radius: 0;
-    border-bottom-right-radius: 0;
+    padding: 2px;
   }
 
   #vespi-composer.composer-streaming .composer-top-strip::before {
