@@ -48,3 +48,38 @@ export interface StreamFollowInput {
 export function shouldFollowStream(input: StreamFollowInput): boolean {
   return input.active && input.autoScroll && !input.userDetached
 }
+
+/**
+ * Whether the floating composer should be out of the way.
+ *
+ * The composer overlays the transcript and is transparent by design, so while
+ * the reader is scrolling back through history its text sits on top of the
+ * messages they are trying to read. Hiding it resolves that overlap; returning
+ * to the bottom brings it back with the caret.
+ *
+ * Both halves are required:
+ *
+ *  - `detached`: only hide when the view is away from the bottom. At the bottom
+ *    the composer covers nothing the reader has not already seen, and it must
+ *    be there to type into — hiding it on every keystroke-less moment would make
+ *    the primary input flicker.
+ *
+ *  - `hasUserWork`: never hide something the user would lose. A draft, staged
+ *    attachments, an open mention/slash menu or the mid-turn chooser all mean
+ *    the composer is mid-interaction; its anchor disappearing would be worse
+ *    than the overlap. A blocking extension prompt must stay answerable.
+ *
+ * Note the asymmetry in what "has user work" is NOT: focus alone does not count.
+ * Clicking an empty composer and then scrolling back through history is exactly
+ * the case this feature exists for, and the caret is restored on return.
+ */
+export interface ComposerVisibilityInput {
+  /** The view is scrolled away from the bottom. */
+  detached: boolean
+  /** The composer holds a draft, attachments, an open menu, or a blocking prompt. */
+  hasUserWork: boolean
+}
+
+export function shouldHideComposer(input: ComposerVisibilityInput): boolean {
+  return input.detached && !input.hasUserWork
+}

@@ -166,6 +166,11 @@ jobs:
           # so the marker survives bundling.
           assert_marker "keyless provider guard" "providerIsLoadable"
           assert_marker "keyless provider guard honours auth" "auth === \"none\""
+          # Composer auto-hide (1.0.47): scroll away from the bottom and the
+          # transparent composer stops covering the transcript; scroll back and
+          # it returns. Both the decision and the flag that feeds it must ship.
+          assert_marker "composer hide decision" "shouldHideComposer"
+          assert_marker "composer user-work flag" "composerHasUserWork"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

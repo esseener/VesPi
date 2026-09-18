@@ -31,6 +31,7 @@ import { BrowserPanel, type PanelOpenRequest } from './browser-panel'
 import { SideTabPicker } from './side-tab-picker'
 import { ReviewRail } from './review-rail'
 import { useChatScroll, useGlobalWorkflowOpen } from '../hooks'
+import { shouldHideComposer } from '../scroll-follow'
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
@@ -128,6 +129,17 @@ export function ChatPanel(): React.JSX.Element {
   const globalWorkflowOpen = useGlobalWorkflowOpen()
   const chatVisible = currentView === 'chat' && !globalWorkflowOpen
   const { scrollRef, onScroll, atBottom, scrollToBottom } = useChatScroll(chatVisible)
+  /**
+   * Whether the floating composer should be out of the way.
+   *
+   * Both conditions must hold: the transcript is scrolled away from the bottom
+   * (so the composer is covering text the user is reading), and the composer is
+   * not holding anything they would lose — see `composerHasUserWork`, published
+   * by ChatInput. Requiring both is what makes "scroll up to read, scroll back
+   * down to type" work without ever hiding an in-progress draft.
+   */
+  const composerHasUserWork = useAppStore((state) => state.composerHasUserWork)
+  const composerHidden = shouldHideComposer({ detached: !atBottom, hasUserWork: composerHasUserWork })
 
   // In-conversation search (Ctrl/Cmd+F while in chat). The nonce bumps on every
   // press so re-triggering refocuses/selects the already-open input.
@@ -321,8 +333,11 @@ export function ChatPanel(): React.JSX.Element {
                   {!atBottom && (
                     <button
                       onClick={scrollToBottom}
-                      className="absolute left-1/2 z-20 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border-strong bg-card/90 text-secondary shadow-lg shadow-black/30 backdrop-blur transition-colors hover:bg-elevated hover:text-primary"
-                      style={{ bottom: composerPadPx + 12 }}
+                      className="absolute left-1/2 z-20 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border-strong bg-card/90 text-secondary shadow-lg shadow-black/30 backdrop-blur transition-all duration-200 hover:bg-elevated hover:text-primary"
+                      // With the composer out of the way this is the only way
+                      // back, so it drops to the bottom edge rather than
+                      // hovering where the composer used to be.
+                      style={{ bottom: composerHidden ? 16 : composerPadPx + 12 }}
                       title={t(language, 'scrollToBottom')}
                       aria-label={t(language, 'scrollToBottom')}
                     >
@@ -333,7 +348,10 @@ export function ChatPanel(): React.JSX.Element {
 
                   <div
                     ref={composerWrapRef}
-                    className="pointer-events-none absolute inset-x-0 bottom-0 z-10 pb-3 pt-8 bg-gradient-to-t from-chat-column via-chat-column/80 to-transparent"
+                    className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 pb-3 pt-8 bg-gradient-to-t from-chat-column via-chat-column/80 to-transparent transition-opacity duration-200 ease-out ${composerHidden ? 'invisible opacity-0' : 'opacity-100'}`}
+                    // Hidden from assistive tech too, so a keyboard user cannot
+                    // tab into a composer they cannot see.
+                    aria-hidden={composerHidden || undefined}
                   >
                     <div className="pointer-events-auto mx-auto w-full max-w-5xl px-4">
                       <CouncilPanels />

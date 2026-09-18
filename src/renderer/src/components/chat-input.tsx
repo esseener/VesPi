@@ -473,6 +473,39 @@ export function ChatInput(): React.JSX.Element {
 
   useChatKeyboard(handleSend, handleAbort, textareaRef)
 
+  /**
+   * Scrolling back through the transcript gets the composer out of the way.
+   *
+   * The composer floats over the message list and is transparent by design, so
+   * its text sat directly on top of the messages behind it — the overlap the
+   * user reported as "不友好". ChatPanel fades the whole stack out while the view
+   * is away from the bottom; this flag tells it when that is safe.
+   *
+   * It is safe unless the user would lose something:
+   *   - a draft or staged attachment is present (an uncontrolled textarea that
+   *     disappears takes unsent work with it),
+   *   - a mention / slash menu or the mid-turn chooser is open (their anchor
+   *     would vanish mid-interaction),
+   *   - a blocking extension prompt is on screen (it has to be answered).
+   * In those states the composer stays visible: a slightly overlapping composer
+   * beats a vanishing draft.
+   */
+  const hasUserWork =
+    hasDraft ||
+    attachments.length > 0 ||
+    mention !== null ||
+    slashOpen ||
+    midTurnDraft !== null ||
+    awaitingExtensionUi
+
+  const setComposerHasUserWork = useAppStore((s) => s.setComposerHasUserWork)
+  useEffect(() => {
+    setComposerHasUserWork(hasUserWork)
+  }, [hasUserWork, setComposerHasUserWork])
+  // The flag is shared state, so it must not outlive the component that owns it:
+  // navigating away with a stale "true" would keep the composer visible forever.
+  useEffect(() => () => setComposerHasUserWork(false), [setComposerHasUserWork])
+
   return (
     <div className="pointer-events-none mx-auto w-full max-w-3xl px-4">
       {attachError && (

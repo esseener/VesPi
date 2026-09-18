@@ -302,6 +302,17 @@ interface AppState {
   // session/workspace from Home). In-app session switches leave it untouched so
   // the chat restores each session's remembered scroll position instead.
   chatScrollBottomNonce: number
+  /**
+   * Whether the composer is holding something the user would lose if it were
+   * hidden: text, staged attachments, or an open popup awaiting a choice.
+   *
+   * Published by ChatInput and read by ChatPanel, which fades the whole
+   * floating composer — gradient backdrop included — while the transcript is
+   * scrolled away from the bottom. The two components need the same answer, and
+   * only the composer knows when it is mid-edit; a second copy of this logic in
+   * the parent would drift from the one that actually owns the state.
+   */
+  composerHasUserWork: boolean
   // Chat side panel: which secondary view is open in the chat workspace.
   // Lifted into the store so it survives navigating away from chat and back.
   chatSidePanel: 'files' | 'diff' | 'review' | 'terminal' | 'browser' | 'picker' | null
@@ -520,6 +531,7 @@ interface AppActions {
   openWorkflowRunsForWorkspace: (workspaceId: string | null) => void
   refreshWorkflowRuns: () => Promise<void>
   requestChatScrollToBottom: () => void
+  setComposerHasUserWork: (hasWork: boolean) => void
   // Resolves false when a dirty-editor discard was declined (diff pane only).
   setChatSidePanel: (panel: AppState['chatSidePanel']) => Promise<boolean>
   toggleSidebar: () => void
@@ -986,6 +998,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   workflowPanelFilter: null,
   workflowPanelWorkspaceId: null,
   chatScrollBottomNonce: 0,
+  composerHasUserWork: false,
   chatSidePanel: null,
   sidebarOpen: true,
   terminalOpen: false,
@@ -2134,6 +2147,11 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
   requestChatScrollToBottom: () =>
     set((state) => ({ chatScrollBottomNonce: state.chatScrollBottomNonce + 1 })),
+  // Guarded so the composer does not re-render its parent on every keystroke
+  // once the flag has settled at its value.
+  setComposerHasUserWork: (hasWork) => {
+    if (get().composerHasUserWork !== hasWork) set({ composerHasUserWork: hasWork })
+  },
   setChatSidePanel: async (panel) => {
     // Only opening the diff destroys the editor buffer: chat-panel renders the
     // editor pane only while the side panel is not 'diff', so this unmounts a
