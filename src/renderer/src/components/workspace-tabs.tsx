@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
@@ -174,7 +174,17 @@ export function WorkspaceTabs(): React.JSX.Element {
                 <FolderOpen size={12} className="shrink-0 text-dim" />
               )}
               <span className="min-w-0 flex-1 truncate font-jetbrains">{tabLabel(workspace)}</span>
-              {isWorking && <span className="run-silver h-2.5 w-2.5 shrink-0 rounded-full" aria-hidden="true" />}
+              {/* Spinner rather than the breathing dot: with several projects in
+                  flight the tab has to say "running" at a glance, and the quiet
+                  dot was invisible anyway while its token resolved to nothing.
+                  Matches the sidebar's working indicator. */}
+              {isWorking && (
+                <Loader2
+                  size={11}
+                  className="shrink-0 animate-spin text-accent-fg"
+                  aria-label={t(language, 'toolRunning')}
+                />
+              )}
               {needsApproval && <AlertCircle size={11} className="shrink-0 text-warning" />}
               {completed && <CheckCircle2 size={11} className="shrink-0 text-success" />}
               {failed && <XCircle size={11} className="shrink-0 text-error" />}

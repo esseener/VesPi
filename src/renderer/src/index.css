@@ -405,14 +405,25 @@
      blob at the 6–12 px sizes this app uses — it read as "a lump turning over"
      next to hairline chrome. It was also a fixed near-white, which disappeared
      in the light theme. A quiet breathing dot in the theme's foreground colour
-     reads at every size. */
+     reads at every size.
+
+     The token is --color-primary, not --color-text-primary: the latter does not
+     exist, and an unresolved var() drops the whole declaration, so the marker
+     painted as a fully transparent dot. A running workspace looked idle. */
   .run-silver {
-    background: var(--color-text-primary);
+    background: var(--color-primary);
+    box-shadow: 0 0 8px color-mix(in oklab, var(--color-primary), transparent 55%);
     animation: run-breathe 1.5s ease-in-out infinite;
   }
 
   .text-run-silver {
-    background-image: linear-gradient(90deg, #8a8a8a, #f4f4f4, #8a8a8a);
+    /* Same trap as the dot above: fixed greys only read on a dark surface. */
+    background-image: linear-gradient(
+      90deg,
+      color-mix(in oklab, var(--color-primary), transparent 45%),
+      var(--color-primary),
+      color-mix(in oklab, var(--color-primary), transparent 45%)
+    );
     background-size: 180% 100%;
     background-clip: text;
     -webkit-background-clip: text;
