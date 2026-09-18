@@ -1,22 +1,23 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>VesPi — Windows desktop client for Oh My Pi (OMP)</title>
-  <meta name="description" content="VesPi is a Windows desktop client for the Oh My Pi (OMP) coding agent. Chat, manage files, run commands, and review changes in one window." />
-  <meta name="keywords" content="VesPi, Oh My Pi, OMP, oh-my-pi, coding agent, Windows" />
+  <title>VesPi — Windows 上的 OMP 桌面客户端</title>
+  <meta name="description" content="VesPi 是 Windows 上的 OMP（Oh My Pi）桌面客户端。会话、Diff、终端、权限与模型配置集中在同一窗口，内置私有 OMP 内核，安装即用。开源，Apache-2.0。" />
+  <meta name="keywords" content="VesPi, Oh My Pi, OMP, oh-my-pi, coding agent, agent 桌面客户端, Windows, Electron" />
   <link rel="canonical" href="https://pi-desktop.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="VesPi" />
-  <meta property="og:title" content="VesPi — Windows desktop client for Oh My Pi" />
-  <meta property="og:description" content="A Windows desktop client for the Oh My Pi (OMP) coding agent. Based on Pi Desktop. Open source." />
+  <meta property="og:title" content="VesPi — Windows 上的 OMP 桌面客户端" />
+  <meta property="og:description" content="内置私有 OMP 内核，安装即用。会话、Diff、终端、权限与模型配置集中在一个窗口。" />
   <meta property="og:image" content="https://pi-desktop.com/screenshots/Screenshot_20260824_181929.png" />
-  <meta property="og:image:alt" content="VesPi — Home launcher screen with recent workspaces and sessions" />
+  <meta property="og:image:alt" content="VesPi 主界面：工作区、用量看板与最近会话" />
   <meta property="og:url" content="https://pi-desktop.com/" />
+  <meta property="og:locale" content="zh_CN" />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="VesPi — Windows desktop client for Oh My Pi (OMP)" />
-  <meta name="twitter:description" content="Download the Windows installer. Based on Pi Desktop, ships a private OMP kernel." />
+  <meta name="twitter:title" content="VesPi — Windows 上的 OMP 桌面客户端" />
+  <meta name="twitter:description" content="内置私有 OMP 内核，安装即用。开源，Apache-2.0。" />
   <meta name="twitter:image" content="https://pi-desktop.com/screenshots/Screenshot_20260824_181929.png" />
   <meta name="theme-color" content="#0d0d0d" />
   <link rel="icon" href="/favicon.ico" sizes="any" />
@@ -26,16 +27,17 @@
     "@context": "https://schema.org",
     "@type": "SoftwareApplication",
     "name": "VesPi",
-    "alternateName": ["Pi Desktop", "Oh My Pi", "OMP"],
+    "alternateName": ["VesPi Desktop", "Oh My Pi", "OMP"],
     "applicationCategory": "DeveloperApplication",
-    "operatingSystem": "Windows",
-    "description": "A Windows desktop client for the Oh My Pi (OMP) coding agent. Chat, manage files, run commands, and review changes in one window.",
+    "operatingSystem": "Windows 10, Windows 11",
+    "inLanguage": "zh-CN",
+    "description": "Windows 上的 OMP 桌面客户端。内置私有 OMP 内核，会话、Diff、终端、权限与模型配置集中在同一窗口。",
     "url": "https://pi-desktop.com/",
     "downloadUrl": "https://github.com/esseener/VesPi/releases/latest",
     "softwareVersion": "1.0.53",
     "license": "https://www.apache.org/licenses/LICENSE-2.0",
     "author": { "@type": "Organization", "name": "VesPi" },
-    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" }
+    "offers": { "@type": "Offer", "price": "0", "priceCurrency": "CNY" }
   }
   </script>
   <style>
@@ -44,209 +46,266 @@
     :root {
       --bg:       #0d0d0d;
       --surface:  #161616;
+      --raised:   #1c1c1c;
       --border:   #2a2a2a;
       --text:     #e8e8e8;
-      --muted:    #888;
+      --muted:    #8b8b8b;
+      --dim:      #6a6a6a;
       --accent:   #7c6ff7;
       --accent2:  #5b56cc;
-      --green:    #4ade80;
       --radius:   10px;
+      --maxw:     1080px;
     }
+
+    html { scroll-behavior: smooth; }
 
     body {
       background: var(--bg);
       color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto, Helvetica, Arial, sans-serif;
       font-size: 16px;
-      line-height: 1.6;
+      line-height: 1.65;
+      -webkit-font-smoothing: antialiased;
     }
 
     a { color: var(--accent); text-decoration: none; }
     a:hover { text-decoration: underline; }
+
+    .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
 
     /* ── NAV ── */
     nav {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 18px 40px;
+      padding: 16px 40px;
       border-bottom: 1px solid var(--border);
       position: sticky;
       top: 0;
       background: rgba(13,13,13,0.92);
-      -webkit-backdrop-filter: blur(8px);
-      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(10px);
+      backdrop-filter: blur(10px);
       z-index: 100;
     }
     .nav-logo { font-weight: 700; font-size: 1.1rem; color: var(--text); letter-spacing: -0.02em; }
     .nav-logo span { color: var(--accent); }
-    .nav-links { display: flex; gap: 28px; align-items: center; }
+    .nav-links { display: flex; gap: 26px; align-items: center; }
     .nav-links a:not(.btn) { color: var(--muted); font-size: 0.9rem; transition: color 0.15s; }
     .nav-links a:not(.btn):hover { color: var(--text); text-decoration: none; }
     .btn {
       display: inline-flex;
       align-items: center;
+      justify-content: center;
       gap: 7px;
-      padding: 9px 20px;
+      padding: 10px 20px;
       border-radius: var(--radius);
       font-size: 0.9rem;
       font-weight: 600;
       cursor: pointer;
-      transition: opacity 0.15s, transform 0.1s;
+      transition: opacity 0.15s, transform 0.1s, border-color 0.15s, color 0.15s;
       text-decoration: none !important;
     }
-    .btn:hover { opacity: 0.88; transform: translateY(-1px); }
+    .btn:hover { opacity: 0.9; }
     .btn-primary { background: var(--accent); color: #fff; }
+    .btn-primary:hover { transform: translateY(-1px); }
     .btn-outline { background: transparent; color: var(--text); border: 1px solid var(--border); }
     .btn-outline:hover { border-color: var(--accent); color: var(--accent); }
 
     /* ── HERO ── */
-    .hero {
-      text-align: center;
-      padding: 100px 24px 72px;
-      max-width: 760px;
-      margin: 0 auto;
-    }
+    .hero { padding: 96px 24px 64px; max-width: 860px; margin: 0 auto; text-align: center; }
     .badge {
-      display: inline-block;
-      padding: 4px 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 14px;
       border-radius: 100px;
       border: 1px solid var(--border);
+      background: var(--surface);
       font-size: 0.78rem;
       color: var(--muted);
-      margin-bottom: 28px;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
+      margin-bottom: 26px;
+      letter-spacing: 0.02em;
     }
+    .badge b { color: var(--accent); font-weight: 600; }
     .hero h1 {
-      font-size: clamp(2.2rem, 5vw, 3.4rem);
+      font-size: clamp(2rem, 4.6vw, 3.1rem);
       font-weight: 800;
-      letter-spacing: -0.04em;
-      line-height: 1.1;
-      margin-bottom: 22px;
+      letter-spacing: -0.035em;
+      line-height: 1.18;
+      margin-bottom: 20px;
     }
-    .hero h1 span { color: var(--accent); }
-    .hero p {
-      font-size: 1.15rem;
+    .hero h1 em { font-style: normal; color: var(--accent); }
+    .hero .lede {
+      font-size: 1.08rem;
       color: var(--muted);
-      max-width: 560px;
-      margin: 0 auto 36px;
+      max-width: 620px;
+      margin: 0 auto 34px;
     }
-    .hero-actions { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+    .hero-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+    .hero-facts {
+      margin-top: 26px;
+      display: flex;
+      gap: 10px 22px;
+      justify-content: center;
+      flex-wrap: wrap;
+      font-size: 0.82rem;
+      color: var(--dim);
+    }
+    .hero-facts span { display: inline-flex; align-items: center; gap: 6px; }
+    .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--accent2); display: inline-block; }
 
-    /* ── SCREENSHOTS ── */
-    .screenshots {
-      padding: 0 24px 80px;
-      max-width: 1100px;
-      margin: 0 auto;
-    }
-    .screenshot-grid {
+    /* ── METRICS ── */
+    .metrics {
+      max-width: var(--maxw);
+      margin: 0 auto 8px;
+      padding: 0 24px 72px;
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-      gap: 16px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
     }
-    .screenshot-grid img {
-      width: 100%;
-      border-radius: var(--radius);
+    .metric {
+      background: var(--surface);
       border: 1px solid var(--border);
-      display: block;
+      border-radius: var(--radius);
+      padding: 18px 20px;
     }
-    .screenshot-grid img:first-child {
-      grid-column: 1 / -1;
-    }
+    .metric .k { font-size: 0.76rem; color: var(--dim); letter-spacing: 0.04em; text-transform: uppercase; }
+    .metric .v { margin-top: 6px; font-size: 1.15rem; font-weight: 700; letter-spacing: -0.01em; }
+    .metric .s { margin-top: 2px; font-size: 0.8rem; color: var(--muted); }
 
-    /* ── FEATURES ── */
-    .features {
-      padding: 80px 24px;
-      max-width: 1000px;
-      margin: 0 auto;
-    }
+    /* ── SECTIONS ── */
+    section.block { padding: 74px 24px; }
     .section-label {
       text-align: center;
-      font-size: 0.8rem;
-      letter-spacing: 0.1em;
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
       text-transform: uppercase;
       color: var(--accent);
-      margin-bottom: 16px;
+      margin-bottom: 14px;
       font-weight: 600;
     }
     .section-title {
       text-align: center;
-      font-size: clamp(1.6rem, 3vw, 2.2rem);
+      font-size: clamp(1.5rem, 3vw, 2.05rem);
       font-weight: 700;
       letter-spacing: -0.03em;
-      margin-bottom: 56px;
+      margin-bottom: 14px;
     }
+    .section-sub {
+      text-align: center;
+      color: var(--muted);
+      font-size: 0.95rem;
+      max-width: 620px;
+      margin: 0 auto 48px;
+    }
+
+    /* ── FEATURES ── */
+    .group { margin-bottom: 40px; }
+    .group:last-child { margin-bottom: 0; }
+    .group-head {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      padding-bottom: 12px;
+      margin-bottom: 18px;
+      border-bottom: 1px solid var(--border);
+    }
+    .group-head h3 { font-size: 1rem; font-weight: 650; letter-spacing: -0.01em; }
+    .group-head p { font-size: 0.84rem; color: var(--dim); }
     .feature-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-      gap: 20px;
+      grid-template-columns: repeat(auto-fit, minmax(268px, 1fr));
+      gap: 14px;
     }
     .feature-card {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 28px;
+      padding: 20px 22px;
+      transition: border-color 0.15s;
     }
-    .feature-icon {
-      margin-bottom: 14px;
-      color: var(--accent);
-    }
-    .feature-icon svg {
-      width: 26px;
-      height: 26px;
-      display: block;
-    }
-    .feature-card h3 {
-      font-size: 1rem;
-      font-weight: 600;
-      margin-bottom: 8px;
-    }
-    .feature-card p {
-      font-size: 0.88rem;
-      color: var(--muted);
-      line-height: 1.55;
+    .feature-card:hover { border-color: #3a3a3a; }
+    .feature-card h4 { font-size: 0.94rem; font-weight: 650; margin-bottom: 7px; }
+    .feature-card p { font-size: 0.86rem; color: var(--muted); line-height: 1.6; }
+    .feature-card code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+      font-size: 0.82em;
+      background: rgba(255,255,255,0.06);
+      padding: 1px 5px;
+      border-radius: 4px;
     }
 
-    /* ── INSTALL ── */
-    .install {
-      padding: 80px 24px;
-      max-width: 720px;
+    /* ── SCREENSHOTS ── */
+    .shot-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 14px;
+      max-width: var(--maxw);
       margin: 0 auto;
-      text-align: center;
     }
+    .shot-grid figure { margin: 0; }
+    .shot-grid img {
+      width: 100%;
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      display: block;
+    }
+    .shot-grid figcaption { margin-top: 8px; font-size: 0.78rem; color: var(--dim); }
+    .shot-grid figure:first-child { grid-column: 1 / -1; }
+
+    /* ── INSTALL ── */
     .install-steps {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       overflow: hidden;
-      margin: 40px 0 32px;
-      text-align: left;
+      max-width: 760px;
+      margin: 0 auto 22px;
     }
     .install-step {
       display: flex;
       align-items: flex-start;
-      gap: 20px;
-      padding: 22px 28px;
+      gap: 18px;
+      padding: 20px 24px;
       border-bottom: 1px solid var(--border);
     }
     .install-step:last-child { border-bottom: none; }
     .step-num {
       flex-shrink: 0;
-      width: 28px;
-      height: 28px;
+      width: 26px;
+      height: 26px;
       background: var(--accent);
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 0.8rem;
+      font-size: 0.78rem;
       font-weight: 700;
       color: #fff;
       margin-top: 2px;
     }
-    .step-body h4 { font-size: 0.95rem; font-weight: 600; margin-bottom: 6px; }
+    .step-body h4 { font-size: 0.94rem; font-weight: 650; margin-bottom: 4px; }
     .step-body p { font-size: 0.85rem; color: var(--muted); }
+    .req {
+      max-width: 760px;
+      margin: 0 auto;
+      font-size: 0.84rem;
+      color: var(--muted);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 24px;
+    }
+    .req dl { display: grid; grid-template-columns: 96px 1fr; gap: 6px 14px; }
+    .req dt { color: var(--dim); }
+    .req dd { color: var(--text); }
+    .signed-note {
+      margin-top: 14px;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+      font-size: 0.83rem;
+      color: var(--muted);
+    }
     code {
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.85em;
@@ -254,32 +313,82 @@
       padding: 2px 6px;
       border-radius: 4px;
     }
-    .install-note {
-      font-size: 0.83rem;
-      color: var(--muted);
+
+    /* ── FAQ ── */
+    .faq { max-width: 760px; margin: 0 auto; }
+    .faq details {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      background: var(--surface);
+      margin-bottom: 10px;
+      overflow: hidden;
     }
-    .mt-8 { margin-top: 8px; }
+    .faq summary {
+      cursor: pointer;
+      padding: 15px 20px;
+      font-size: 0.92rem;
+      font-weight: 600;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+    }
+    .faq summary::-webkit-details-marker { display: none; }
+    .faq summary::after {
+      content: "+";
+      color: var(--dim);
+      font-weight: 400;
+      font-size: 1.1rem;
+      line-height: 1;
+      transition: transform 0.15s;
+    }
+    .faq details[open] summary::after { content: "−"; }
+    .faq .answer {
+      padding: 0 20px 18px;
+      font-size: 0.86rem;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+    .faq .answer code { color: var(--text); }
+
+    /* ── CTA ── */
+    .cta {
+      text-align: center;
+      padding: 72px 24px 84px;
+      border-top: 1px solid var(--border);
+      background: linear-gradient(180deg, rgba(124,111,247,0.05), transparent);
+    }
+    .cta h2 { font-size: clamp(1.4rem, 3vw, 1.9rem); font-weight: 750; letter-spacing: -0.03em; margin-bottom: 12px; }
+    .cta p { color: var(--muted); font-size: 0.94rem; margin-bottom: 28px; }
 
     /* ── FOOTER ── */
-    footer {
-      border-top: 1px solid var(--border);
-      padding: 32px 40px;
+    footer { border-top: 1px solid var(--border); padding: 30px 40px; }
+    .footer-inner {
+      max-width: var(--maxw);
+      margin: 0 auto;
       display: flex;
       align-items: center;
       justify-content: space-between;
       flex-wrap: wrap;
-      gap: 16px;
+      gap: 14px;
     }
-    footer p { font-size: 0.83rem; color: var(--muted); }
-    .footer-links { display: flex; gap: 24px; }
-    .footer-links a { font-size: 0.83rem; color: var(--muted); }
+    footer p { font-size: 0.82rem; color: var(--dim); }
+    footer p + p { margin-top: 4px; }
+    .footer-links { display: flex; gap: 22px; }
+    .footer-links a { font-size: 0.82rem; color: var(--muted); }
     .footer-links a:hover { color: var(--text); text-decoration: none; }
 
-    @media (max-width: 600px) {
-      nav { padding: 16px 20px; }
-      .nav-links { gap: 16px; }
-      footer { padding: 24px 20px; flex-direction: column; align-items: flex-start; }
-      .screenshot-grid img:first-child { grid-column: auto; }
+    @media (max-width: 620px) {
+      nav { padding: 14px 18px; }
+      .nav-links { gap: 14px; }
+      .nav-links a:not(.btn) { display: none; }
+      .hero { padding: 64px 20px 48px; }
+      section.block { padding: 54px 20px; }
+      footer { padding: 24px 20px; }
+      .shot-grid figure:first-child { grid-column: auto; }
+      .req dl { grid-template-columns: 1fr; gap: 2px 0; }
+      .req dt { margin-top: 8px; }
     }
   </style>
 </head>
@@ -289,148 +398,377 @@
   <nav>
     <span class="nav-logo">Ves<span>Pi</span></span>
     <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="#install">Install</a>
+      <a href="#capabilities">功能</a>
+      <a href="#interface">界面</a>
+      <a href="#install">下载</a>
+      <a href="#faq">常见问题</a>
       <a href="https://github.com/esseener/VesPi">GitHub</a>
-      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">Download</a>
+      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">下载</a>
     </div>
   </nav>
 
   <!-- HERO -->
   <section class="hero">
-    <div class="badge">v1.0.53</div>
-    <h1>A Windows desktop client for<br><span>Oh My Pi (OMP)</span></h1>
-    <p>Based on Pi Desktop. Chat, review changes, browse files, and run commands in one window. Ships a private Oh My Pi kernel. Free and open source.</p>
+    <div class="badge"><b>v1.0.53</b> · Windows 10 / 11 x64</div>
+    <h1>把 <em>OMP</em> 的完整执行力<br>收进一个可监督的桌面窗口</h1>
+    <p class="lede">
+      VesPi 是 Windows 上的 OMP 桌面客户端。会话、Diff、终端、权限与模型配置集中在同一个窗口，
+      内核随安装包一起交付——选好目录、选好模型，直接开始。
+    </p>
     <div class="hero-actions">
-      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">
-        ↓ Download Windows installer
-      </a>
-      <a href="https://github.com/esseener/VesPi" class="btn btn-outline">
-        View on GitHub
-      </a>
+      <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">↓ 下载 Windows 安装包</a>
+      <a href="https://github.com/esseener/VesPi" class="btn btn-outline">查看源码</a>
+    </div>
+    <div class="hero-facts">
+      <span><i class="dot"></i>内置私有 OMP 内核</span>
+      <span><i class="dot"></i>无需 Node、Bun 或 PATH 配置</span>
+      <span><i class="dot"></i>应用内更新</span>
     </div>
   </section>
 
-  <!-- SCREENSHOTS -->
-  <section class="screenshots">
-    <div class="screenshot-grid">
-      <img src="screenshots/Screenshot_20260824_181929.png" alt="Pi Desktop — Home launcher with activity stats and recent work" />
-      <img src="screenshots/Screenshot_20260824_182005.png" alt="Pi Desktop — chat view with the composer and sidebar" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182225.png" alt="Pi Desktop — chat with the file tree open" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182248.png" alt="Pi Desktop — Review rail with permissions and changed files" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182322.png" alt="Pi Desktop — diff viewer with Commit, Push, and PR actions above the terminal" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182020.png" alt="Pi Desktop — packages and skills browser" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182039.png" alt="Pi Desktop — New Task launcher with the isolated worktree option" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182340.png" alt="Pi Desktop — notes" loading="lazy" />
-      <img src="screenshots/Screenshot_20260824_182117.png" alt="Pi Desktop — settings with the agent installation picker" loading="lazy" />
+  <!-- METRICS -->
+  <div class="metrics">
+    <div class="metric">
+      <div class="k">安装包</div>
+      <div class="v">≈ 208 MB</div>
+      <div class="s">含内核，一次下载</div>
+    </div>
+    <div class="metric">
+      <div class="k">内核</div>
+      <div class="v">OMP 私有内核</div>
+      <div class="s">随包锁定，独立更新</div>
+    </div>
+    <div class="metric">
+      <div class="k">平台</div>
+      <div class="v">Windows x64</div>
+      <div class="s">Windows 10 / 11</div>
+    </div>
+    <div class="metric">
+      <div class="k">许可</div>
+      <div class="v">Apache-2.0</div>
+      <div class="s">开源，可自行构建</div>
+    </div>
+  </div>
+
+  <!-- CAPABILITIES -->
+  <section class="block" id="capabilities">
+    <p class="section-label">能力</p>
+    <h2 class="section-title">从下达任务到审阅改动，全程在一个窗口里</h2>
+    <p class="section-sub">执行交给内核，监督与审查留在你手上。</p>
+
+    <div style="max-width:900px;margin:0 auto">
+
+      <div class="group">
+        <div class="group-head">
+          <h3>Agent 执行</h3>
+          <p>过程可见，随时可打断</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>流式回答与思考</h4>
+            <p>回答实时逐字呈现；思考过程默认折叠，需要时点开查看，不占阅读位置。</p>
+          </div>
+          <div class="feature-card">
+            <h4>工具调用卡片</h4>
+            <p>每次工具调用单独成卡，显示执行状态、耗时与输出；连续调用自动归组。</p>
+          </div>
+          <div class="feature-card">
+            <h4>目标模式</h4>
+            <p>把跨越多轮的任务交给一个持续目标，进度、Token 消耗与耗时实时显示在输入框上方。</p>
+          </div>
+          <div class="feature-card">
+            <h4>子代理并行</h4>
+            <p>并行子任务各自独立运行，进度汇总展示，互不打断主线。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>会话与并行</h3>
+          <p>多项目同时推进</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>每个工作区独立运行</h4>
+            <p>每个会话拥有独立进程，切换到其他项目后仍继续执行，不会中断任务。</p>
+          </div>
+          <div class="feature-card">
+            <h4>Mission Control</h4>
+            <p>一处总览所有工作区正在运行的会话与状态，随时切回去接管。</p>
+          </div>
+          <div class="feature-card">
+            <h4>后台任务与 Worktree</h4>
+            <p>新任务可直接投递到后台会话；需要隔离时，为它单独开一个 Git Worktree。</p>
+          </div>
+          <div class="feature-card">
+            <h4>会话管理</h4>
+            <p>分叉、克隆、重命名、打标签、全文搜索与归档，历史记录保持可追溯。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>审查与权限</h3>
+          <p>写入与执行都在批准之下</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>逐次审批</h4>
+            <p>文件写入与命令执行可逐次确认；也可按工具、按目录设置放行规则。</p>
+          </div>
+          <div class="feature-card">
+            <h4>Diff 查看器</h4>
+            <p>改动以 Diff 形式在对话内呈现，逐文件查看，不必离开当前上下文。</p>
+          </div>
+          <div class="feature-card">
+            <h4>Review 栏</h4>
+            <p>汇总本次会话改动的文件、权限请求与会话状态，交付前一眼过账。</p>
+          </div>
+          <div class="feature-card">
+            <h4>工作区信任</h4>
+            <p>未标记信任的仓库只能收紧权限，不能放宽——先确认来源，再授予。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>开发工具</h3>
+          <p>不用为看一眼代码切窗口</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>文件树与搜索</h4>
+            <p>浏览项目、按名称检索文件，代码、图片、PDF 与 HTML 都可以在内嵌面板中预览。</p>
+          </div>
+          <div class="feature-card">
+            <h4>代码编辑器</h4>
+            <p>CodeMirror 6 编辑器，支持十余种语言的语法高亮，改动即时保存。</p>
+          </div>
+          <div class="feature-card">
+            <h4>集成终端</h4>
+            <p>完整 PTY 终端，支持 ANSI 颜色，与应用同窗运行。</p>
+          </div>
+          <div class="feature-card">
+            <h4>内嵌浏览器</h4>
+            <p>内置浏览器面板，Agent 可直接打开页面、读取内容并操作，你能同步看到每一步。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>模型与配置</h3>
+          <p>沿用内核的模型体系</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>多供应商接入</h4>
+            <p>在应用内配置模型供应商与密钥，随时切换模型与思考等级，改完即生效。</p>
+          </div>
+          <div class="feature-card">
+            <h4>配置面板</h4>
+            <p>常用设置集中呈现，不必手改配置文件；需要时仍可直接编辑并查看生效结果。</p>
+          </div>
+          <div class="feature-card">
+            <h4>主题</h4>
+            <p>内置深色、浅色与跟随系统，另有多套配色；也可以从种子色生成自己的主题。</p>
+          </div>
+          <div class="feature-card">
+            <h4>技能与扩展</h4>
+            <p>安装并管理技能与工具扩展，接入 MCP 服务，把常用流程固化成可复用的能力。</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="group">
+        <div class="group-head">
+          <h3>数据与维护</h3>
+          <p>数据留在本机</p>
+        </div>
+        <div class="feature-grid">
+          <div class="feature-card">
+            <h4>用量看板</h4>
+            <p>消息数、Token 消耗、活跃天数与模型占比，实时更新；删除会话后统计依然保留。</p>
+          </div>
+          <div class="feature-card">
+            <h4>应用内更新</h4>
+            <p>界面与内核分别检查更新，在应用内下载；安装包支持覆盖安装，会话与配置保留。</p>
+          </div>
+          <div class="feature-card">
+            <h4>本地优先</h4>
+            <p>会话记录、用量统计与配置保存在本机用户目录，不上传。</p>
+          </div>
+          <div class="feature-card">
+            <h4>诊断与日志</h4>
+            <p>内置诊断信息导出，反馈问题时可以直接附上运行环境与日志。</p>
+          </div>
+        </div>
+      </div>
+
     </div>
   </section>
 
-  <!-- FEATURES -->
-  <section class="features" id="features">
-    <p class="section-label">What's inside</p>
-    <h2 class="section-title">Everything you need in one window</h2>
-    <div class="feature-grid">
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>Streaming chat</h3>
-        <p>Real-time streaming with thinking blocks and tool-use visibility. Rich rendering: inline SVG preview, clickable file links, color emoji. Consecutive tool calls fold into collapsible groups; file reads show as line-numbered, highlighted code and edits as diffs. Find within a conversation with Ctrl/Cmd+F, mention workspace files with @, and recall earlier prompts with the arrow keys.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg></div>
-        <h3>Multiple workspaces</h3>
-        <p>Every live session runs its own agent process, so a turn keeps going after you switch away from it. Mission Control shows what is running across every project, and New Task launches work into a fresh background session, optionally in its own Git worktree.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div>
-        <h3>Review rail</h3>
-        <p>See changed files, permissions, and session status at a glance. Approve or deny tool calls without leaving the chat, and define custom allow/deny rules per tool, globally or per workspace.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg></div>
-        <h3>Pi or OMP</h3>
-        <p>Run the standard Pi CLI or the compatible omp binary from <a href="https://github.com/can1357/oh-my-pi">oh-my-pi</a>. Each keeps its own sessions and the app reads both, so switching engines never hides your history. Rows are tagged when both appear, and opening one starts the engine that wrote it.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
-        <h3>File tree &amp; diff viewer</h3>
-        <p>Browse your project and review diffs inline. Preview code, images, PDFs, and HTML in a side pane. File search with Ctrl+Shift+F.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg></div>
-        <h3>Code editor</h3>
-        <p>Open and edit files in a real CodeMirror 6 editor with syntax highlighting for 15+ languages. Save/Revert controls and instant feedback.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
-        <h3>Integrated terminal</h3>
-        <p>Full PTY terminal with ANSI color support, right inside the app, so you don't have to switch windows.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
-        <h3>Package browser</h3>
-        <p>Browse and install Pi packages from pi.dev/packages without leaving the app.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/></svg></div>
-        <h3>Themes</h3>
-        <p>Dark, Light, System, Nord, Gruvbox, Breeze Dark, Breeze Light, and Breeze Claudius, or build your own from 7 seed colors with a live-previewing editor. Import, export, install from a URL, or browse the <a href="https://github.com/FaqFirebase/pi-desktop-themes">community gallery</a>.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div>
-        <h3>Model switching</h3>
-        <p>Cycle between models with Ctrl+P. Session tags keep your work organized.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.83z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></div>
-        <h3>Session naming</h3>
-        <p>Session names read straight from Pi, with inline rename right in the sidebar. Delete confirmations are themed and in-app, so no native dialog steals window focus.</p>
-      </div>
-      <div class="feature-card">
-        <div class="feature-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-        <h3>Activity dashboard</h3>
-        <p>Home shows usage stats over 7 days to a year: messages, tokens, active-day streaks, peak hour, and per-model breakdown. The stats persist even if you delete the session.</p>
-      </div>
+  <!-- INTERFACE -->
+  <section class="block" id="interface">
+    <p class="section-label">界面</p>
+    <h2 class="section-title">界面预览</h2>
+    <p class="section-sub">主界面、对话与审查、文件与终端、设置。</p>
+    <div class="shot-grid">
+      <figure>
+        <img src="screenshots/Screenshot_20260824_181929.png" alt="VesPi 首页：用量看板、最近工作区与会话" />
+        <figcaption>首页：用量看板与最近工作区</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182005.png" alt="VesPi 对话视图与输入框" loading="lazy" />
+        <figcaption>对话视图</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182225.png" alt="VesPi 对话与文件树" loading="lazy" />
+        <figcaption>对话与文件树</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182248.png" alt="VesPi Review 栏：权限与改动文件" loading="lazy" />
+        <figcaption>Review 栏：权限与改动</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182322.png" alt="VesPi Diff 查看器与提交操作" loading="lazy" />
+        <figcaption>Diff 查看器与提交</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182020.png" alt="VesPi 技能与包管理" loading="lazy" />
+        <figcaption>技能与包管理</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182039.png" alt="VesPi 新建任务，含独立 Worktree 选项" loading="lazy" />
+        <figcaption>新建任务</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182340.png" alt="VesPi 笔记面板" loading="lazy" />
+        <figcaption>笔记</figcaption>
+      </figure>
+      <figure>
+        <img src="screenshots/Screenshot_20260824_182117.png" alt="VesPi 设置：模型与内核配置" loading="lazy" />
+        <figcaption>设置</figcaption>
+      </figure>
     </div>
   </section>
 
   <!-- INSTALL -->
-  <section class="install" id="install">
-    <p class="section-label">Get started</p>
-    <h2 class="section-title">Up and running in two steps</h2>
+  <section class="block" id="install">
+    <p class="section-label">下载与安装</p>
+    <h2 class="section-title">两步开始</h2>
+    <p class="section-sub">不需要预装任何运行时或全局命令行工具。</p>
 
     <div class="install-steps">
       <div class="install-step">
         <div class="step-num">1</div>
         <div class="step-body">
-          <h4>Nothing to install first</h4>
-          <p>VesPi ships its own private OMP kernel — no global agent, no Bun, no PATH setup. Windows 10/11 x64 is all you need.</p>
+          <h4>下载安装包</h4>
+          <p>在 <a href="https://github.com/esseener/VesPi/releases/latest">Releases</a> 获取最新版本：<code>VesPi-Setup-1.0.53-win-x64.exe</code>。</p>
         </div>
       </div>
       <div class="install-step">
         <div class="step-num">2</div>
         <div class="step-body">
-          <h4>Download and run</h4>
-          <p>Grab the latest Windows installer from <a href="https://github.com/esseener/VesPi/releases/latest">Releases</a>: <code>VesPi-Setup-*-win-x64.exe</code>. Run it and follow the prompts — the private OMP kernel ships inside, no extra downloads.</p>
+          <h4>运行并开始</h4>
+          <p>按提示完成安装。启动后在首页选择工作区、配置模型，然后输入第一个任务。</p>
         </div>
       </div>
     </div>
 
-    <p class="install-note">
-      The Windows build is unsigned (community-tested); see the
-      <a href="https://github.com/esseener/VesPi#windows">README</a> for the one-time SmartScreen step, or
-      <a href="https://github.com/esseener/VesPi#build-it-yourself">build from source</a> to skip it entirely.
-    </p>
+    <div class="req">
+      <dl>
+        <dt>操作系统</dt><dd>Windows 10 / 11（x64）</dd>
+        <dt>磁盘空间</dt><dd>约 500 MB（安装包 ≈ 208 MB）</dd>
+        <dt>运行时依赖</dt><dd>无。OMP 内核随安装包一并提供</dd>
+        <dt>网络</dt><dd>首次使用需配置模型供应商；更新从 GitHub 获取</dd>
+      </dl>
+      <p class="signed-note">
+        当前构建未购买代码签名证书，首次运行时 Windows SmartScreen 会给出提示，
+        选择「更多信息」→「仍要运行」即可。安装包提供 <code>SHA256SUMS.txt</code>，可校验文件完整性。
+      </p>
+    </div>
+  </section>
+
+  <!-- FAQ -->
+  <section class="block" id="faq">
+    <p class="section-label">常见问题</p>
+    <h2 class="section-title">下载前想知道的事</h2>
+    <p class="section-sub">关于依赖、权限、数据与更新。</p>
+
+    <div class="faq">
+      <details open>
+        <summary>需要先安装 Node、Bun 或 OMP 吗？</summary>
+        <div class="answer">
+          不需要。VesPi 自带私有 OMP 内核，随安装包一起交付，不写入系统 PATH，也不读取全局安装的
+          <code>omp</code>。装完即可使用。
+        </div>
+      </details>
+      <details>
+        <summary>内核是什么？我可以换成别的吗？</summary>
+        <div class="answer">
+          内核是 Oh My Pi（OMP）的 Windows 预编译二进制，以 <code>--profile vespi --mode rpc-ui</code> 启动。
+          内核版本随应用锁定，避免与界面版本错配；升级内核由应用内更新完成，无需手动替换文件。
+        </div>
+      </details>
+      <details>
+        <summary>它会自动修改我的项目或系统环境吗？</summary>
+        <div class="answer">
+          不会。所有文件写入与命令执行都经过权限审批；你可以逐次确认，也可以按工具、按目录设置放行规则。
+          未标记信任的仓库只能收紧权限，不能放宽。
+        </div>
+      </details>
+      <details>
+        <summary>我的数据存在哪里？</summary>
+        <div class="answer">
+          会话记录、用量统计与配置保存在本机用户目录，不会上传。删除会话后，历史统计仍会保留。
+        </div>
+      </details>
+      <details>
+        <summary>怎么更新？会不会丢配置？</summary>
+        <div class="answer">
+          应用内可检查并下载更新，界面与内核分别升级。安装包支持覆盖安装，会话记录与配置自动保留。
+        </div>
+      </details>
+      <details>
+        <summary>为什么安装时会有安全提示？</summary>
+        <div class="answer">
+          因为当前构建未做代码签名，Windows 会对未签名安装包给出提示。你可以用随版本发布的
+          <code>SHA256SUMS.txt</code> 校验安装包完整性，或直接从源码自行构建。
+        </div>
+      </details>
+      <details>
+        <summary>只有 Windows 版本吗？</summary>
+        <div class="answer">
+          当前正式支持 Windows x64。由于内核按平台单独提供，其他平台需要对应的内核构建后再行支持。
+        </div>
+      </details>
+    </div>
+  </section>
+
+  <!-- CTA -->
+  <section class="cta">
+    <h2>准备好就把任务交给它</h2>
+    <p>下载安装包，选好目录与模型，从一个真实任务开始。</p>
+    <a href="https://github.com/esseener/VesPi/releases/latest" class="btn btn-primary">↓ 下载 VesPi 1.0.53</a>
   </section>
 
   <!-- FOOTER -->
   <footer>
-    <p>VesPi &middot; Apache 2.0 &middot; v1.0.53</p>
-    <div class="footer-links">
-      <a href="https://github.com/esseener/VesPi">GitHub</a>
-      <a href="https://github.com/esseener/VesPi/releases">Releases</a>
-      <a href="https://github.com/esseener/VesPi/issues">Issues</a>
-      <a href="https://pi.dev">Pi agent</a>
+    <div class="footer-inner">
+      <div>
+        <p>VesPi · Apache-2.0 · v1.0.53</p>
+        <p>桌面界面基于 Pi Desktop 改造（Apache-2.0）；Agent 执行由私有 OMP 内核提供。</p>
+      </div>
+      <div class="footer-links">
+        <a href="https://github.com/esseener/VesPi">GitHub</a>
+        <a href="https://github.com/esseener/VesPi/releases">Releases</a>
+        <a href="https://github.com/esseener/VesPi/issues">Issues</a>
+        <a href="https://github.com/esseener/VesPi/blob/master/CONTRIBUTING.md">参与贡献</a>
+      </div>
     </div>
   </footer>
 
