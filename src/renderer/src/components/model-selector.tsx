@@ -21,6 +21,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const customModels = useAppStore((state) => state.customModels)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
+  const loadCustomModels = useAppStore((state) => state.loadCustomModels)
 
   const [isOpen, setIsOpen] = useState(false)
   const [models, setModels] = useState<ModelInfo[]>([])
@@ -50,10 +51,18 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
     setLoading(true)
     setError(null)
     try {
-      const response = (await window.piDesktop.model.listAvailable()) as {
-        success?: boolean
-        data?: { models?: ModelInfo[] }
-      } | null
+      // Re-read the config alongside the kernel's list. The two must be compared
+      // to decide what to offer, and the config is the half that changes when
+      // the user edits providers in settings — reading only the kernel's list
+      // left this menu describing a config that no longer existed, so a deleted
+      // provider kept appearing until the app restarted.
+      const [, response] = await Promise.all([
+        loadCustomModels(),
+        window.piDesktop.model.listAvailable() as Promise<{
+          success?: boolean
+          data?: { models?: ModelInfo[] }
+        } | null>,
+      ])
       if (response?.success && response.data?.models) {
         setModels(response.data.models)
       } else {
@@ -65,7 +74,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
     } finally {
       setLoading(false)
     }
-  }, [language])
+  }, [language, loadCustomModels])
 
   const open = async (): Promise<void> => {
     if (isOpen) {

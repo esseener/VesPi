@@ -31,6 +31,8 @@ export interface ProviderConfig {
   apiKey?: string
   models?: CustomModel[]
   compat?: ModelCompat
+  /** OMP's escape hatch for keyless providers: "none" or "oauth". */
+  auth?: string
   // Preserve headers, authHeader, modelOverrides, compat, ...
   [key: string]: unknown
 }
@@ -59,17 +61,36 @@ export function hasConfiguredChatModel(config: ModelsConfig | null | undefined):
 }
 
 /**
- * True when this provider is known to the config but has no usable key — the user
- * cleared it. Such a provider must not keep offering its models in the picker:
- * clearing the key is how you retire a provider you added, and the kernel's own
- * model list keeps listing them until it is restarted, so the UI has to filter.
+ * True when a model from this provider must NOT be offered in the picker.
  *
- * A provider the config does not know about returns false — the kernel can list
- * models configured elsewhere, and those are none of our business.
+ * The kernel reads `models.yml` once, at startup, and keeps serving that list
+ * until it is restarted. So after the user edits the config the two disagree
+ * until the next restart, and the picker has to filter — otherwise a provider
+ * the user just deleted or emptied keeps offering models, which reads as "the
+ * deletion didn't take".
+ *
+ * VesPi owns `models.json`/`models.yml` outright, so the config file is the
+ * complete authority: the kernel offers nothing that is not in it (verified
+ * against 18.2.5 — every model it listed came from a provider we had written).
+ * A provider is therefore retired when either half of its presence is missing:
+ *
+ *   - absent from the config — the user deleted the row, or
+ *   - present with no usable key — the user cleared the key.
+ *
+ * Both halves matter. Handling only the second (as an earlier version did) let
+ * a deleted provider's models stay listed, because deleting a row removes it
+ * from the file entirely rather than blanking its key.
+ *
+ * A null config means the file could not be read at all. That is not the same
+ * as "the user deleted everything", so it retires nothing — the picker's own
+ * error state already covers it, and hiding the whole list would turn a
+ * transient read failure into a frightening empty menu.
  */
 export function isProviderRetired(config: ModelsConfig | null | undefined, provider: string): boolean {
-  const row = config?.providers?.[provider]
-  if (!row) return false
+  const name = provider.trim()
+  if (!name || !config?.providers) return false
+  const row = config.providers[name]
+  if (!row) return true
   return !resolveConfiguredApiKey(row.apiKey)
 }
 

@@ -159,6 +159,13 @@ jobs:
           # Provider editor (1.0.45): the row round-trip and the retired-provider filter.
           assert_marker "provider row round-trip" "rowsToConfig"
           assert_marker "retired provider filter" "isProviderRetired"
+          # Keyless-provider guard (1.0.47). OMP rejects the whole models.yml when
+          # a custom provider declares models without a key, so this guard is what
+          # keeps one emptied provider from blanking the entire model list. It
+          # ships in the main bundle, and the name is a top-level function there,
+          # so the marker survives bundling.
+          assert_marker "keyless provider guard" "providerIsLoadable"
+          assert_marker "keyless provider guard honours auth" "auth === \"none\""
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
