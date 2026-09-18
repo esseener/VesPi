@@ -135,7 +135,9 @@ jobs:
           asar=release/win-unpacked/resources/app.asar
           test -f "$asar" || { echo "::error::$asar is missing"; exit 1; }
           assert_marker() {
-            if ! grep -q "$2" "$asar"; then
+            # `-e` matters: a marker that begins with `--` (a CSS custom property)
+            # would otherwise be read as a grep option and reported as missing.
+            if ! grep -q -e "$2" "$asar"; then
               echo "::error::bundle is missing the marker for: $1 ($2)"
               exit 1
             fi
