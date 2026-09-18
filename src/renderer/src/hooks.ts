@@ -284,6 +284,18 @@ export function useChatScroll(active: boolean): {
   const [atBottom, setAtBottom] = useState(true)
   const atBottomRef = useRef(true)
 
+  // Whether the user has deliberately scrolled away from the bottom. This — not
+  // the instantaneous at-bottom measurement — is what the follower keys off.
+  //
+  // The measurement can turn false without anybody scrolling: content that grows
+  // after we positioned the view (a late-loading image, a reflowing markdown
+  // block, a notice appended right behind the prompt) leaves the viewport above
+  // the new bottom, and the follower then sat out the rest of the turn. The
+  // answer only showed up once the user nudged the view back down — "I had to
+  // scroll a bit before new output appeared again". A flag that only a real
+  // scroll sets cannot be falsified that way; forced scrolls and sends clear it.
+  const userDetached = useRef(false)
+
   // Recompute at-bottom from the live DOM and publish it to both the ref and the
   // button state (setState no-ops when unchanged, so this is cheap to call often).
   const syncAtBottom = useCallback(() => {
@@ -299,6 +311,7 @@ export function useChatScroll(active: boolean): {
     if (!el) return
     el.scrollTop = el.scrollHeight
     atBottomRef.current = true
+    userDetached.current = false
     setAtBottom(true)
   }, [])
 
@@ -314,6 +327,9 @@ export function useChatScroll(active: boolean): {
     }
     const next = scrollable - el.scrollTop <= AT_BOTTOM_THRESHOLD
     atBottomRef.current = next
+    // A real scroll event is the only thing that may stop the follow: reaching the
+    // bottom resumes it, leaving the bottom suspends it.
+    userDetached.current = !next
     setAtBottom(next)
   }, [])
 
@@ -338,11 +354,11 @@ export function useChatScroll(active: boolean): {
       // layout pass runs before this animation frame.
       pendingRestore.current = false
       forceBottom.current = false
-      if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
+      if (!activeRef.current || !autoScrollRef.current || userDetached.current) return
       requestAnimationFrame(() => {
         const el = ref.current
         if (!el) return
-        if (!activeRef.current || !autoScrollRef.current || !atBottomRef.current) return
+        if (!activeRef.current || !autoScrollRef.current || userDetached.current) return
         el.scrollTop = el.scrollHeight
         syncAtBottom()
       })
@@ -400,6 +416,7 @@ export function useChatScroll(active: boolean): {
         forceBottom.current = false
       }
       syncAtBottom()
+      userDetached.current = !atBottomRef.current
       return
     }
 
@@ -419,12 +436,14 @@ export function useChatScroll(active: boolean): {
       // height may have changed while hidden (e.g. Show Thinking toggled), so the
       // stale at-bottom state would otherwise hide the chevron until the next scroll.
       syncAtBottom()
+      userDetached.current = !atBottomRef.current
       return
     }
 
     if (forceBottom.current) {
       el.scrollTop = el.scrollHeight
       forceBottom.current = false
+      userDetached.current = false
       syncAtBottom()
       return
     }
@@ -432,10 +451,9 @@ export function useChatScroll(active: boolean): {
     // A new user message means the user just sent a prompt — always reveal it.
     const lastIsUser = messagesGrew && messages[messages.length - 1]?.role === 'user'
 
-    // Follow new/streamed content only when Auto Scroll is on AND the user was
-    // already at the bottom. If they scrolled up, leave their position put and
-    // let the jump-to-bottom button take them down on demand.
-    if (autoScroll && (lastIsUser || (grew && atBottomRef.current))) {
+    // Follow new/streamed content unless the user scrolled away to read. Auto
+    // Scroll off means the view never moves on its own.
+    if (autoScroll && (lastIsUser || (grew && !userDetached.current))) {
       el.scrollTop = el.scrollHeight
     }
 

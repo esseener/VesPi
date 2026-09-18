@@ -1166,6 +1166,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       timestamp: Date.now(),
       attachments: options?.attachments,
     })
+    // Sending is an explicit "show me what happens next": pull the view back to
+    // the bottom even if it had been left scrolled up (or was parked there by
+    // content that grew after the last follow).
+    get().requestChatScrollToBottom()
 
     set({ isStreaming: true, streamingContent: '', streamingThinking: '', streamingToolCalls: new Map() })
 
@@ -1205,6 +1209,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         content: message,
         timestamp: Date.now(),
       })
+      // A queued message is still the user asking to see what happens next: pull
+      // the view back to the bottom instead of leaving it parked above the answer.
+      get().requestChatScrollToBottom()
       recordLocalEcho(message)
       await window.piDesktop.commands.steer(message, options?.images)
     } catch (err) {
@@ -1223,6 +1230,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         content: message,
         timestamp: Date.now(),
       })
+      get().requestChatScrollToBottom()
       recordLocalEcho(message)
       await window.piDesktop.commands.followUp(message)
     } catch (err) {
