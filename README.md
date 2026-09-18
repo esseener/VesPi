@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/brand/vespi-logo.png" width="96" alt="VesPi">
+</p>
+
 <h1 align="center">VesPi</h1>
 
 <p align="center">
@@ -43,7 +47,12 @@ VesPi 是 Windows 上的 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-
 ## 界面
 
 <p align="center">
-  <img src="docs/promo/frames/slide_01.png" width="360" alt="VesPi：首页用量看板与最近工作区">
+  <img src="docs/screenshots/vespi-home.png" width="720" alt="VesPi 首页：用量看板与最近工作区">
+</p>
+
+<p align="center">
+  <img src="docs/screenshots/vespi-settings.png" width="47%" alt="VesPi 设置：外观、字体与权限">
+  <img src="docs/screenshots/vespi-settings-models.png" width="47%" alt="VesPi 设置：模型供应商与自定义模型">
 </p>
 
 ## 功能
