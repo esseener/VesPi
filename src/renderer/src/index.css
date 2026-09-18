@@ -472,6 +472,58 @@
     animation-duration: 1.15s;
   }
 
+  /* The subagent strip rides on the composer's top edge. It used to paint its own
+     static 1 px border, which sat directly above the composer's animated one and
+     read as two mismatched outlines — the strip looked bolted on, and its still
+     edge clashed with the light running around the box below. It is drawn by the
+     same sweep now: same masked ring, same colours, same speed, and no bottom
+     edge (padding 0 there), so its side strokes land exactly on the composer's
+     top edge and the light reads as one outline around both. */
+  #vespi-composer .subagent-strip::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    border-radius: inherit;
+    border-bottom-left-radius: 0;
+    border-bottom-right-radius: 0;
+    padding: 1px 1px 0 1px;
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 38%,
+      color-mix(in srgb, var(--color-accent-fg) 90%, transparent) 50%,
+      color-mix(in srgb, var(--color-accent-fg) 35%, transparent) 62%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    animation: composer-border-flow 8s linear infinite;
+  }
+
+  #vespi-composer.composer-streaming .subagent-strip::before {
+    background: linear-gradient(
+      110deg,
+      transparent 0%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 34%,
+      var(--color-accent-fg) 50%,
+      color-mix(in srgb, var(--color-accent-fg) 55%, transparent) 66%,
+      transparent 100%
+    );
+    background-size: 200% 100%;
+    animation-duration: 1.15s;
+  }
+
+  /* The strip's own content sits above its ring, like the composer's does. */
+  #vespi-composer .subagent-strip > * {
+    position: relative;
+    z-index: 1;
+  }
+
   #vespi-composer > :not(.absolute) {
     position: relative;
     z-index: 1;
