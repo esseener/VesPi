@@ -147,8 +147,9 @@ jobs:
           assert_marker "sidebar working indicator" "animate-spin text-accent-fg"
           # Sidebar idle ring (1.0.43): its accessibility label.
           assert_marker "sidebar idle ring" "is running"
-          # Subagent strip outline (1.0.44): the class the composer's sweep hooks.
-          assert_marker "subagent strip outline" "subagent-strip"
+          # Every strip pinned above the composer (1.0.44, renamed 1.0.46): the
+          # class the composer's sweep hooks for their shared outline.
+          assert_marker "composer top strip outline" "composer-top-strip"
           # Scroll follow (1.0.44): the decision module and the rate-limit backoff.
           assert_marker "scroll follow decision" "shouldFollowContent"
           assert_marker "update check backoff" "updateCheckBackoffUntil"

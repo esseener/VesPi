@@ -192,11 +192,11 @@ export function SubagentProgress(): React.JSX.Element | null {
     <div
       className={
         // The outline is drawn by the composer's own animated sweep (see the
-        // `.subagent-strip` rules in index.css) rather than a static border here:
+        // `.composer-top-strip` rules in index.css) rather than a static border here:
         // two different outlines side by side — one still, one moving — is what
         // made the strip look like it did not belong to the box below it. The 1 px
         // stays, transparent, so the geometry is unchanged.
-        'subagent-strip relative overflow-hidden rounded-t-xl border border-b-0 border-transparent bg-surface/95 shadow-md shadow-black/20 backdrop-blur-sm'
+        'composer-top-strip relative overflow-hidden rounded-t-xl border border-b-0 border-transparent bg-surface/95 shadow-md shadow-black/20 backdrop-blur-sm'
       }
     >
       <button

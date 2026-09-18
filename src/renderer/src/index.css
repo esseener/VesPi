@@ -479,7 +479,7 @@
      same sweep now: same masked ring, same colours, same speed, and no bottom
      edge (padding 0 there), so its side strokes land exactly on the composer's
      top edge and the light reads as one outline around both. */
-  #vespi-composer .subagent-strip::before {
+  #vespi-composer .composer-top-strip::before {
     content: '';
     position: absolute;
     inset: 0;
@@ -505,7 +505,7 @@
     animation: composer-border-flow 8s linear infinite;
   }
 
-  #vespi-composer.composer-streaming .subagent-strip::before {
+  #vespi-composer.composer-streaming .composer-top-strip::before {
     background: linear-gradient(
       110deg,
       transparent 0%,
@@ -519,7 +519,7 @@
   }
 
   /* The strip's own content sits above its ring, like the composer's does. */
-  #vespi-composer .subagent-strip > * {
+  #vespi-composer .composer-top-strip > * {
     position: relative;
     z-index: 1;
   }

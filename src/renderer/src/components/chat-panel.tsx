@@ -48,7 +48,6 @@ export function ChatPanel(): React.JSX.Element {
   const messages = useAppStore((state) => state.messages)
   const sessionLoading = useAppStore((state) => state.sessionLoading)
   const isStreaming = useAppStore((state) => state.isStreaming)
-  const reattachedMidTurn = useAppStore((state) => state.reattachedMidTurn)
   const composerWrapRef = useRef<HTMLDivElement>(null)
   const [composerPadPx, setComposerPadPx] = useState(DEFAULT_COMPOSER_PAD_PX)
 
@@ -339,17 +338,6 @@ export function ChatPanel(): React.JSX.Element {
                     <div className="pointer-events-auto mx-auto w-full max-w-5xl px-4">
                       <CouncilPanels />
                     </div>
-                    {reattachedMidTurn && (
-                      <div className="pointer-events-auto mx-auto mb-2 w-full max-w-5xl px-4">
-                        <div className="flex items-center gap-2.5 rounded-sm border border-border-strong bg-transparent px-4 py-2.5 text-sm text-primary">
-                          <span className="run-silver h-3 w-3 shrink-0 rounded-full" aria-hidden="true" />
-                          <span className="shrink-0 font-medium">{t(language, 'reattachedStillWorking')}</span>
-                          <span className="min-w-0 flex-1 truncate text-dim">
-                            {t(language, 'reattachedStillWorkingHint')}
-                          </span>
-                        </div>
-                      </div>
-                    )}
                     <GoalStrip />
                     <ChatInput />
                   </div>

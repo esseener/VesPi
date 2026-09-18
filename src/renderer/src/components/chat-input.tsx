@@ -82,6 +82,7 @@ export function ChatInput(): React.JSX.Element {
   const sendFollowUp = useAppStore((state) => state.sendFollowUp)
   const abort = useAppStore((state) => state.abort)
   const isStreaming = useAppStore((state) => state.isStreaming)
+  const reattachedMidTurn = useAppStore((state) => state.reattachedMidTurn)
   // A blocking prompt is on screen. Enter is already suppressed in that state
   // (see hooks.ts); the send button has to agree, or the same action would work
   // by mouse and silently fail by keyboard.
@@ -485,9 +486,22 @@ export function ChatInput(): React.JSX.Element {
         id="vespi-composer"
         className={`pointer-events-auto relative flex flex-col rounded-2xl border border-border-strong bg-surface/95 shadow-lg shadow-black/25 backdrop-blur-sm focus-within:border-border-strong-hover transition-colors ${isStreaming ? 'composer-streaming' : 'composer-idle'}`}
       >
-        {/* Subagent strip sits on the top edge, inset ~5% each side so the pill
-            width doesn't look like it grew with the fleet UI. */}
-        <div className="pointer-events-auto absolute bottom-full left-[5%] right-[5%] z-20 mb-0">
+        {/* Everything pinned above the composer stacks here, in one column at the
+            composer's own width. The pieces used to disagree on all of it — a
+            full-width square notice beside a 90%-wide rounded pill, one of them
+            overlapping the box — which read as debris sitting on the composer
+            rather than as part of it. Order is deliberate: the live subagent list
+            sits nearest the input, the explanatory notice above it. */}
+        <div className="pointer-events-auto absolute bottom-full left-0 right-0 z-20 flex flex-col gap-1">
+          {reattachedMidTurn && (
+            <div className="composer-top-strip relative overflow-hidden rounded-t-xl border border-b-0 border-transparent bg-surface/95 px-3 py-2 backdrop-blur-sm">
+              <div className="flex items-center gap-2 text-xs">
+                <span className="run-silver h-2.5 w-2.5 shrink-0 rounded-full" aria-hidden="true" />
+                <span className="shrink-0 font-medium text-primary">{t(language, 'reattachedStillWorking')}</span>
+                <span className="min-w-0 flex-1 truncate text-dim">{t(language, 'reattachedStillWorkingHint')}</span>
+              </div>
+            </div>
+          )}
           <SubagentProgress />
         </div>
         <div id="vespi-composer-popup" className="pointer-events-auto absolute bottom-full left-0 right-0 z-[60] mb-2" />
