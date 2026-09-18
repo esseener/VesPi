@@ -1,5 +1,8 @@
 <p align="center">
-  <img src="docs/brand/vespi-logo.png" width="96" alt="VesPi">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/brand/vespi-wordmark-white.png">
+    <img src="docs/brand/vespi-wordmark-dark.png" width="220" alt="VesPi">
+  </picture>
 </p>
 
 <h1 align="center">VesPi</h1>
