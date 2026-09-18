@@ -157,7 +157,14 @@ async function main() {
     }
     probeVersion(staged, lock.version)
 
-    if (existsSync(backup)) unlinkSync(backup)
+    if (existsSync(backup)) {
+      try {
+        unlinkSync(backup)
+      } catch {
+        // A previous .bak still held by something (an indexer, a scanner) is not
+        // a reason to refuse to install.
+      }
+    }
     if (existsSync(ompPath)) {
       try {
         renameSync(ompPath, backup)
@@ -170,8 +177,16 @@ async function main() {
     try {
       renameSync(staged, ompPath)
     } catch {
+      // Windows refuses the rename while any handle is open on either file, so
+      // fall back to a copy. Deleting the staged file afterwards can fail for the
+      // same reason (a scanner holding the 200 MB we just wrote) — and that must
+      // not fail the install, which is otherwise complete.
       copyFileSync(staged, ompPath)
-      unlinkSync(staged)
+      try {
+        unlinkSync(staged)
+      } catch {
+        // Left behind; the next run reuses it (it is verified against the lock).
+      }
     }
     if (process.platform !== 'win32') chmodSync(ompPath, 0o755)
     writeFileSync(markerPath, `${lock.version}\n`)

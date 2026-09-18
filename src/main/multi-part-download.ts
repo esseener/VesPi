@@ -1,4 +1,5 @@
 import { createReadStream, createWriteStream, existsSync, statSync, unlinkSync } from 'node:fs'
+import { finished } from 'node:stream/promises'
 
 /**
  * Multi-part downloader for the two big artefacts VesPi fetches from GitHub — the
@@ -185,6 +186,12 @@ export async function downloadFile(options: DownloadOptions): Promise<{ bytes: n
     }
     // Merge the ranges in order. Reading 210 MB back once costs a second or two
     // and buys a resume that needs no state file.
+    //
+    // The merge has to be *finished* before this function resolves: the caller
+    // hashes the file and renames it into place the moment it returns, and a
+    // still-flushing stream means a short read at best. On Windows it is worse —
+    // the open handle made the rename fail with EBUSY, and deleting the part
+    // files while the merge was still reading them could truncate the result.
     const out = createWriteStream(dest)
     try {
       for (const part of parts) {
@@ -195,8 +202,11 @@ export async function downloadFile(options: DownloadOptions): Promise<{ bytes: n
           input.pipe(out, { end: false })
         })
       }
-    } finally {
       out.end()
+      await finished(out)
+    } catch (err) {
+      out.destroy()
+      throw err
     }
     for (const part of parts) {
       try {
