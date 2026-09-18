@@ -30,6 +30,17 @@ const RANGE_DAYS: Record<ActivityRangeKey, number> = {
 const MAX_BARS = 26 // token chart resolution cap
 const CHART_TICKS = 4 // y-axis intervals (→ 5 labels)
 
+/**
+ * How often the dashboard re-reads the stats while it is on screen.
+ *
+ * The main-process store re-scans the session logs on every call — nothing is
+ * cached — but the panel used to read it once, on mount. So the numbers sat at
+ * whatever was true when the screen opened, which read as "these are per-day
+ * figures that settle overnight" rather than as "what you have used". Polling is
+ * what makes them live; the interval keeps the log rescan off the hot path.
+ */
+export const STATS_REFRESH_INTERVAL_MS = 20_000
+
 // Intensity buckets for the heatmap (0 = empty).
 const LEVEL_CLASSES: Record<IntensityLevel, string> = {
   0: 'bg-card/60',
@@ -75,6 +86,11 @@ function formatShortDate(dateKey: string): string {
     month: 'short',
     day: 'numeric',
   })
+}
+
+/** Wall-clock time of the last read, so "is this live?" is answerable on screen. */
+function formatUpdatedAt(at: number): string {
+  return new Date(at).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })
 }
 
 interface TokenBucket {
@@ -268,16 +284,50 @@ function ModelLegend({
 export function StatsPanel(): React.JSX.Element | null {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [data, setData] = useState<ActivityStatsResult | null>(null)
+  const [updatedAt, setUpdatedAt] = useState<number | null>(null)
   const [tab, setTab] = useState<Tab>('overview')
   const [range, setRange] = useState<ActivityRangeKey>('365')
 
   useEffect(() => {
     let cancelled = false
-    window.piDesktop.activity
-      .getStats()
-      .then((r) => { if (!cancelled) setData(r) })
-      .catch(() => { if (!cancelled) setData(null) })
-    return () => { cancelled = true }
+    let inFlight = false
+
+    const load = async (): Promise<void> => {
+      if (inFlight) return
+      inFlight = true
+      try {
+        const next = await window.piDesktop.activity.getStats()
+        if (!cancelled) {
+          setData(next)
+          setUpdatedAt(Date.now())
+        }
+      } catch {
+        // Keep the last good snapshot — a transient read failure must not blank
+        // the dashboard (the old code set null and hid the whole panel).
+      } finally {
+        inFlight = false
+      }
+    }
+
+    void load()
+    const timer = window.setInterval(() => {
+      if (document.visibilityState === 'visible') void load()
+    }, STATS_REFRESH_INTERVAL_MS)
+
+    // Coming back to the window is the moment the user expects fresh numbers
+    // (they may have been running a session in another window).
+    const refreshNow = (): void => void load()
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') refreshNow()
+    }
+    window.addEventListener('focus', refreshNow)
+    document.addEventListener('visibilitychange', onVisibilityChange)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+      window.removeEventListener('focus', refreshNow)
+      document.removeEventListener('visibilitychange', onVisibilityChange)
+    }
   }, [])
 
   const rangedDays = useMemo(() => {
@@ -355,6 +405,12 @@ export function StatsPanel(): React.JSX.Element | null {
             <ModelLegend models={stats.models} modelColor={modelColor} language={language} />
           </div>
         </>
+      )}
+
+      {updatedAt !== null && (
+        <div className="mt-3 text-right text-[10px] tabular-nums text-faint">
+          {t(language, 'statsUpdatedAt', { time: formatUpdatedAt(updatedAt) })}
+        </div>
       )}
     </div>
   )

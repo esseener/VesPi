@@ -202,6 +202,10 @@ jobs:
           # Live thinking (1.0.51): a streaming turn's reasoning block starts
           # collapsed, so its text no longer buries the answer in progress.
           assert_marker "live thinking starts collapsed" "liveThinkingStartsExpanded"
+          # Live stats (1.0.52): the home dashboard re-reads the stats while it is
+          # on screen instead of only at mount, and says when it last did.
+          assert_marker "stats refresh interval" "STATS_REFRESH_INTERVAL_MS"
+          assert_marker "stats updated stamp" "statsUpdatedAt"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4
