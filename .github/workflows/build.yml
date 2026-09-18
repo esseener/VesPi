@@ -199,6 +199,9 @@ jobs:
             fi
             echo "ok: goal extension carries $marker"
           done
+          # Live thinking (1.0.51): a streaming turn's reasoning block starts
+          # collapsed, so its text no longer buries the answer in progress.
+          assert_marker "live thinking starts collapsed" "liveThinkingStartsExpanded"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

@@ -1,11 +1,12 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { MarkdownRenderer } from './markdown-renderer'
 import { localizeToolName } from '../tool-status-i18n'
+import { liveThinkingStartsExpanded } from '../utils/thinking-visibility'
 import { toolCallIconFor } from './tool-call-icon'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import { Brain, Loader2 } from 'lucide-react'
+import { Brain, ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { AgentBotIcon } from './agent-bot-icon'
 import { clsx } from 'clsx'
 
@@ -47,6 +48,10 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
   )
   const thinkingScrollRef = useRef<HTMLDivElement>(null)
 
+  // Collapsed by default, exactly like a committed turn's thinking block — see
+  // liveThinkingStartsExpanded for why.
+  const [showThinking, setShowThinking] = useState(liveThinkingStartsExpanded)
+
   // Follow the thinking tail only when the user is already at/near the bottom,
   // so scrolling up mid-stream to re-read is not yanked back down.
   useEffect(() => {
@@ -74,18 +79,28 @@ export function StreamingBubble({ content, thinking, toolCalls }: StreamingBubbl
           {thinking && thinkingEnabled && (
             <div className="thinking-hover mb-2 min-w-0">
               <div className="flex h-7 items-center gap-1.5 text-sm">
-                <Brain size={12} className="shrink-0 text-muted" />
-                <Loader2 size={12} className="shrink-0 animate-spin text-muted" />
-                <span className="status-shimmer">{t(language, 'thinkingStatus')}</span>
+                <button
+                  type="button"
+                  onClick={() => setShowThinking((value) => !value)}
+                  title={t(language, 'thinkingStatus')}
+                  className="flex items-center gap-1.5 text-sm text-dim transition-colors hover:text-muted"
+                >
+                  <Brain size={12} className="shrink-0" />
+                  {showThinking ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                  <Loader2 size={12} className="shrink-0 animate-spin" />
+                  <span className="status-shimmer">{t(language, 'thinkingStatus')}</span>
+                </button>
               </div>
-              <div
-                ref={thinkingScrollRef}
-                className="max-h-36 min-w-0 overflow-x-hidden overflow-y-auto"
-              >
-                <div className="markdown-body font-sans italic text-sm text-muted break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
-                  {thinking}
+              {showThinking && (
+                <div
+                  ref={thinkingScrollRef}
+                  className="max-h-36 min-w-0 overflow-x-hidden overflow-y-auto"
+                >
+                  <div className="markdown-body font-sans italic text-sm text-muted break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+                    {thinking}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
           )}
 
