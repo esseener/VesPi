@@ -3,88 +3,18 @@ import { clsx } from 'clsx'
 import { ChevronDown, Plus, Trash2, Save, RefreshCw, AlertTriangle } from 'lucide-react'
 import { useAppStore } from '../store'
 import { withImageInput } from '../../../shared/models-config'
-import type { ModelsConfig, ProviderConfig, CustomModel } from '../../../shared/models-config'
+import type { ProviderConfig, CustomModel } from '../../../shared/models-config'
 import { BUILTIN_PROVIDERS, isBuiltinProviderKey } from '../../../shared/builtin-providers'
+import {
+  API_OPTIONS,
+  configToRows,
+  emptyRow,
+  providerReady,
+  rowsToConfig,
+  type ProviderRow,
+} from '../provider-rows'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { ThemedSelect } from './themed-select'
-
-const API_OPTIONS = [
-  'openai-completions',
-  'openai-responses',
-  'anthropic-messages',
-  'google-generative-ai',
-]
-
-interface ProviderRow {
-  /** Stable identity for the fold state; never derived from editable text. */
-  uid: string
-  key: string
-  baseUrl: string
-  api: string
-  apiKey: string
-  compat: ProviderConfig['compat']
-  models: CustomModel[]
-}
-
-function emptyRow(partial?: Partial<ProviderRow>): ProviderRow {
-  return {
-    uid: '',
-    key: '',
-    baseUrl: '',
-    api: API_OPTIONS[0],
-    apiKey: '',
-    compat: undefined,
-    models: [],
-    ...partial,
-  }
-}
-
-function configToRows(config: ModelsConfig | null): ProviderRow[] {
-  const saved = Object.entries(config?.providers ?? {}).map(([key, p]) => emptyRow({
-    uid: `saved:${key}`,
-    key,
-    baseUrl: typeof p.baseUrl === 'string' ? p.baseUrl : '',
-    api: typeof p.api === 'string' ? p.api : API_OPTIONS[0],
-    apiKey: typeof p.apiKey === 'string' ? p.apiKey : '',
-    compat: p.compat,
-    models: Array.isArray(p.models) ? p.models : [],
-  }))
-  const byKey = new Map(saved.map((row) => [row.key, row]))
-  const builtins = BUILTIN_PROVIDERS.map((item) => {
-    const existing = byKey.get(item.key)
-    if (existing) {
-      byKey.delete(item.key)
-      return {
-        ...existing,
-        baseUrl: existing.baseUrl || item.baseUrl,
-        api: existing.api || item.api,
-      }
-    }
-    return emptyRow({ uid: `builtin:${item.key}`, key: item.key, baseUrl: item.baseUrl, api: item.api })
-  })
-  return [...builtins, ...byKey.values()]
-}
-
-function rowsToConfig(rows: ProviderRow[]): ModelsConfig {
-  const providers: ModelsConfig['providers'] = {}
-  for (const r of rows) {
-    const key = r.key.trim()
-    if (!key) continue
-    if (!r.apiKey.trim() && r.models.length === 0) continue
-    providers[key] = {
-      ...(r.baseUrl ? { baseUrl: r.baseUrl } : {}),
-      ...(r.api ? { api: r.api } : {}),
-      ...(r.apiKey ? { apiKey: r.apiKey } : {}),
-      ...(r.compat ? { compat: r.compat } : {}),
-      models: r.models,
-    }
-  }
-  return { providers }
-}
-
-function providerReady(row: ProviderRow): boolean {
-  return Boolean(row.apiKey.trim() && row.models.some((model) => model.id.trim()))
-}
 
 export function CustomModelsEditor(): React.JSX.Element {
   const customModels = useAppStore((s) => s.customModels)

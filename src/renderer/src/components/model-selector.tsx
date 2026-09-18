@@ -5,7 +5,7 @@ import { filterModels } from '../utils/model-search'
 import { clsx } from 'clsx'
 import { Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import { hasConfiguredChatModel } from '../../../shared/models-config'
+import { hasConfiguredChatModel, isProviderRetired } from '../../../shared/models-config'
 
 interface ModelSelectorProps {
   className?: string
@@ -100,7 +100,13 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
     return () => document.removeEventListener('mousedown', handleClick)
   }, [isOpen])
 
-  const filteredModels = useMemo(() => filterModels(models, query), [models, query])
+  // Clearing a provider’s key retires it: the kernel keeps listing its models
+  // until it restarts, so hiding them here is what makes the deletion visible.
+  const offeredModels = useMemo(
+    () => models.filter((model) => !isProviderRetired(customModels, model.provider)),
+    [models, customModels]
+  )
+  const filteredModels = useMemo(() => filterModels(offeredModels, query), [offeredModels, query])
 
   const handleSelect = async (model: ModelInfo): Promise<void> => {
     if (useAppStore.getState().piStatus === 'running') {

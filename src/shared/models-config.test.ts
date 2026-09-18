@@ -5,6 +5,7 @@ import {
   mergeModelsConfig,
   normalizeModelsConfigForPi,
   withImageInput,
+  isProviderRetired,
   type ModelsConfig,
 } from './models-config'
 
@@ -121,4 +122,25 @@ test('withImageInput keeps text when disabling on a text-only model', () => {
 test('withImageInput adds missing text for an image-only input', () => {
   assert.deepEqual(withImageInput(['image'], true), ['text', 'image'])
   assert.deepEqual(withImageInput(['image'], false), ['text'])
+})
+
+// Clearing a provider’s key is how the user retires it, but the kernel keeps
+// listing its models until it restarts — so the picker has to filter them out.
+// A provider the config does not know about is left alone: the kernel can list
+// models configured outside VesPi.
+test('a provider whose key was cleared counts as retired', () => {
+  const config: ModelsConfig = {
+    providers: { cleared: { baseUrl: 'https://example.test/v1', apiKey: '', models: [] }, live: { baseUrl: 'https://example.test/v1', apiKey: 'sk-x', models: [] } },
+  }
+  assert.equal(isProviderRetired(config, 'cleared'), true)
+  assert.equal(isProviderRetired(config, 'live'), false)
+  assert.equal(isProviderRetired(config, 'not-in-config'), false, 'unknown providers are none of our business')
+  assert.equal(isProviderRetired(null, 'anything'), false)
+})
+
+test('a command-provided key is not treated as usable', () => {
+  const config: ModelsConfig = {
+    providers: { shell: { baseUrl: 'https://example.test/v1', apiKey: '!op read op://vault/key', models: [] } },
+  }
+  assert.equal(isProviderRetired(config, 'shell'), true)
 })

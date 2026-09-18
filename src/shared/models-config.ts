@@ -58,6 +58,21 @@ export function hasConfiguredChatModel(config: ModelsConfig | null | undefined):
   return firstConfiguredChatModel(config) !== null
 }
 
+/**
+ * True when this provider is known to the config but has no usable key — the user
+ * cleared it. Such a provider must not keep offering its models in the picker:
+ * clearing the key is how you retire a provider you added, and the kernel's own
+ * model list keeps listing them until it is restarted, so the UI has to filter.
+ *
+ * A provider the config does not know about returns false — the kernel can list
+ * models configured elsewhere, and those are none of our business.
+ */
+export function isProviderRetired(config: ModelsConfig | null | undefined, provider: string): boolean {
+  const row = config?.providers?.[provider]
+  if (!row) return false
+  return !resolveConfiguredApiKey(row.apiKey)
+}
+
 export function firstConfiguredChatModel(config: ModelsConfig | null | undefined): ConfiguredChatModel | null {
   if (!config) return null
   for (const [provider, row] of Object.entries(config.providers ?? {})) {
