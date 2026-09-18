@@ -72,6 +72,12 @@ jobs:
         # Exit 1 = the lock is behind the newest release, exit 2 = unknowable
         # (offline, API error) — both must stop the build rather than ship a
         # package whose kernel is already stale.
+        #
+        # Pass a token: anonymous GitHub API calls share a 60/hour per-IP pool,
+        # which shared runners exhaust, producing a 403 that reads exactly like
+        # a stale kernel. Authenticated calls get 5000/hour.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npm run kernel:check
 
   build:

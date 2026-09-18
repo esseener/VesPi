@@ -15,6 +15,10 @@
  *
  * Exit code 2 is deliberately distinct from 0: an unreachable API must never be
  * mistaken for "up to date". In CI or an offline sandbox, decide explicitly.
+ *
+ * Set GITHUB_TOKEN (or GH_TOKEN) to authenticate the lookup. Without it the
+ * request falls into GitHub's 60/hour anonymous pool, which a busy CI runner
+ * routinely exhausts — turning a healthy kernel into a 403 and a false failure.
  */
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -45,10 +49,16 @@ function readLock() {
 
 async function fetchLatestTag(repository) {
   const url = `https://api.github.com/repos/${repository}/releases/latest`
-  const response = await fetch(url, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'vespi-kernel-check' },
-    signal: AbortSignal.timeout(20000),
-  })
+  // Authenticate when a token is available. Unauthenticated calls share a
+  // 60-requests-per-hour pool per IP, and a shared CI runner exhausts it easily —
+  // the resulting 403 would otherwise masquerade as "the kernel is stale".
+  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim()
+  const headers = {
+    accept: 'application/vnd.github+json',
+    'user-agent': 'vespi-kernel-check',
+  }
+  if (token) headers.authorization = `Bearer ${token}`
+  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) })
   if (!response.ok) throw new Error(`GitHub API ${response.status} for ${url}`)
   const body = await response.json()
   const tag = body?.tag_name
