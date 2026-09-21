@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import {
   checksumUrlForAsset,
   isNewerVersion,
@@ -7,6 +10,9 @@ import {
   parseSha256Sum,
   parseVersion,
   pickLatestRelease,
+  pruneUiUpdateCache,
+  shouldKeepUiUpdateEntry,
+  uiUpdateCacheDir,
   vespiInstallerAssetName,
 } from './update-handlers'
 
@@ -58,4 +64,46 @@ test('checksum helpers pin the manifest beside the release asset', () => {
   const hash = 'a'.repeat(64)
   assert.equal(parseSha256Sum(`${hash}  VesPi-Setup-1.0.0-win-x64.exe\n`, 'VesPi-Setup-1.0.0-win-x64.exe'), hash)
   assert.equal(parseSha256Sum(`${hash}  other.exe\n`, 'VesPi-Setup-1.0.0-win-x64.exe'), null)
+})
+
+test('the installer cache is one fixed path, not a fresh temp dir per attempt', () => {
+  // This is the fix for "the progress bar stops at 70 % and never moves": the
+  // `.partN` files beside the installer are the resume state, so a directory that
+  // changes identity between attempts guarantees every retry re-fetches 210 MB
+  // from byte zero. A pointer to the same path twice is the whole contract.
+  const dir = uiUpdateCacheDir()
+  assert.equal(dir, join(tmpdir(), 'vespi-update'))
+  assert.equal(uiUpdateCacheDir(), dir)
+})
+
+test('cache pruning keeps the target version and its ranges, drops the rest', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'vespi-update-test-'))
+  const target = 'VesPi-Setup-1.0.56-win-x64.exe'
+  try {
+    writeFileSync(join(dir, target), 'installer')
+    writeFileSync(join(dir, `${target}.part0`), 'range')
+    writeFileSync(join(dir, `${target}.part5`), 'range')
+    writeFileSync(join(dir, 'VesPi-Setup-1.0.55-win-x64.exe'), 'older installer')
+    writeFileSync(join(dir, 'VesPi-Setup-1.0.55-win-x64.exe.part0'), 'older range')
+    writeFileSync(join(dir, 'SHA256SUMS.txt'), 'noise')
+
+    await pruneUiUpdateCache(dir, target)
+
+    assert.deepEqual(readdirSync(dir).sort(), [target, `${target}.part0`, `${target}.part5`].sort())
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('pruning a directory that does not exist yet is not an error', async () => {
+  await assert.doesNotReject(() => pruneUiUpdateCache(join(tmpdir(), 'vespi-absent-cache-dir'), 'x.exe'))
+})
+
+test('shouldKeepUiUpdateEntry keeps only the target and its ranges', () => {
+  const target = 'VesPi-Setup-1.0.56-win-x64.exe'
+  assert.equal(shouldKeepUiUpdateEntry(target, target), true)
+  assert.equal(shouldKeepUiUpdateEntry(`${target}.part0`, target), true)
+  assert.equal(shouldKeepUiUpdateEntry(`${target}.part11`, target), true)
+  assert.equal(shouldKeepUiUpdateEntry('VesPi-Setup-1.0.55-win-x64.exe', target), false)
+  assert.equal(shouldKeepUiUpdateEntry('SHA256SUMS.txt', target), false)
 })

@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createServer, type Server } from 'node:http'
 import { createHash } from 'node:crypto'
-import { createReadStream, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { createReadStream, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { get as httpGet } from 'node:http'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
@@ -346,4 +346,60 @@ test('partBytesOnDisk ignores a stale file that is longer than its range', async
 test('createReadStream is available to the module under test (import sanity)', () => {
   // Guards against the merge path losing its import during refactors.
   assert.equal(typeof createReadStream, 'function')
+})
+
+test('a failed range aborts the others and keeps what already arrived', async () => {
+  // The shape of a real failure on a throttled link: one connection errors while
+  // the rest are still open. Before this was handled, the other five kept writing
+  // into a download the caller had already been told failed, and their rejections
+  // surfaced as unhandled because `Promise.all` only reports the first.
+  const dir = mkdtempSync(join(TEMP_ROOT, 'vespi-abort-'))
+  const dest = join(dir, 'file.bin')
+  const total = 4096
+  const stalled = new Set<number>()
+  const aborted: number[] = []
+
+  const source: PartSource = {
+    probe: async () => ({ total, acceptsRanges: true }),
+    get: (start, _end, onChunk, signal) =>
+      new Promise<void>((_resolve, reject) => {
+        if (start === 0) {
+          reject(new Error('range 0 fell over'))
+          return
+        }
+        // Land real bytes on disk, then go quiet: a connection that hangs rather
+        // than one that errors, which is what the abort has to interrupt.
+        onChunk(Buffer.alloc(256))
+        stalled.add(start)
+        const stop = (): void => {
+          aborted.push(start)
+          // Report a moment later, so the 256 bytes above actually reach the file
+          // the way a real connection's buffered tail would. The assertion below is
+          // about what survives on disk, not about what was still in memory when
+          // the abort landed.
+          setTimeout(() => reject(new Error('aborted')), 50)
+        }
+        if (signal.aborted) stop()
+        else signal.addEventListener('abort', stop, { once: true })
+      }),
+  }
+
+  try {
+    await assert.rejects(
+      () => downloadFile({ source, dest, partCount: 4, minPartBytes: 0, inactivityTimeoutMs: 5_000 }),
+      /range 0 fell over/,
+      'the first failure is the one reported'
+    )
+
+    assert.equal(stalled.size, 3, 'the other ranges were in flight')
+    assert.equal(aborted.length, 3, 'and every one of them was told to stop')
+
+    // What did arrive stays: those files are the resume state for the next attempt.
+    const parts = planParts(total, 4)
+    assert.equal(partBytesOnDisk(dest, parts[1]!), 256)
+    assert.equal(partBytesOnDisk(dest, parts[2]!), 256)
+    assert.equal(existsSync(dest), false, 'a failed download leaves no merged file')
+  } finally {
+    rmSync(dir, { recursive: true, force: true })
+  }
 })

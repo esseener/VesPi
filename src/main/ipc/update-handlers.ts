@@ -3,7 +3,7 @@ import { createReadStream, existsSync, readFileSync, statSync, writeFileSync } f
 import { createHash } from 'crypto'
 import { execFile } from 'child_process'
 import { promisify } from 'util'
-import { chmod, copyFile, mkdir, mkdtemp, rename, rm, unlink } from 'fs/promises'
+import { chmod, copyFile, mkdir, readdir, rename, rm, stat, unlink } from 'fs/promises'
 import { basename, dirname, join } from 'path'
 import { tmpdir } from 'os'
 import type {
@@ -38,6 +38,22 @@ const UPDATE_CHECK_TIMEOUT_MS = 8000
 const DOWNLOAD_INACTIVITY_TIMEOUT_MS = 45_000
 /** Backstop so a pathological link cannot hang the update forever. */
 const DOWNLOAD_OVERALL_TIMEOUT_MS = 60 * 60_000
+/**
+ * Fetching `SHA256SUMS.txt` is a tiny request, and this timeout is not used for
+ * anything measured in megabytes — but it was 8 s (the release *check* budget),
+ * which a 210 MB download's worth of throttling would blow straight through.
+ * A flaky moment fetching a 90-byte file must not cost the user an installer they
+ * already downloaded, so it gets its own, more forgiving budget.
+ */
+const CHECKSUM_FETCH_TIMEOUT_MS = 30_000
+/**
+ * How many times one "install update" click tries to get a verified installer.
+ * Retrying is only cheap because the parts stay on disk (see `uiUpdateCacheDir`):
+ * an attempt that already fetched five of six ranges only pays for the sixth.
+ */
+const UI_UPDATE_ATTEMPTS = 3
+/** Wait between attempts, growing: 2 s, then 4 s. */
+const UI_UPDATE_RETRY_DELAY_MS = 2_000
 /**
  * How long a kernel release check is reused. The kernel lands roughly weekly, and
  * every check spends one of the 60 anonymous GitHub requests per hour that the
@@ -564,18 +580,53 @@ export function checksumUrlForAsset(downloadUrl: string): string {
   return url.toString()
 }
 
-async function verifyReleaseAsset(downloadUrl: string, filePath: string): Promise<void> {
+function assetNameOf(downloadUrl: string): string {
   const assetName = decodeURIComponent(new URL(downloadUrl).pathname.split('/').pop() ?? '')
   if (!assetName) throw new Error('Release asset URL has no filename')
-  const sumsText = (await fetchBytes(checksumUrlForAsset(downloadUrl), UPDATE_CHECK_TIMEOUT_MS)).toString('utf8')
-  const expectedHash = parseSha256Sum(sumsText, assetName)
-  if (!expectedHash) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}; refusing to install`)
+  return assetName
+}
+
+/**
+ * The expected hash, fetched separately from comparing it.
+ *
+ * The two failures are not the same thing and must not be handled the same way:
+ * failing to *fetch* a 90-byte manifest is a network problem that leaves an
+ * already-downloaded installer perfectly good, while a hash mismatch means the
+ * bytes themselves are wrong. Only the second justifies deleting the file — and
+ * throwing away 210 MB because the network hiccuped is exactly what made an
+ * update look impossible to finish.
+ */
+async function fetchExpectedChecksum(downloadUrl: string): Promise<{ assetName: string; hash: string }> {
+  const assetName = assetNameOf(downloadUrl)
+  const sumsText = (await fetchBytes(checksumUrlForAsset(downloadUrl), CHECKSUM_FETCH_TIMEOUT_MS)).toString('utf8')
+  const hash = parseSha256Sum(sumsText, assetName)
+  if (!hash) throw new Error(`SHA256SUMS.txt has no checksum for ${assetName}; refusing to install`)
+  return { assetName, hash }
+}
+
+/** Whether `filePath` already holds exactly the bytes the checksum describes. */
+async function fileMatchesChecksum(filePath: string, expectedHash: string): Promise<boolean> {
+  const info = await stat(filePath).catch(() => null)
+  if (!info || !info.isFile() || info.size === 0) return false
+  return (await sha256OfFile(filePath)) === expectedHash
+}
+
+/**
+ * Compare a file against its published hash, deleting it when the bytes are
+ * wrong so the next attempt cannot keep reusing a corrupt file.
+ */
+async function assertAssetChecksum(downloadUrl: string, filePath: string, expectedHash: string): Promise<void> {
   const actualHash = await sha256OfFile(filePath)
-  if (actualHash !== expectedHash) {
-    throw new Error(
-      `Checksum mismatch for ${assetName} (expected ${expectedHash.slice(0, 12)}…, got ${actualHash.slice(0, 12)}…); refusing to install`,
-    )
-  }
+  if (actualHash === expectedHash) return
+  await rm(filePath, { force: true }).catch(() => {})
+  throw new Error(
+    `Checksum mismatch for ${assetNameOf(downloadUrl)} (expected ${expectedHash.slice(0, 12)}…, got ${actualHash.slice(0, 12)}…); refusing to install`,
+  )
+}
+
+async function verifyReleaseAsset(downloadUrl: string, filePath: string): Promise<void> {
+  const { hash } = await fetchExpectedChecksum(downloadUrl)
+  await assertAssetChecksum(downloadUrl, filePath, hash)
 }
 
 function sameVersion(a: string, b: string): boolean {
@@ -730,6 +781,74 @@ function broadcastUiProgress(progress: KernelUpdateProgress): void {
   }
 }
 
+/**
+ * Where the UI installer is staged.
+ *
+ * A fixed path, deliberately — not a fresh `mkdtemp` per attempt. The `.partN`
+ * files beside the installer *are* the resume state (`multi-part-download.ts`),
+ * so throwing the directory away between attempts makes every retry re-fetch all
+ * 210 MB from byte zero. That asymmetry is exactly why an update could hang at
+ * 70 % forever while the kernel download beside it resumed fine ("5/6 ranges
+ * already complete") and completed.
+ */
+export function uiUpdateCacheDir(): string {
+  return join(tmpdir(), 'vespi-update')
+}
+
+/**
+ * Which cache entries belong to the update in flight. Anything else is left over
+ * from a version that is no longer the target, and is pruned so the cache cannot
+ * grow without bound across releases.
+ */
+export function shouldKeepUiUpdateEntry(entry: string, targetFileName: string): boolean {
+  return entry === targetFileName || entry.startsWith(`${targetFileName}.part`)
+}
+
+export async function pruneUiUpdateCache(dir: string, targetFileName: string): Promise<void> {
+  const entries = await readdir(dir).catch(() => [] as string[])
+  for (const entry of entries) {
+    if (shouldKeepUiUpdateEntry(entry, targetFileName)) continue
+    await rm(join(dir, entry), { recursive: true, force: true }).catch(() => {})
+  }
+}
+
+/** Wait between retry attempts. */
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Leave a verified installer at `dest`, downloading only what is still missing.
+ *
+ * The checksum is fetched *before* the download: it is 90 bytes, it decides
+ * whether downloading is worth starting at all, and if it cannot be fetched the
+ * attempt fails before any bandwidth is spent. After the download the file is
+ * hashed for real — the check that matters, because a resumed file is assembled
+ * from parts fetched across several attempts.
+ */
+async function fetchVerifiedInstaller(url: string, dest: string, version: string): Promise<void> {
+  const { hash } = await fetchExpectedChecksum(url)
+
+  // Complete already, from an attempt whose only failure was the network? Then
+  // re-downloading 210 MB would be absurd.
+  if (await fileMatchesChecksum(dest, hash)) {
+    appLog.info('updates', `Reusing the installer already staged for ${version}`)
+    return
+  }
+
+  await downloadToFile(url, dest, (received, total) => {
+    const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
+    broadcastUiProgress({
+      phase: 'downloading',
+      percent,
+      receivedBytes: received,
+      totalBytes: total,
+      version,
+    })
+  })
+  await assertAssetChecksum(url, dest, hash)
+}
+
 export async function installUiUpdate(): Promise<{ ok: true; version: string } | { ok: false; error: string }> {
   const vespi = await checkVespiUpdate()
   if (!vespi.updateAvailable) return { ok: false, error: 'VesPi is already up to date' }
@@ -737,23 +856,38 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     return { ok: false, error: '没有找到 Windows 安装包。请打开 GitHub Release 手动下载。' }
   }
   const fileName = vespiInstallerAssetName(vespi.latestVersion) ?? `VesPi-Setup-${vespi.latestVersion}-win-x64.exe`
-  const updateDir = await mkdtemp(join(tmpdir(), 'vespi-update-'))
+  const updateDir = uiUpdateCacheDir()
   const dest = join(updateDir, fileName)
-  let openedInstaller = false
   try {
     broadcastUiProgress({ phase: 'downloading', percent: 0, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
-    await downloadToFile(vespi.installerUrl, dest, (received, total) => {
-      const percent = total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
-      broadcastUiProgress({
-        phase: 'downloading',
-        percent,
-        receivedBytes: received,
-        totalBytes: total,
-        version: vespi.latestVersion,
-      })
-    })
+    await pruneUiUpdateCache(updateDir, fileName)
+
+    // Retry the fetch, not the whole update. Because the parts survive, attempt
+    // two only pays for the ranges that never arrived — which is what makes three
+    // attempts on a flaky link a reasonable thing to do rather than a way to wait
+    // three times as long for the same failure.
+    let lastError: unknown = null
+    for (let attempt = 1; attempt <= UI_UPDATE_ATTEMPTS; attempt++) {
+      try {
+        await fetchVerifiedInstaller(vespi.installerUrl, dest, vespi.latestVersion)
+        lastError = null
+        break
+      } catch (err) {
+        lastError = err
+        if (attempt === UI_UPDATE_ATTEMPTS) break
+        appLog.warn(
+          'updates',
+          `Installer fetch attempt ${attempt}/${UI_UPDATE_ATTEMPTS} failed; retrying with the bytes already on disk`,
+          err
+        )
+        // No progress reset here on purpose: the next attempt reports the bytes
+        // it resumed from, so the bar visibly continues instead of jumping to 0.
+        await delay(attempt * UI_UPDATE_RETRY_DELAY_MS)
+      }
+    }
+    if (lastError !== null) throw lastError
+
     broadcastUiProgress({ phase: 'installing', percent: 100, receivedBytes: 0, totalBytes: 0, version: vespi.latestVersion })
-    await verifyReleaseAsset(vespi.installerUrl, dest)
     // Ordering: this installer ends by restarting the app, so a kernel swap must
     // not be in flight when it runs. The kernel is a local file swap that
     // finishes in milliseconds, so it goes first and this waits for it.
@@ -767,7 +901,6 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     }
     const opened = await shell.openPath(dest)
     if (opened) throw new Error(opened)
-    openedInstaller = true
     updateOrder.markUiInstallerLaunched()
     // "done" means the verified installer was launched; installation itself is
     // owned by Windows and can still be cancelled by the user.
@@ -781,9 +914,10 @@ export async function installUiUpdate(): Promise<{ ok: true; version: string } |
     appLog.warn('updates', 'VesPi UI installer download or verification failed', err)
     broadcastUiProgress({ phase: 'error', percent: 0, receivedBytes: 0, totalBytes: 0, error: friendlyNetworkError(err) })
     return { ok: false, error: friendlyNetworkError(err) }
-  } finally {
-    if (!openedInstaller) await rm(updateDir, { recursive: true, force: true }).catch(() => {})
   }
+  // Nothing is cleaned up on the way out: the staged installer is what the launch
+  // above needs, and the part files are what makes the next attempt cheap. Stale
+  // versions are pruned at the start of the next update instead.
 }
 
 export function registerUpdateHandlers(): void {

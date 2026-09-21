@@ -1,4 +1,4 @@
-import { createReadStream, createWriteStream, existsSync, statSync, unlinkSync } from 'node:fs'
+import { createReadStream, createWriteStream, existsSync, statSync, unlinkSync, type WriteStream } from 'node:fs'
 import { finished } from 'node:stream/promises'
 
 /**
@@ -45,6 +45,23 @@ export function planParts(total: number, partCount: number): DownloadPart[] {
 /** Each part gets its own file so a finished range can be recognised after a restart. */
 export function partPath(dest: string, index: number): string {
   return `${dest}.part${index}`
+}
+
+/**
+ * Drop a download's part files.
+ *
+ * In the success path a leftover file only costs disk space. In the fallback path
+ * it is worse than that: the next attempt would read it as a complete range and
+ * merge whatever it holds into the result.
+ */
+function removePartFiles(dest: string, parts: DownloadPart[]): void {
+  for (const part of parts) {
+    try {
+      unlinkSync(partPath(dest, part.index))
+    } catch {
+      // Missing or locked — nothing a later attempt cannot overwrite.
+    }
+  }
 }
 
 /**
@@ -168,16 +185,33 @@ export async function downloadFile(options: DownloadOptions): Promise<{ bytes: n
       log(`resuming: ${resumable.length}/${parts.length} ranges already complete`)
     }
 
-    try {
-      await Promise.all(
-        parts.map((part) => fetchPart(source, dest, part, bump, controller.signal, inactivityTimeoutMs))
+    // Every connection is given the chance to settle before this moves on, and
+    // each rejection is caught here rather than by `Promise.all`. Two reasons: a
+    // failure has to abort the *other* five connections (otherwise they keep
+    // writing into a download the caller has already been told failed, racing the
+    // retry it is about to start), and their rejections would otherwise surface as
+    // unhandled, since `Promise.all` only ever reports the first one.
+    const failures: unknown[] = []
+    await Promise.all(
+      parts.map((part) =>
+        fetchPart(source, dest, part, bump, controller.signal, inactivityTimeoutMs).catch((err: unknown) => {
+          failures.push(err)
+          controller.abort()
+        })
       )
-    } catch (err) {
-      // A probe can say ranges are fine while the actual ranged requests get the
-      // whole file back (a proxy or CDN edge stripping the header is the usual
-      // reason). Without this, six "parts" would each write all 210 MB.
-      if (!isRangeUnsupported(err)) throw err
+    )
+
+    const fatal = failures.find((err) => !isRangeUnsupported(err))
+    // A probe can say ranges are fine while the actual ranged requests get the
+    // whole file back (a proxy or CDN edge stripping the header is the usual
+    // reason). Without this, six "parts" would each write all 210 MB.
+    if (fatal !== undefined) throw fatal
+
+    if (failures.length > 0) {
       log('byte ranges are not honoured end to end; falling back to one connection')
+      // The part files are meaningless to a single-connection retry, and leaving
+      // them behind would make a later attempt treat them as resume state.
+      removePartFiles(dest, parts)
       received = 0
       report(true)
       await fetchSingle(source, dest, total, bump, controller.signal, inactivityTimeoutMs)
@@ -208,19 +242,49 @@ export async function downloadFile(options: DownloadOptions): Promise<{ bytes: n
       out.destroy()
       throw err
     }
-    for (const part of parts) {
-      try {
-        unlinkSync(partPath(dest, part.index))
-      } catch {
-        // A leftover part file only costs disk space; the merged file is what matters.
-      }
-    }
+    removePartFiles(dest, parts)
 
     report(true)
     return { bytes: total, connections: parts.length }
   } finally {
     clearTimeout(overall)
   }
+}
+
+/**
+ * Close a write stream and wait for it to actually finish.
+ *
+ * Waiting matters more than it looks. A failed fetch hands control straight back
+ * to a caller that retries (the UI update retries on the spot), so a stream still
+ * opening or flushing the same path would race the next attempt for the file.
+ */
+async function closeStream(stream: WriteStream): Promise<void> {
+  if (stream.closed) return
+  await new Promise<void>((resolve) => {
+    stream.once('close', () => resolve())
+    stream.destroy()
+    // A stream that closed before this listener existed would be waited on
+    // forever; `closed` is the only reliable way to notice.
+    setImmediate(() => {
+      if (stream.closed) resolve()
+    })
+  })
+}
+
+/**
+ * A write stream that reports its own failure instead of throwing it at the process.
+ *
+ * Attaching this at creation, and not only around `end()`, is what keeps an abort
+ * from taking the app down: a stream destroyed while its `open` is still in
+ * flight emits `ERR_STREAM_DESTROYED`, and an `error` with no listener is an
+ * unhandled exception in the main process.
+ */
+function trackStreamFailure(stream: WriteStream): () => Error | null {
+  let failure: Error | null = null
+  stream.on('error', (err: Error) => {
+    failure ??= err
+  })
+  return () => failure
 }
 
 /** One connection, whole file, with the same inactivity rule. */
@@ -233,9 +297,14 @@ async function fetchSingle(
   inactivityTimeoutMs: number
 ): Promise<void> {
   const out = createWriteStream(dest)
+  const streamFailure = trackStreamFailure(out)
   const guard = createStallGuard(signal, inactivityTimeoutMs)
+  let stopped = false
   try {
     await source.get(0, total === null ? Number.MAX_SAFE_INTEGER : total - 1, (chunk) => {
+      // Data can still arrive after the guard aborted; writing it into a stream
+      // being closed is the other half of ERR_STREAM_DESTROYED.
+      if (stopped) return
       guard.touch()
       onBytes(chunk.length)
       out.write(chunk)
@@ -244,9 +313,12 @@ async function fetchSingle(
       out.end(() => resolve())
       out.on('error', reject)
     })
+    const failure = streamFailure()
+    if (failure) throw failure
   } catch (err) {
-    out.destroy()
-    throw guard.explain(err)
+    stopped = true
+    await closeStream(out)
+    throw guard.explain(streamFailure() ?? err)
   } finally {
     guard.stop()
   }
@@ -267,9 +339,12 @@ async function fetchPart(
 
   const from = part.start + have
   const out = createWriteStream(partPath(dest, part.index), { flags: have > 0 ? 'a' : 'w' })
+  const streamFailure = trackStreamFailure(out)
   const guard = createStallGuard(signal, inactivityTimeoutMs)
+  let stopped = false
   try {
     await source.get(from, part.end, (chunk) => {
+      if (stopped) return
       guard.touch()
       onBytes(chunk.length)
       out.write(chunk)
@@ -278,10 +353,13 @@ async function fetchPart(
       out.end(() => resolve())
       out.on('error', reject)
     })
+    const failure = streamFailure()
+    if (failure) throw failure
   } catch (err) {
     // Keep what landed: the next attempt resumes from the part file's length.
-    out.destroy()
-    throw guard.explain(err)
+    stopped = true
+    await closeStream(out)
+    throw guard.explain(streamFailure() ?? err)
   } finally {
     guard.stop()
   }
