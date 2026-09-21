@@ -3,6 +3,7 @@ import { GitBranch, Layers, Play, X } from 'lucide-react'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { ThemedSelect } from './themed-select'
+import { OverlayPortal } from './overlay-portal'
 
 export function TaskLauncher(): React.JSX.Element | null {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
@@ -51,6 +52,7 @@ export function TaskLauncher(): React.JSX.Element | null {
   }
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/45 px-4 pt-[12vh]"
       onMouseDown={(event) => {
@@ -164,5 +166,6 @@ export function TaskLauncher(): React.JSX.Element | null {
         </div>
       </section>
     </div>
+    </OverlayPortal>
   )
 }

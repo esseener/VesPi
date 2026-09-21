@@ -19,6 +19,7 @@ import {
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { OverlayPortal } from './overlay-portal'
 
 function menuLang() {
   const state = useAppStore.getState()
@@ -177,7 +178,7 @@ export function useContextMenu(): {
   }, [state.visible])
 
   const component = state.visible ? (
-    <>
+    <OverlayPortal>
       {/* Invisible backdrop. Closing on `click` alone let that same click fall
           through to whatever sat underneath, and a second right-click — which
           fires no click event — left the old menu up. Catching mousedown here
@@ -235,7 +236,7 @@ export function useContextMenu(): {
         )
       })}
       </div>
-    </>
+    </OverlayPortal>
   ) : null
 
   return { show, hide, ContextMenuComponent: component }

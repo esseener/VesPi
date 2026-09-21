@@ -4,6 +4,7 @@ import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { useCommandCatalog } from '../hooks'
 import { CommandResults } from './command-results'
+import { OverlayPortal } from './overlay-portal'
 import {
   BUILTIN_SOURCE,
   filterCommands,
@@ -190,6 +191,7 @@ export function CommandPalette(): React.JSX.Element | null {
   }
 
   return (
+    <OverlayPortal>
     <div
       className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-24"
       onClick={close}
@@ -252,6 +254,7 @@ export function CommandPalette(): React.JSX.Element | null {
         </div>
       </div>
     </div>
+    </OverlayPortal>
   )
 }
 

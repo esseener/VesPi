@@ -1,15 +1,23 @@
 import { useAppStore } from '../store'
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { X, AlertCircle, HelpCircle } from 'lucide-react'
 import { clsx } from 'clsx'
-import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
+import { OverlayPortal } from './overlay-portal'
+import {
+  displayOptionLabel,
+  parseAskPrompt,
+  type AskPromptBlock,
+} from './ask-prompt-text'
 
 // Stacking tiers for the two extension-UI surfaces, which can be on screen at
 // the same time. The toast MUST outrank the dialog's full-screen backdrop: at
 // an equal tier the backdrop paints over the toast, and the click aimed at the
 // toast lands on the backdrop instead — cancelling the blocking prompt, which
-// answers the asking tool with a permanent deny.
+// answers the asking tool with a permanent deny. Both render through
+// OverlayPortal: `.app-console` forces `position: relative` on its children,
+// which used to strand these layers at the bottom of the window.
 export const DIALOG_OVERLAY_Z_INDEX = 50
 export const NOTIFY_TOAST_Z_INDEX = 60
 
@@ -105,15 +113,17 @@ function NotifyToast({
   }
 
   return (
-    <div className="fixed bottom-10 right-4 animate-fade-in" style={{ zIndex: NOTIFY_TOAST_Z_INDEX }}>
-      <div className="flex items-center gap-3 surface-floating px-4 py-3 shadow-lg">
-        {iconMap[request.notifyType ?? 'info'] ?? iconMap.info}
-        <span className="text-sm text-primary">{request.message ?? 'Notification'}</span>
-        <button onClick={onDismiss} className="ml-2 text-dim hover:text-secondary">
-          <X size={14} />
-        </button>
+    <OverlayPortal>
+      <div className="fixed bottom-10 right-4 animate-fade-in" style={{ zIndex: NOTIFY_TOAST_Z_INDEX }}>
+        <div className="flex items-center gap-3 surface-floating px-4 py-3 shadow-lg">
+          {iconMap[request.notifyType ?? 'info'] ?? iconMap.info}
+          <span className="text-sm text-primary">{request.message ?? 'Notification'}</span>
+          <button onClick={onDismiss} className="ml-2 text-dim hover:text-secondary">
+            <X size={14} />
+          </button>
+        </div>
       </div>
-    </div>
+    </OverlayPortal>
   )
 }
 
@@ -137,10 +147,11 @@ function SelectDialog({
             <button
               key={option}
               onClick={() => onSelect(option)}
-              className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-primary hover:bg-elevated transition-colors"
+              className="flex w-full items-start gap-2 rounded-md px-3 py-2 text-left text-sm text-primary hover:bg-elevated transition-colors"
             >
-              <HelpCircle size={14} className="text-dim" />
-              {option}
+              <HelpCircle size={14} className="mt-0.5 shrink-0 text-dim" />
+              {/* Display only — the kernel matches on the raw label it sent. */}
+              <span className="min-w-0 break-words">{displayOptionLabel(option, language)}</span>
             </button>
           ))}
         </div>
@@ -252,33 +263,120 @@ function EditorDialog({
 }): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const [value, setValue] = useState(request.prefill ?? '')
+  // The kernel's ask tool asks for a free-form answer through `editor()` and
+  // sends the whole question — options included — as the title, because the
+  // rpc-ui host has no structured askDialog. Recognising that shape lets the
+  // same request render as a question instead of a header-plus-blank-box.
+  const askPrompt = useMemo(() => parseAskPrompt(request.title), [request.title])
+
+  const answerBox = (
+    <textarea
+      value={value}
+      onChange={(e) => setValue(e.target.value)}
+      autoFocus
+      rows={askPrompt ? 4 : 12}
+      className="w-full rounded-md border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-primary focus:border-focus focus:outline-none resize-y"
+    />
+  )
+
+  const actions = (
+    <div className="flex justify-end gap-2">
+      <button
+        onClick={onCancel}
+        className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
+      >
+        {t(language, 'cancel')}
+      </button>
+      <button
+        onClick={() => onSubmit(value)}
+        className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
+      >
+        {askPrompt ? t(language, 'submit') : t(language, 'noteSave')}
+      </button>
+    </div>
+  )
 
   return (
     <DialogOverlay onCancel={onCancel}>
-      <DialogBox title={request.title ?? t(language, 'edit')} onCancel={onCancel} wide>
-        <textarea
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          autoFocus
-          rows={12}
-          className="mb-4 w-full rounded-md border border-border-strong bg-surface px-3 py-2 font-mono text-sm text-primary focus:border-focus focus:outline-none resize-y"
-        />
-        <div className="flex justify-end gap-2">
-          <button
-            onClick={onCancel}
-            className="rounded-md border border-border-strong px-4 py-2 text-sm text-muted hover:bg-surface-hover transition-colors"
-          >
-            {t(language, 'cancel')}
-          </button>
-          <button
-            onClick={() => onSubmit(value)}
-            className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
-          >
-            {t(language, 'noteSave')}
-          </button>
-        </div>
+      <DialogBox
+        title={askPrompt ? t(language, 'askPromptTitle') : request.title ?? t(language, 'edit')}
+        onCancel={onCancel}
+        wide
+        // Answering a question, the recap can run long while the box the user
+        // types into must stay reachable — so the box sits in the pinned footer
+        // and only the recap scrolls. A plain editor is the other way round:
+        // the box IS the content.
+        footer={
+          askPrompt ? (
+            <>
+              <div className="mb-3">{answerBox}</div>
+              {actions}
+            </>
+          ) : (
+            actions
+          )
+        }
+      >
+        {askPrompt ? <AskPromptRecap blocks={askPrompt} language={language} /> : answerBox}
       </DialogBox>
     </DialogOverlay>
+  )
+}
+
+/**
+ * The question recap the kernel sends along with its free-form answer prompt.
+ * Marker glyphs, indentation and ellipsis rows are the kernel's terminal
+ * layout, kept as-is so the recap still reads the way the asking model wrote
+ * it; only the reserved labels are translated.
+ */
+function AskPromptRecap({
+  blocks,
+  language,
+}: {
+  blocks: AskPromptBlock[]
+  language: AppLanguage
+}): React.JSX.Element {
+  return (
+    <div className="space-y-1.5 text-sm">
+      {blocks.map((block, index) => {
+        switch (block.kind) {
+          case 'question':
+            return (
+              <p key={index} className="whitespace-pre-line break-words leading-relaxed text-primary">
+                {block.text}
+              </p>
+            )
+          case 'option':
+            return (
+              <div key={index} className="rounded-md bg-elevated px-2 py-1.5">
+                <div className="flex items-start gap-2 text-primary">
+                  {block.marker !== '' && (
+                    <span aria-hidden="true" className="shrink-0 text-dim">
+                      {block.marker}
+                    </span>
+                  )}
+                  <span className="min-w-0 break-words">{displayOptionLabel(block.label, language)}</span>
+                </div>
+                {block.description !== undefined && (
+                  <p className="mt-0.5 pl-5 text-xs text-muted">{block.description}</p>
+                )}
+              </div>
+            )
+          case 'more':
+            return (
+              <p key={index} className="text-xs text-faint">
+                {t(language, 'askMoreOptions', { count: String(block.count) })}
+              </p>
+            )
+          case 'hint':
+            return (
+              <p key={index} className="pt-1 text-secondary">
+                {t(language, 'askEnterResponse')}
+              </p>
+            )
+        }
+      })}
+    </div>
   )
 }
 
@@ -415,15 +513,23 @@ function DialogOverlay({
   }
 
   return (
-    <div
-      className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
-      style={{ zIndex: DIALOG_OVERLAY_Z_INDEX }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onCancel()
-      }}
-    >
-      {children}
-    </div>
+    <OverlayPortal>
+      <div
+        className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in"
+        style={{ zIndex: DIALOG_OVERLAY_Z_INDEX }}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) onCancel()
+        }}
+      >
+        {/* Same surface the composer-anchored branch wraps its children in. The
+            centred branch used to render the bare DialogBox straight onto the
+            backdrop, so the dialog had no card at all — just a header rule and
+            a bordered textarea floating in the dim. */}
+        <div className="relative overflow-hidden surface-floating shadow-2xl animate-fade-in">
+          {children}
+        </div>
+      </div>
+    </OverlayPortal>
   )
 }
 
@@ -433,22 +539,30 @@ function DialogBox({
   onCancel,
   wide,
   fill,
+  footer,
 }: {
   title: string
   children: React.ReactNode
   onCancel: () => void
   wide?: boolean
   fill?: boolean
+  /** Actions pinned below the scroll area instead of scrolling with the body. */
+  footer?: React.ReactNode
 }): React.JSX.Element {
   return (
     <div className={clsx('w-full', fill ? null : wide ? 'max-w-2xl' : 'max-w-md')}>
-      <div className="flex items-center justify-between border-b border-border px-4 py-3">
-        <h3 className="text-sm font-medium text-primary">{title}</h3>
-        <button onClick={onCancel} className="text-dim hover:text-secondary">
+      <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
+        {/* `whitespace-pre-line`: kernel-supplied titles carry their own line
+            breaks, and the default `white-space: normal` collapsed them into
+            one run-on paragraph. `items-start` keeps the close button on the
+            first line instead of floating in the middle of a wrapped title. */}
+        <h3 className="min-w-0 whitespace-pre-line break-words text-sm font-medium text-primary">{title}</h3>
+        <button onClick={onCancel} className="shrink-0 text-dim hover:text-secondary">
           <X size={14} />
         </button>
       </div>
       <div className="max-h-[min(50vh,22rem)] overflow-y-auto p-4">{children}</div>
+      {footer !== undefined && <div className="border-t border-border px-4 py-3">{footer}</div>}
     </div>
   )
 }
