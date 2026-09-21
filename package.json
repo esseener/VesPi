@@ -1,6 +1,6 @@
 {
   "name": "vespi",
-  "version": "1.0.55",
+  "version": "1.0.56",
   "description": "VesPi — Windows desktop GUI for Oh My Pi (OMP)",
   "main": "out/main/index.js",
   "desktopName": "vespi.desktop",
@@ -33,6 +33,7 @@
     "dev": "electron-vite build && electron-vite preview -- --no-sandbox",
     "dev:hot": "electron-vite dev",
     "build": "electron-vite build",
+    "build:cua": "node scripts/build-cua.mjs",
     "preview": "electron-vite preview",
     "test": "tsx --test --test-concurrency=1 \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
     "test:coverage": "tsx --test --test-concurrency=1 --experimental-test-coverage \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
