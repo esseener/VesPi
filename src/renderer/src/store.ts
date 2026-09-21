@@ -74,6 +74,19 @@ export type { DisplayAttachment, DisplayMessage } from './message-parsing'
  * (with a Source/Preview toggle for markdown & HTML); `image` opens the image
  * viewer. `path` is absolute; `relativePath` (code only) drives the editor.
  */
+/**
+ * What one workspace remembers about the shared browser panel.
+ *
+ * `url` is the page that belongs to this project, `open` whether the user wants
+ * it showing while they are here, and `nonce` is bumped on every agent
+ * navigation so a repeat open of the same address still remounts the guest.
+ */
+export interface WorkspaceBrowserPanel {
+  url: string | null
+  open: boolean
+  nonce: number
+}
+
 export interface PreviewTarget {
   kind: 'code' | 'image'
   name: string
@@ -318,6 +331,17 @@ interface AppState {
   // Chat side panel: which secondary view is open in the chat workspace.
   // Lifted into the store so it survives navigating away from chat and back.
   chatSidePanel: 'files' | 'diff' | 'review' | 'terminal' | 'browser' | 'picker' | null
+  /**
+   * What each workspace remembers about the browser panel.
+   *
+   * The panel itself is a single shared surface — one pipe, one guest, one
+   * `<webview>` — so this cannot be a per-workspace panel. What it is, is a
+   * per-workspace *memory*: which page belongs to this project and whether the
+   * user wants it showing while they are here. Without it, a background project
+   * opening the panel took over the foreground one, and closing it there wiped
+   * the page for good.
+   */
+  browserPanelByWorkspace: Record<string, WorkspaceBrowserPanel>
   sidebarOpen: boolean
   terminalOpen: boolean
   reviewOpen: boolean
@@ -542,6 +566,10 @@ interface AppActions {
   setComposerHasUserWork: (hasWork: boolean) => void
   // Resolves false when a dirty-editor discard was declined (diff pane only).
   setChatSidePanel: (panel: AppState['chatSidePanel']) => Promise<boolean>
+  /** The agent reached for the panel, from `workspaceId` when the shell knows. */
+  notePanelShow: (workspaceId: string | null, url?: string) => void
+  /** The user navigated the panel's own address bar. */
+  setBrowserPanelUrl: (workspaceId: string, url: string) => void
   toggleSidebar: () => void
   toggleTerminal: () => void
   toggleReview: () => void
@@ -1008,6 +1036,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   chatScrollBottomNonce: 0,
   composerHasUserWork: false,
   chatSidePanel: null,
+  browserPanelByWorkspace: {},
   sidebarOpen: true,
   terminalOpen: false,
   reviewOpen: false,
@@ -2188,9 +2217,57 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     // make room for it, so clearing here would delete the preview it was asked
     // to show. The user-facing "close the side panel" buttons in chat-panel
     // clear the preview themselves.
+    const activeId = get().activeWorkspace?.id ?? null
+    // Remember the choice per workspace: leaving the browser panel is closing
+    // it *here*, and must not read as closed in the project next door.
+    if (activeId && get().browserPanelByWorkspace[activeId]) {
+      set((state) => ({
+        browserPanelByWorkspace: {
+          ...state.browserPanelByWorkspace,
+          [activeId]: { ...state.browserPanelByWorkspace[activeId], open: panel === 'browser' },
+        },
+      }))
+    }
     set({ chatSidePanel: panel, reviewOpen: panel === 'review' ? true : panel === null ? false : get().reviewOpen })
     return true
   },
+
+  notePanelShow: (workspaceId, url) => {
+    const activeId = get().activeWorkspace?.id ?? null
+    // An unattributed request falls back to the active workspace, which is what
+    // every request did before the shell started naming its origin.
+    const target = workspaceId ?? activeId
+    if (!target) return
+    set((state) => {
+      const previous = state.browserPanelByWorkspace[target]
+      const next: WorkspaceBrowserPanel = {
+        url: url ?? previous?.url ?? null,
+        open: true,
+        // Bumped only for a real navigation, so a repeat open of the same
+        // address still remounts the guest while a metadata-only show does not.
+        nonce: url ? (previous?.nonce ?? 0) + 1 : previous?.nonce ?? 0,
+      }
+      const patch: Partial<AppState> = {
+        browserPanelByWorkspace: { ...state.browserPanelByWorkspace, [target]: next },
+      }
+      // Only the workspace the user is looking at may take over the panel. A
+      // background project keeps its page and its flag; the sidebar marks it.
+      if (target === activeId) patch.chatSidePanel = 'browser'
+      return patch
+    })
+  },
+
+  setBrowserPanelUrl: (workspaceId, url) =>
+    set((state) => {
+      const previous = state.browserPanelByWorkspace[workspaceId]
+      if (!previous) return {}
+      return {
+        browserPanelByWorkspace: {
+          ...state.browserPanelByWorkspace,
+          [workspaceId]: { ...previous, url },
+        },
+      }
+    }),
 
   toggleSidebar: () => set((state) => ({ sidebarOpen: !state.sidebarOpen })),
 
@@ -2945,21 +3022,29 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       // The status broadcast that follows the main-side activation corrects
       // any snapshot staleness.
       const live = workspaceHasLivePi(get().sessionRuntimes, workspace.id)
-      set((state) => ({
-        workspaces: state.workspaces.some((item) => item.id === workspace.id)
-          ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
-          : [...state.workspaces, workspace],
-        activeWorkspace: workspace,
-        sessionState: null,
-        sessionStats: null,
-        extensionUiRequest: null,
-        previewTarget: null,
-        editorDirty: false,
-        piStatus: live ? 'running' : 'stopped',
-        piPid: null,
-        piError: null,
-        sessionLoading: live || options?.awaitingSession === true,
-      }))
+      set((state) => {
+        // The panel is one shared surface, so switching workspaces has to move
+        // it: show the page this project left open, and stop showing the one the
+        // project being left had up. Anything else stays as it was.
+        const browser = state.browserPanelByWorkspace[workspace.id]
+        const showBrowser = browser?.open === true && browser.url !== null
+        return {
+          workspaces: state.workspaces.some((item) => item.id === workspace.id)
+            ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
+            : [...state.workspaces, workspace],
+          activeWorkspace: workspace,
+          sessionState: null,
+          sessionStats: null,
+          extensionUiRequest: null,
+          previewTarget: null,
+          editorDirty: false,
+          chatSidePanel: showBrowser ? 'browser' : state.chatSidePanel === 'browser' ? null : state.chatSidePanel,
+          piStatus: live ? 'running' : 'stopped',
+          piPid: null,
+          piError: null,
+          sessionLoading: live || options?.awaitingSession === true,
+        }
+      })
       void window.piDesktop.ui.flushPendingPrompts(workspace.id)
       scheduleSessionListRefresh(get)
       if (live && options?.awaitingSession !== true) {
@@ -3018,16 +3103,24 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       // Render the target workspace immediately from pushed runtime snapshots,
       // then reconcile status + workspace list in one parallel roundtrip.
       const live = workspaceHasLivePi(get().sessionRuntimes, workspace.id)
-      set((state) => ({
-        workspaces: state.workspaces.some((item) => item.id === workspace.id)
-          ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
-          : [...state.workspaces, workspace],
-        activeWorkspace: workspace,
-        piStatus: live ? 'running' : 'stopped',
-        piPid: null,
-        piError: null,
-        sessionLoading: live && !skipSessionLoad,
-      }))
+      set((state) => {
+        // Same panel hand-over as activateWorkspace: this path commits the
+        // switch too, and a workspace switch that left the previous project's
+        // browser page on screen would be the bug this exists to fix.
+        const browser = state.browserPanelByWorkspace[workspace.id]
+        const showBrowser = browser?.open === true && browser.url !== null
+        return {
+          workspaces: state.workspaces.some((item) => item.id === workspace.id)
+            ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
+            : [...state.workspaces, workspace],
+          activeWorkspace: workspace,
+          chatSidePanel: showBrowser ? 'browser' : state.chatSidePanel === 'browser' ? null : state.chatSidePanel,
+          piStatus: live ? 'running' : 'stopped',
+          piPid: null,
+          piError: null,
+          sessionLoading: live && !skipSessionLoad,
+        }
+      })
       const [status] = await Promise.all([
         window.piDesktop.pi.getStatus(),
         get().loadWorkspaces(),

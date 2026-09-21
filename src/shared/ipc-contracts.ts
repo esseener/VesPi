@@ -223,6 +223,15 @@ export const IPC_CHANNELS = {
  */
 export interface PanelShowRequest {
   url?: string
+  /**
+   * The workspace whose agent asked for the panel, when the shell could tell.
+   *
+   * The panel is one shared surface, so without this the renderer could only
+   * open it in whichever workspace the user happened to be looking at. Absent
+   * means "unattributed" — the request then falls back to the active workspace,
+   * which is what the shell did before attribution existed.
+   */
+  workspaceId?: string
 }
 
 export type PiProcessStatus = 'stopped' | 'starting' | 'running' | 'error'

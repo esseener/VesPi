@@ -32,6 +32,7 @@ import {
 } from './agent-browser-mcp'
 import { createPanelChannel, createPanelPipePath, createPanelToken, type PanelChannel } from './panel-channel'
 import { createPanelOps, type PanelGuestLike } from './panel-ops'
+import { createPanelOwnerTracker, isPanelToolName } from './panel-owner'
 import {
   COMPUTER_MCP_NAME,
   computerBridgePath,
@@ -117,6 +118,14 @@ let mainWindow: BrowserWindow | null = null
  * it has a URL, which is why opening a page is routed through the renderer.
  */
 let panelGuest: PanelGuestLike | null = null
+
+/**
+ * Which workspace is driving the panel right now. The pipe request carries no
+ * workspace of its own, so the attribution is taken from the `panel_*` tool
+ * call that preceded it — see panel-owner.ts. Null just means "unattributed",
+ * and the renderer falls back to showing the panel in the active workspace.
+ */
+const panelOwner = createPanelOwnerTracker()
 
 /** The named-pipe channel the agent's panel tools arrive on. */
 let panelChannel: PanelChannel | null = null
@@ -322,7 +331,24 @@ if (agentBrowser.enabled) {
         // Bringing the panel into view is the user's own requirement: the agent
         // must act on the panel they are watching, not behind their back.
         requestPanel: (url) => {
-          mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PANEL_SHOW, url ? { url } : {})
+          // The panel is a single, shared surface — one pipe, one guest, one
+          // <webview> — so a request from a background project used to take over
+          // whatever the user was looking at, and closing it there killed the
+          // other project's page. Naming the origin lets the renderer keep each
+          // workspace's panel to itself.
+          const origin = panelOwner.current()
+          // One line per navigation: the attribution is the whole difference
+          // between the panel opening in the project that asked and opening in
+          // whichever project the user happened to be looking at, so it is worth
+          // being able to check after the fact.
+          if (url) {
+            if (origin) appLog.info('browser', 'Panel navigation requested', { workspaceId: origin, url })
+            else appLog.warn('browser', 'Panel navigation could not be attributed to a workspace', { url })
+          }
+          mainWindow?.webContents.send(IPC_CHANNELS.EVENT_PANEL_SHOW, {
+            ...(url ? { url } : {}),
+            ...(origin ? { workspaceId: origin } : {}),
+          })
         },
       }),
     })
@@ -893,9 +919,15 @@ app.whenReady().then(async () => {
   // launched at startup, and a window only appears when browsing is really
   // happening. The kernel's own `browser` prelude and the vendored Playwright
   // tools both arrive here by name.
-  workspaceManager.onPiManager((manager) => {
+  //
+  // The same event is what attributes a panel request to a workspace: the pipe
+  // the panel tools arrive on is shared by every kernel, but this listener is
+  // per manager, and a manager maps to exactly one workspace.
+  const workspaces = workspaceManager
+  workspaces.onPiManager((manager) => {
     manager.on('tool_execution_start', (event: { toolName?: unknown }) => {
       const toolName = typeof event?.toolName === 'string' ? event.toolName : ''
+      if (isPanelToolName(toolName)) panelOwner.note(workspaces.workspaceIdFor(manager))
       if (isBrowserToolName(toolName)) void agentBrowserLifecycle.ensure('browser-tool')
     })
   })

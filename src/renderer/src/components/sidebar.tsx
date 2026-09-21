@@ -20,6 +20,7 @@ import {
   Workflow as WorkflowIcon,
   Activity,
   Stethoscope,
+  Globe,
 } from 'lucide-react'
 
 import { useMemo, useState, useRef } from 'react'
@@ -713,6 +714,7 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
   const renameWorkspace = useAppStore((state) => state.renameWorkspace)
   const pendingPromptCounts = useAppStore((state) => state.pendingPromptCounts)
   const workspaceActivity = useAppStore((state) => state.workspaceActivity)
+  const browserPanelByWorkspace = useAppStore((state) => state.browserPanelByWorkspace)
   const { show: showContextMenu, ContextMenuComponent: WorkspaceContextMenu } = useContextMenu()
 
 
@@ -890,6 +892,18 @@ function WorkspaceSwitcher({ onOpenProject }: { onOpenProject: () => void }): Re
                     title={formatPromptsWaiting(pendingPromptCounts[ws.id], language)}
                   >
                     {pendingPromptCounts[ws.id]}
+                  </span>
+                )}
+                {/* The browser panel is one shared surface, so another project's
+                    agent can have it while this one is on screen. Rather than
+                    yanking the panel over, that project is marked here — and
+                    switching to it brings the page back. */}
+                {ws.id !== activeWorkspace?.id && browserPanelByWorkspace[ws.id]?.open === true && (
+                  <span
+                    className="flex shrink-0 items-center"
+                    title={t(language, 'browserPanelOtherWorkspace', { name: ws.name })}
+                  >
+                    <Globe size={11} className="text-accent-fg" />
                   </span>
                 )}
                 {(() => {

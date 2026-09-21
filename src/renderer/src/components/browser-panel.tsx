@@ -36,47 +36,61 @@ type LoadState =
   | { kind: 'failed'; detail: string }
 
 /**
- * A page the agent asked the panel to open. `nonce` makes a repeat request for
- * the same URL a new object, so the effect below can tell them apart.
+ * The page the panel should be showing, and a nonce identifying the request
+ * that asked for it.
+ *
+ * Both come from the store rather than from this component: the panel unmounts
+ * whenever it is not on screen, and an address held in local state would go
+ * with it — taking away the page the agent is still driving, and forgetting
+ * where the user was. `nonce` makes a repeat request for the same URL a new
+ * value, so the guest can tell them apart and remount.
  */
-export interface PanelOpenRequest {
-  url: string
+export interface BrowserPanelProps {
+  url: string | null
   nonce: number
 }
 
-export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest | null }): React.JSX.Element {
+export function BrowserPanel({ url, nonce }: BrowserPanelProps): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const insertPrompt = useAppStore((state) => state.insertPrompt)
-  const [draft, setDraft] = useState('')
-  const [url, setUrl] = useState<string | null>(null)
+  const setBrowserPanelUrl = useAppStore((state) => state.setBrowserPanelUrl)
+  const activeWorkspaceId = useAppStore((state) => state.activeWorkspace?.id ?? null)
+  const [draft, setDraft] = useState(url ?? '')
+  // What the `<webview>` is showing. Seeded from, and re-synced to, the
+  // workspace's remembered address; the user's own navigation lives here until
+  // it is written back.
+  const [page, setPage] = useState<string | null>(url)
   // Bumped by retry/re-open so the <webview> remounts and re-attaches listeners.
   const [attempt, setAttempt] = useState(0)
-  const [load, setLoad] = useState<LoadState>({ kind: 'idle' })
+  const [load, setLoad] = useState<LoadState>(url ? { kind: 'loading' } : { kind: 'idle' })
   // A rejected address used to do nothing at all, which reads as a broken
   // panel. Only http(s) can attach to this partition, so say so.
   const [inputError, setInputError] = useState<string | null>(null)
   const webviewRef = useRef<HTMLElement | null>(null)
 
   // The agent drives this panel through the main process (see panel-ops.ts).
-  // Applying its request here — rather than loading the guest directly — is what
-  // keeps the address bar and the page in agreement, and it is also how the
-  // panel comes into existence: the <webview> only mounts once it has a URL.
-  const appliedRequestRef = useRef(0)
+  // Its navigation arrives as a store update — the address bar and the page come
+  // from the same place, which is what keeps them in agreement, and it is also
+  // how the panel comes into existence: the <webview> only mounts once it has a
+  // URL. The nonce is applied on its own, because re-opening the address already
+  // on screen must still remount the guest.
+  const appliedNonceRef = useRef(nonce)
   useEffect(() => {
-    if (!openRequest || openRequest.nonce === appliedRequestRef.current) return
-    appliedRequestRef.current = openRequest.nonce
+    setPage(url)
+    setDraft(url ?? '')
+    if (appliedNonceRef.current === nonce) return
+    appliedNonceRef.current = nonce
     setInputError(null)
-    setDraft(openRequest.url)
     setLoad({ kind: 'loading' })
-    setUrl(openRequest.url)
-  }, [openRequest])
+    setAttempt((n) => n + 1)
+  }, [url, nonce])
 
   // The guest reports load progress only through DOM events, so the panel can
   // never render a silent blank page: a failure surfaces its reason and a
   // retry, and a slow page shows a spinner instead of looking broken.
   useEffect(() => {
     const el = webviewRef.current
-    if (!el || !url) return
+    if (!el || !page) return
     const started = (): void => setLoad({ kind: 'loading' })
     const stopped = (): void =>
       setLoad((prev) => (prev.kind === 'failed' ? prev : { kind: 'ready' }))
@@ -97,7 +111,7 @@ export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest |
       el.removeEventListener('did-stop-loading', stopped)
       el.removeEventListener('did-fail-load', failed)
     }
-  }, [url, attempt])
+  }, [page, attempt])
 
   const open = (): void => {
     const next = normalizeUrl(draft)
@@ -106,8 +120,11 @@ export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest |
       return
     }
     setInputError(null)
-    if (next === url) setAttempt((n) => n + 1)
-    else setUrl(next)
+    if (next === page) setAttempt((n) => n + 1)
+    else setPage(next)
+    // Written back so the workspace remembers where the user left off — a
+    // switch away and back, or a reopen after closing the panel, returns here.
+    if (activeWorkspaceId) setBrowserPanelUrl(activeWorkspaceId, next)
     setLoad({ kind: 'loading' })
   }
 
@@ -172,7 +189,7 @@ export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest |
           <div className="min-w-0 flex-1 text-[11px] text-muted">{inputError}</div>
         </div>
       )}
-      {url ? (
+      {page ? (
         <div className="relative flex min-h-0 flex-1 flex-col">
           {load.kind === 'loading' && (
             <div className="absolute inset-x-0 top-0 z-10 flex items-center justify-center gap-1.5 border-b border-border bg-surface/95 py-1 text-[11px] text-muted">
@@ -200,7 +217,7 @@ export function BrowserPanel({ openRequest }: { openRequest?: PanelOpenRequest |
           <Webview
             key={attempt}
             ref={webviewRef}
-            src={url}
+            src={page}
             partition={VESPI_BROWSER_PARTITION}
             className="min-h-0 flex-1"
           />

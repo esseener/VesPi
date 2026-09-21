@@ -27,7 +27,7 @@ import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
 import { DiffViewer } from './diff-viewer'
 import { TerminalPanel } from './terminal'
-import { BrowserPanel, type PanelOpenRequest } from './browser-panel'
+import { BrowserPanel } from './browser-panel'
 import { SideTabPicker } from './side-tab-picker'
 import { ReviewRail } from './review-rail'
 import { useChatScroll, useGlobalWorkflowOpen } from '../hooks'
@@ -99,19 +99,16 @@ export function ChatPanel(): React.JSX.Element {
   const [filePaneWidth, setFilePaneWidth] = useState(DEFAULT_FILE_PANE_WIDTH)
 
   // When the agent acts on the embedded browser, the shell brings the panel into
-  // view so the user can see what it is doing. Navigation carries a url, which
-  // the panel applies itself — that is what creates the <webview> in the first
-  // place, and what keeps the address bar honest.
-  const [panelOpenRequest, setPanelOpenRequest] = useState<PanelOpenRequest | null>(null)
-  const panelRequestNonce = useRef(0)
+  // view so the user can see what it is doing. The panel is one shared surface
+  // serving every workspace, so the request names the workspace it came from:
+  // only the one on screen may take the panel over, and the others keep their
+  // page and their flag until the user switches to them.
+  const notePanelShow = useAppStore((state) => state.notePanelShow)
   useEffect(() => {
     return window.piDesktop.onPanelShow((request) => {
-      void setSidePanel('browser')
-      if (!request.url) return
-      panelRequestNonce.current += 1
-      setPanelOpenRequest({ url: request.url, nonce: panelRequestNonce.current })
+      notePanelShow(request.workspaceId ?? null, request.url)
     })
-  }, [setSidePanel])
+  }, [notePanelShow])
 
   // One shared clock for all relative-time labels — refresh every 30s so
   // "5 minutes ago" stays current without each label owning a timer.
@@ -200,6 +197,19 @@ export function ChatPanel(): React.JSX.Element {
   const showDiff = sidePanel === 'diff'
   const showReview = sidePanel === 'review'
   const showBrowser = sidePanel === 'browser'
+  // The page this workspace owns, remembered in the store rather than in the
+  // panel: the panel unmounts whenever it is not on screen, and local state
+  // would take the address (and the agent's session) with it.
+  const activeWorkspaceId = useAppStore((state) => state.activeWorkspace?.id ?? null)
+  const browserPanel = useAppStore((state) =>
+    activeWorkspaceId === null ? undefined : state.browserPanelByWorkspace[activeWorkspaceId]
+  )
+  const browserUrl = browserPanel?.url ?? null
+  const browserNonce = browserPanel?.nonce ?? 0
+  // Once a page exists the side panel stays mounted and is hidden instead of
+  // removed — unmounting destroys the `<webview>`, which is what used to kill
+  // the page the agent was still driving the moment the user closed the panel.
+  const sidePanelMounted = showSidePanel || browserUrl !== null
   const {
     fileTreeOnly: showFileTreeOnly,
     minSidePanelWidth,
@@ -366,8 +376,11 @@ export function ChatPanel(): React.JSX.Element {
         </div>
 
         {/* Side panel */}
-        {showSidePanel && (
-          <div className="relative flex border-l border-border bg-app" style={{ width: sidePanelContentWidth }}>
+        {sidePanelMounted && (
+          <div
+            className={clsx('relative flex border-l border-border bg-app', !showSidePanel && 'hidden')}
+            style={{ width: sidePanelContentWidth }}
+          >
             <ResizeHandle
               onResize={(delta) => {
                 if (showFileTreeOnly) {
@@ -386,7 +399,11 @@ export function ChatPanel(): React.JSX.Element {
             <div className="flex min-w-0 flex-1 overflow-hidden">
               {showPicker && <SideTabPicker />}
               {showReview && <ReviewRail embedded />}
-              {showBrowser && <BrowserPanel openRequest={panelOpenRequest} />}
+              {browserUrl !== null && (
+                <div className={clsx('min-w-0 flex-1 overflow-hidden', !showBrowser && 'hidden')}>
+                  <BrowserPanel url={browserUrl} nonce={browserNonce} />
+                </div>
+              )}
               {showFileTree && (
                 <>
                   <div className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>

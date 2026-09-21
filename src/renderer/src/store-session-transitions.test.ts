@@ -353,6 +353,7 @@ beforeEach(() => {
     currentView: 'home',
     previewTarget: null,
     chatSidePanel: null,
+    browserPanelByWorkspace: {},
     editorDirty: false,
   })
   // AFTER the state reset: the editor-dirty mirror subscription fires on the
@@ -2539,4 +2540,103 @@ test('setWorkflowPanelOpen: direct open clears scope, close preserves it', () =>
   useAppStore.getState().setWorkflowPanelOpen(true)
   assert.equal(useAppStore.getState().workflowPanelWorkspaceId, null)
   assert.equal(useAppStore.getState().workflowPanelFilter, null)
+})
+
+// ─── Browser panel ownership ─────────────────────────────────────────────────
+
+// The panel is one shared surface serving every workspace, so a request from a
+// project the user is not looking at must not take it over — that was the bug:
+// a background project's agent opened the panel over the foreground project,
+// and closing it there left the other project with nothing.
+test('a panel request from another workspace does not take over the panel', () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null })
+
+  useAppStore.getState().notePanelShow(WORKSPACE_TWO.id, 'https://example.com/two')
+
+  assert.equal(useAppStore.getState().chatSidePanel, null, 'the foreground panel stays put')
+  assert.deepEqual(useAppStore.getState().browserPanelByWorkspace[WORKSPACE_TWO.id], {
+    url: 'https://example.com/two',
+    open: true,
+    nonce: 1,
+  })
+})
+
+test('a panel request from the active workspace opens it', () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null })
+
+  useAppStore.getState().notePanelShow(WORKSPACE_ONE.id, 'https://example.com/one')
+
+  assert.equal(useAppStore.getState().chatSidePanel, 'browser')
+})
+
+test('an unattributed panel request falls back to the active workspace', () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null })
+
+  useAppStore.getState().notePanelShow(null, 'https://example.com/x')
+
+  assert.equal(useAppStore.getState().chatSidePanel, 'browser')
+  assert.equal(useAppStore.getState().browserPanelByWorkspace[WORKSPACE_ONE.id]?.url, 'https://example.com/x')
+})
+
+test('closing the panel in one workspace leaves another workspace open', async () => {
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    chatSidePanel: 'browser',
+    browserPanelByWorkspace: {
+      [WORKSPACE_ONE.id]: { url: 'https://example.com/one', open: true, nonce: 1 },
+      [WORKSPACE_TWO.id]: { url: 'https://example.com/two', open: true, nonce: 1 },
+    },
+  })
+
+  assert.equal(await useAppStore.getState().setChatSidePanel(null), true)
+
+  const byWorkspace = useAppStore.getState().browserPanelByWorkspace
+  assert.equal(byWorkspace[WORKSPACE_ONE.id].open, false)
+  assert.equal(byWorkspace[WORKSPACE_TWO.id].open, true, "another project's panel is not ours to close")
+  assert.equal(byWorkspace[WORKSPACE_TWO.id].url, 'https://example.com/two', 'nor to forget')
+})
+
+test('re-opening the same address still bumps the nonce, so the guest remounts', () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null })
+
+  useAppStore.getState().notePanelShow(WORKSPACE_ONE.id, 'https://example.com/same')
+  useAppStore.getState().notePanelShow(WORKSPACE_ONE.id, 'https://example.com/same')
+
+  assert.equal(useAppStore.getState().browserPanelByWorkspace[WORKSPACE_ONE.id].nonce, 2)
+
+  // A show with no navigation (panel_eval and friends) must not look like a
+  // new page, or every read would remount the guest under the user.
+  useAppStore.getState().notePanelShow(WORKSPACE_ONE.id)
+  assert.equal(useAppStore.getState().browserPanelByWorkspace[WORKSPACE_ONE.id].nonce, 2)
+  assert.equal(
+    useAppStore.getState().browserPanelByWorkspace[WORKSPACE_ONE.id].url,
+    'https://example.com/same'
+  )
+})
+
+test('switching to a workspace that had its panel open brings it back', async () => {
+  activeWorkspaceResult = WORKSPACE_TWO
+  switchResult = { success: true }
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE, WORKSPACE_TWO],
+    chatSidePanel: 'browser',
+    browserPanelByWorkspace: {
+      [WORKSPACE_ONE.id]: { url: 'https://example.com/one', open: true, nonce: 1 },
+      [WORKSPACE_TWO.id]: { url: 'https://example.com/two', open: true, nonce: 1 },
+    },
+  })
+
+  assert.equal(await useAppStore.getState().activateWorkspace(WORKSPACE_TWO.id), true)
+  assert.equal(useAppStore.getState().chatSidePanel, 'browser')
+
+  // …and switching to one that never had a page stops showing the panel.
+  activeWorkspaceResult = WORKSPACE_ONE
+  useAppStore.setState({
+    browserPanelByWorkspace: {
+      [WORKSPACE_TWO.id]: { url: 'https://example.com/two', open: true, nonce: 1 },
+    },
+  })
+  assert.equal(await useAppStore.getState().activateWorkspace(WORKSPACE_ONE.id), true)
+  assert.equal(useAppStore.getState().chatSidePanel, null)
 })
