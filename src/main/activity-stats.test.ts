@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, writeFile, rm, utimes } from 'fs/promises'
 import { tmpdir } from 'os'
 import { join } from 'path'
 import { ActivityStatsStore } from './activity-stats'
+import { setPiExecutableOverride } from './pi-rpc-manager'
 
 // Fixed reference instant so window math is deterministic.
 const NOW = new Date('2026-07-05T12:00:00')
@@ -237,4 +238,77 @@ test('prunes sessions older than the retention window', async () => {
   assert.equal(result.ranges['365'].messages, 0)
 
   await rm(root, { recursive: true, force: true })
+})
+
+/**
+ * VesPi runs only the OMP engine, so its sessions live in the OMP store — but
+ * the dashboard used to scan just one root. Everything it showed was therefore
+ * whatever had been captured at delete time, frozen: live usage was invisible.
+ * These two pin the fix.
+ */
+async function withSessionStores<T>(
+  run: (dirs: { piAgent: string; ompAgent: string; ompSessions: string; storePath: string }) => Promise<T>
+): Promise<T> {
+  const base = await mkdtemp(join(tmpdir(), 'stats-roots-'))
+  const previousPi = process.env.PI_CODING_AGENT_DIR
+  const previousOmp = process.env.OMP_CODING_AGENT_DIR
+  const piAgent = join(base, 'pi-agent')
+  const ompAgent = join(base, 'omp-agent')
+  process.env.PI_CODING_AGENT_DIR = piAgent
+  process.env.OMP_CODING_AGENT_DIR = ompAgent
+  // The store picks its root from the engine, so pin it rather than depend on
+  // whatever this machine happens to have installed. VesPi only ever runs OMP.
+  setPiExecutableOverride(undefined, 'omp')
+  const ompSessions = join(ompAgent, 'sessions')
+  await mkdir(ompSessions, { recursive: true })
+  try {
+    return await run({ piAgent, ompAgent, ompSessions, storePath: join(base, 'activity-stats.json') })
+  } finally {
+    setPiExecutableOverride(undefined, 'auto')
+    if (previousPi === undefined) delete process.env.PI_CODING_AGENT_DIR
+    else process.env.PI_CODING_AGENT_DIR = previousPi
+    if (previousOmp === undefined) delete process.env.OMP_CODING_AGENT_DIR
+    else process.env.OMP_CODING_AGENT_DIR = previousOmp
+    await rm(base, { recursive: true, force: true })
+  }
+}
+
+test('scans the OMP session store, which is the only one VesPi writes', async () => {
+  await withSessionStores(async ({ ompSessions, storePath }) => {
+    await mkdir(join(ompSessions, '--D--proj--'), { recursive: true })
+    await writeFile(
+      join(ompSessions, '--D--proj--', '2026-07-05T00-00-00-000Z_abc.jsonl'),
+      messageLine('2026-07-05', { role: 'assistant', model: 'deepseek-v4.1-flash', input: 700, output: 300 })
+    )
+
+    // No sessionsRoot override: this is the production wiring, which resolves
+    // the roots from the engine exactly as the app does.
+    const store = new ActivityStatsStore({ storePath })
+    const year = (await store.computeStats(NOW)).ranges['365']
+
+    assert.equal(year.sessions, 1)
+    assert.equal(year.totalTokens, 1000)
+    assert.equal(year.models[0].model, 'deepseek-v4.1-flash')
+  })
+})
+
+test('subagent transcripts of the same role in two projects stay separate', async () => {
+  await withSessionStores(async ({ ompSessions, storePath }) => {
+    for (const project of ['--D--alpha--', '--D--beta--']) {
+      const dir = join(ompSessions, project, 'session-1')
+      await mkdir(dir, { recursive: true })
+      await writeFile(
+        join(dir, 'FixVerifier.jsonl'),
+        messageLine('2026-07-05', { role: 'assistant', model: 'grok-4.6', input: 100, output: 0 })
+      )
+    }
+
+    const store = new ActivityStatsStore({ storePath })
+    const year = (await store.computeStats(NOW)).ranges['365']
+
+    // Keyed by bare name these would collapse into one entry and lose half the
+    // tokens; keyed by their path below the root they stay two.
+    assert.equal(year.sessions, 2)
+    assert.equal(year.totalTokens, 200)
+  })
 })

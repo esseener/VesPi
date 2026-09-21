@@ -85,6 +85,34 @@ function sessionIdFromPath(filePath: string): string {
   return base.endsWith(JSONL_EXTENSION) ? base.slice(0, -JSONL_EXTENSION.length) : base
 }
 
+/**
+ * Store key for a session file, qualified by the store it lives in.
+ *
+ * A top-level session file is named `<timestamp>_<uuid>.jsonl`, so its bare
+ * name is already unique and stays the key it has always been — which is what
+ * keeps the aggregates captured from since-deleted sessions addressable. Files
+ * nested inside a session's artifact directory — subagent transcripts — are
+ * named after the agent role (`FixVerifier.jsonl`), which repeats across
+ * projects; keying those by bare name would merge unrelated transcripts into
+ * one entry and make the totals flip as each was re-parsed. Their key is
+ * therefore the path below the store root.
+ *
+ * Roots are matched case-insensitively to survive the `profiles/vespi` vs
+ * `profiles/VesPi` spelling, and a path in no known store falls back to the
+ * bare name.
+ */
+function idForSessionFile(filePath: string, roots: readonly string[]): string {
+  const slashed = filePath.replace(/\\/g, '/')
+  const normalised = slashed.toLowerCase()
+  for (const root of roots) {
+    const prefix = `${root.replace(/\\/g, '/').replace(/\/+$/, '').toLowerCase()}/`
+    if (!normalised.startsWith(prefix)) continue
+    const relative = slashed.slice(prefix.length)
+    return relative.endsWith(JSONL_EXTENSION) ? relative.slice(0, -JSONL_EXTENSION.length) : relative
+  }
+  return sessionIdFromPath(filePath)
+}
+
 /** Reduce one session file's JSONL content into a per-day bucket map. */
 function parseSessionContent(content: string): Record<string, DayBucket> {
   const days: Record<string, DayBucket> = {}
@@ -137,10 +165,15 @@ function newestDay(entry: SessionEntry): string {
 /**
  * Persisted activity-stats store.
  *
- * The source of truth is Pi's session `.jsonl` files, but this store keeps a
+ * The source of truth is the session `.jsonl` files, but this store keeps a
  * per-session reduced aggregate on disk so stats survive session deletion:
  * present files are re-parsed when their mtime changes, files that vanish keep
  * their last-known aggregate. All totals sum over every retained entry.
+ *
+ * The store of the engine this app runs is scanned (see `roots`). Reading the
+ * wrong one meant the dashboard could only ever show aggregates captured at
+ * delete time: live usage was invisible while the numbers sat frozen at the
+ * last deletion.
  *
  * Capture points (see main/index.ts + ipc-handlers.ts):
  *  - startup baseline scan
@@ -164,8 +197,16 @@ export class ActivityStatsStore {
     this.modelsConfigPathOverride = deps.modelsConfigPath
   }
 
-  private root(): string {
-    return this.sessionsRoot ?? getSessionsRoot()
+  private roots(): string[] {
+    if (this.sessionsRoot) return [this.sessionsRoot]
+    // The dashboard reports what THIS app ran, and VesPi runs exactly one
+    // engine. Its store is the one to read — the other engine's holds sessions
+    // from tooling that never ran under it (this machine's Pi store is 76
+    // two-message probe fixtures on a synthetic 2026-01-01 timestamp), and
+    // counting those would invent an active day and inflate the session count.
+    // Mirrors `modelsPath()` below, which picks the engine's models.json the
+    // same way.
+    return getPiCli().kind === 'omp' ? [getOmpSessionsRoot()] : [getSessionsRoot()]
   }
 
   private modelsPath(): string {
@@ -248,9 +289,9 @@ export class ActivityStatsStore {
   async refresh(now: Date = new Date()): Promise<void> {
     this.ensureLoaded()
     const files: string[] = []
-    await collectFilesAsync(this.root(), files)
+    for (const root of this.roots()) await collectFilesAsync(root, files)
     for (const file of files) {
-      const id = sessionIdFromPath(file)
+      const id = idForSessionFile(file, this.roots())
       let mtimeMs: number
       try {
         mtimeMs = (await stat(file)).mtimeMs
@@ -276,9 +317,9 @@ export class ActivityStatsStore {
   flushSync(now: Date = new Date()): void {
     this.ensureLoaded()
     const files: string[] = []
-    collectFilesSync(this.root(), files)
+    for (const root of this.roots()) collectFilesSync(root, files)
     for (const file of files) {
-      const id = sessionIdFromPath(file)
+      const id = idForSessionFile(file, this.roots())
       let mtimeMs: number
       try {
         mtimeMs = statSync(file).mtimeMs
@@ -306,7 +347,7 @@ export class ActivityStatsStore {
    */
   captureBeforeDelete(sessionPath: string): void {
     this.ensureLoaded()
-    const id = sessionIdFromPath(sessionPath)
+    const id = idForSessionFile(sessionPath, this.roots())
     try {
       const mtimeMs = statSync(sessionPath).mtimeMs
       const content = readFileSync(sessionPath, 'utf-8')
