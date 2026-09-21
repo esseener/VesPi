@@ -32,6 +32,22 @@ import {
 } from './agent-browser-mcp'
 import { createPanelChannel, createPanelPipePath, createPanelToken, type PanelChannel } from './panel-channel'
 import { createPanelOps, type PanelGuestLike } from './panel-ops'
+import {
+  COMPUTER_MCP_NAME,
+  computerBridgePath,
+  computerMcpEntry,
+  computerSettingsCandidates,
+  computerSidecarPath,
+  readComputerSettings,
+} from './computer-mcp'
+import {
+  createComputerChannel,
+  createComputerPipePath,
+  createComputerToken,
+  type ComputerChannel,
+} from './computer-channel'
+import { createComputerOps } from './computer-ops'
+import { createComputerSidecar, SLOW_METHOD_TIMEOUT_MS } from './computer-sidecar'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../shared/i18n'
 
 
@@ -104,6 +120,7 @@ let panelGuest: PanelGuestLike | null = null
 
 /** The named-pipe channel the agent's panel tools arrive on. */
 let panelChannel: PanelChannel | null = null
+let computerChannel: ComputerChannel | null = null
 let isQuitting = false
 
 // Guards the renderer's unsaved editor buffer against teardown. The renderer
@@ -345,6 +362,101 @@ if (agentBrowser.enabled) {
   const mcpPath = join(vespiProfileAgentDir(), 'mcp.json')
   removeAgentBrowserMcp({ mcpPath })
   removeAgentBrowserMcp({ mcpPath, name: PANEL_MCP_NAME })
+}
+
+// ─── Desktop control ─────────────────────────────────────────────────────────
+//
+// The third toolset, and the only one that can touch things outside this app:
+// `computer_*` moves the user's mouse, types with their keyboard and can click
+// anything they can click. It is off unless the user turns it on (see
+// computer-mcp.ts for why the default is inverted relative to the browser), and
+// the helper process it needs is only started when a tool call actually arrives.
+//
+// Nothing on the network: the kernel reaches VesPi over a named pipe guarded by a
+// per-launch token, and VesPi reaches the helper over that helper's stdin.
+const computerSettings = readComputerSettings(
+  computerSettingsCandidates({
+    guiDataDir: userDataDir,
+    appDataDir: app.getPath('appData'),
+    homeDir: app.getPath('home'),
+  })
+)
+
+if (computerSettings.enabled) {
+  const computerMcpPath = join(vespiProfileAgentDir(), 'mcp.json')
+  const sidecarPath = computerSidecarPath(process.resourcesPath, app.isPackaged, app.getAppPath())
+  const bridgePath = computerBridgePath(process.resourcesPath, app.isPackaged, app.getAppPath())
+
+  if (!existsSync(sidecarPath) || !existsSync(bridgePath)) {
+    // A build without the helper (or a dev checkout that has not run
+    // `npm run build:cua`): say so once, and leave no entry pointing at nothing.
+    appLog.warn('computer', 'Desktop control helper missing from this build; the computer tools stay unavailable', {
+      sidecarPath,
+      bridgePath,
+    })
+    removeAgentBrowserMcp({ mcpPath: computerMcpPath, name: COMPUTER_MCP_NAME })
+  } else {
+    const token = createComputerToken()
+    const pipePath = createComputerPipePath()
+    const sidecar = createComputerSidecar({
+      exePath: sidecarPath,
+      // Unexpected output from the helper is worth a line in the log, never a
+      // blocked startup: the tools simply do not appear.
+      log: (message, detail) => appLog.warn('computer', message, detail),
+    })
+
+    const runComputerOp = createComputerOps({
+      call: sidecar.call,
+      allowedApps: () => computerSettings.allowedApps,
+      // VesPi's own window is never a valid target: the user is working in it.
+      selfProcess: basename(process.execPath),
+      slowTimeoutMs: SLOW_METHOD_TIMEOUT_MS,
+    })
+
+    void createComputerChannel({
+      pipePath,
+      token,
+      handle: ({ op, payload }) => runComputerOp(op, payload),
+    })
+      .then((channel) => {
+        computerChannel = channel
+        const configured = ensureAgentBrowserMcp({
+          mcpPath: computerMcpPath,
+          name: COMPUTER_MCP_NAME,
+          entry: computerMcpEntry({
+            nodeExecutable: process.execPath,
+            serverPath: bridgePath,
+            pipePath,
+            token,
+          }),
+        })
+        appLog[configured ? 'info' : 'warn'](
+          'computer',
+          configured
+            ? 'Desktop control configured for the agent'
+            : 'Could not write the desktop control MCP config',
+          { mcpPath: computerMcpPath, pipePath, allowedApps: computerSettings.allowedApps }
+        )
+      })
+      .catch((error: unknown) => {
+        appLog.error('computer', 'Could not start the desktop control channel', error)
+        removeAgentBrowserMcp({ mcpPath: computerMcpPath, name: COMPUTER_MCP_NAME })
+      })
+
+    // Kill the helper and release the pipe on the way out. A half-closed channel
+    // would leave the agent's tool calls hanging instead of reporting it as gone.
+    app.on('will-quit', () => {
+      sidecar.dispose()
+      void computerChannel?.close()
+    })
+  }
+} else {
+  // Off: drop the entry a previous run may have left behind, so OMP stops
+  // spawning a bridge whose pipe nobody is listening on.
+  removeAgentBrowserMcp({
+    mcpPath: join(vespiProfileAgentDir(), 'mcp.json'),
+    name: COMPUTER_MCP_NAME,
+  })
 }
 
 // ─── Window Creation ─────────────────────────────────────────────────────────

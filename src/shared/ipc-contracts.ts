@@ -1221,6 +1221,7 @@ export interface AppSettings {
   // with no such key counts as on. Set false to leave the model with its own.
   // The port belongs to that browser, not to VesPi.
   agentBrowserEnabled: boolean
+  agentComputerEnabled: boolean
   // Multi-agent council planning configuration.
   council: CouncilConfig
 }

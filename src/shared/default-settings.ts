@@ -43,5 +43,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   // gets to watch it. Turning it off leaves the model with its own invisible
   // headless browser.
   agentBrowserEnabled: true,
+  // Off, unlike the browser above: this one drives the user's actual desktop —
+  // their mouse, their keyboard, whatever window is in front. See computer-mcp.ts.
+  agentComputerEnabled: false,
   council: DEFAULT_COUNCIL_CONFIG,
 }

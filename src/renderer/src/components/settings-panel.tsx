@@ -92,6 +92,7 @@ export function SettingsPanel(): React.JSX.Element {
   const [completionChime, setCompletionChime] = useState(draft0.completionChime ?? settings?.completionChime ?? DEFAULT_SETTINGS.completionChime)
   const [completionChimeVolume, setCompletionChimeVolume] = useState(draft0.completionChimeVolume ?? settings?.completionChimeVolume ?? DEFAULT_SETTINGS.completionChimeVolume)
   const [agentBrowserEnabled, setBrowserCdpEnabled] = useState(draft0.agentBrowserEnabled ?? settings?.agentBrowserEnabled ?? DEFAULT_SETTINGS.agentBrowserEnabled)
+  const [agentComputerEnabled, setComputerEnabled] = useState(draft0.agentComputerEnabled ?? settings?.agentComputerEnabled ?? DEFAULT_SETTINGS.agentComputerEnabled)
   const [resumeLastSession, setResumeLastSession] = useState(draft0.resumeLastSession ?? settings?.resumeLastSession ?? DEFAULT_SETTINGS.resumeLastSession)
   const [openToHomeOnLaunch, setOpenToHomeOnLaunch] = useState(draft0.openToHomeOnLaunch ?? settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch)
   const [runOnStartup, setRunOnStartup] = useState(draft0.runOnStartup ?? settings?.runOnStartup ?? DEFAULT_SETTINGS.runOnStartup)
@@ -262,6 +263,7 @@ export function SettingsPanel(): React.JSX.Element {
     setCompletionChime(draft.completionChime ?? settings.completionChime)
     setCompletionChimeVolume(draft.completionChimeVolume ?? settings.completionChimeVolume)
     setBrowserCdpEnabled(draft.agentBrowserEnabled ?? settings.agentBrowserEnabled)
+    setComputerEnabled(draft.agentComputerEnabled ?? settings.agentComputerEnabled)
     setResumeLastSession(draft.resumeLastSession ?? settings.resumeLastSession)
     setOpenToHomeOnLaunch(draft.openToHomeOnLaunch ?? settings.openToHomeOnLaunch)
     setRunOnStartup(draft.runOnStartup ?? settings.runOnStartup)
@@ -492,6 +494,7 @@ export function SettingsPanel(): React.JSX.Element {
       completionChime: DEFAULT_SETTINGS.completionChime,
       completionChimeVolume: DEFAULT_SETTINGS.completionChimeVolume,
       agentBrowserEnabled: DEFAULT_SETTINGS.agentBrowserEnabled,
+      agentComputerEnabled: DEFAULT_SETTINGS.agentComputerEnabled,
       resumeLastSession: DEFAULT_SETTINGS.resumeLastSession,
       openToHomeOnLaunch: DEFAULT_SETTINGS.openToHomeOnLaunch,
       runOnStartup: DEFAULT_SETTINGS.runOnStartup,
@@ -510,6 +513,7 @@ export function SettingsPanel(): React.JSX.Element {
     setCompletionChime(defaults.completionChime!)
     setCompletionChimeVolume(defaults.completionChimeVolume!)
     setBrowserCdpEnabled(defaults.agentBrowserEnabled!)
+    setComputerEnabled(defaults.agentComputerEnabled!)
 
     setResumeLastSession(defaults.resumeLastSession!)
     setOpenToHomeOnLaunch(defaults.openToHomeOnLaunch!)
@@ -827,6 +831,13 @@ export function SettingsPanel(): React.JSX.Element {
             description={t(language, 'agentBrowserEnabledHint')}
           >
             <Toggle checked={agentBrowserEnabled} onChange={(v) => { setBrowserCdpEnabled(v); persistSettingPatch({ agentBrowserEnabled: v }) }} />
+          </SettingsRow>
+
+          <SettingsRow
+            label={t(language, 'agentComputerEnabled')}
+            description={t(language, 'agentComputerEnabledHint')}
+          >
+            <Toggle checked={agentComputerEnabled} onChange={(v) => { setComputerEnabled(v); persistSettingPatch({ agentComputerEnabled: v }) }} />
           </SettingsRow>
 
           <SettingsRow

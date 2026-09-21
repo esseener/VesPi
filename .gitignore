@@ -18,6 +18,11 @@ build/
 .tmp-asar-check/
 .tmp-dialog-preview/
 
+# Desktop control helper: a Rust build product, staged by `npm run build:cua`.
+# CI builds it; nothing here belongs in git.
+resources/vespi-cua.exe
+native-cua/target/
+
 # IDE / editors
 .vscode/
 .idea/

@@ -52,6 +52,17 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Set up Rust
+        # The desktop-control helper is a Rust binary (native-cua/). It is a real
+        # part of the product — shipped in the installer — so it is compiled from
+        # source here, on the same runner that packages it.
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Check the desktop-control helper compiles
+        # Checked in the verification job so a broken crate fails before a release
+        # is built, rather than after the tests have already gone green.
+        run: cargo check --manifest-path native-cua/Cargo.toml
+
       - name: Fetch bundled kernel
         # Not in git (200 MB+), and three engine-resolution tests assert that the
         # private binary resolves — the same precondition a developer's machine
@@ -96,6 +107,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build the desktop-control helper
+        # Stages vespi-cua.exe into resources/, which `extraResources` copies into
+        # the installer. Without this step the packaged app has no desktop tools at
+        # all — the shell detects the missing binary and drops the MCP entry.
+        run: npm run build:cua
 
       - name: Fetch bundled kernel
         # Not in git (200 MB+). Downloads the binary the lock pins and verifies
@@ -214,6 +234,30 @@ jobs:
           # Composer attachment drop (1.0.54): files dropped on the composer are
           # read as attachments, while folders keep going to the workspace opener.
           assert_marker "composer attachment drop" "attachableDropPaths"
+          # Desktop control (1.0.56): the helper binary and the MCP bridge are
+          # extraResources rather than part of app.asar, so they are checked as
+          # files. Either one missing means the computer_* tools silently do not
+          # exist for the user — a shipped feature that is simply absent.
+          cua_exe=release/win-unpacked/resources/resources/vespi-cua.exe
+          if [ ! -f "$cua_exe" ]; then
+            echo "::error::$cua_exe is missing from the package"
+            exit 1
+          fi
+          echo "ok: desktop-control helper ($(stat -c %s "$cua_exe") bytes)"
+          cua_bridge=release/win-unpacked/resources/resources/vespi-computer-mcp.mjs
+          if [ ! -f "$cua_bridge" ]; then
+            echo "::error::$cua_bridge is missing from the package"
+            exit 1
+          fi
+          for marker in "computer_uitree" "computer_invoke" "vespi-computer"; do
+            if ! grep -q -e "$marker" "$cua_bridge"; then
+              echo "::error::the shipped desktop bridge is missing: $marker"
+              exit 1
+            fi
+            echo "ok: desktop bridge carries $marker"
+          done
+          # The channel prefix lives in the main bundle, not in app.asar's renderer.
+          assert_marker "desktop control channel" "vespi-computer-"
 
       - name: Upload installers
         uses: actions/upload-artifact@v4

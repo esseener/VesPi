@@ -162,6 +162,14 @@ export type ToolCallDecision =
 // Pi's original ask modes only needed the three built-ins below. OMP exposes
 // additional write/execute surfaces, so keep the same safety posture when the
 // engine is selected explicitly.
+//
+// `browser` and `computer` cover both the kernel's own tools and the toolsets
+// VesPi wires in over MCP, which is why matching is prefix-aware rather than an
+// exact-name lookup: `browser_snapshot` from the vendored Playwright server and
+// `mcp__playwright__browser_snapshot` are the same capability through two doors,
+// and a gate that only knows the bare name lets the second one through. Desktop
+// control in particular would be unguarded, since every one of its tools arrives
+// namespaced.
 const ASK_EDITS_GATED_TOOLS = new Set([
   'edit', 'write', 'bash', 'ast_edit', 'eval', 'browser', 'computer', 'lsp', 'dap', 'task',
 ])
@@ -171,6 +179,26 @@ const ASK_COMMANDS_GATED_TOOLS = new Set([
 
 const MODE_ASK_EDITS = 'ask-edits'
 const MODE_ASK_COMMANDS = 'ask-commands'
+
+/**
+ * Whether a tool call belongs to a gated family.
+ *
+ * Three shapes have to match: the bare name (`computer`), the family with a
+ * suffix (`computer_uitree`), and either of those namespaced by the MCP server
+ * that provides it (`mcp__computer__computer_uitree`). The suffix check is not
+ * anchored to a `__` separator on purpose — MCP servers may prefix the tool name
+ * themselves (`mcp__playwright__browser_snapshot` has no `__browser__`).
+ */
+export function toolIsGated(toolName: string, gated: ReadonlySet<string>): boolean {
+  const lower = toolName.toLowerCase()
+  for (const entry of gated) {
+    if (lower === entry) return true
+    if (lower.startsWith(`${entry}_`)) return true
+    if (lower.includes(`__${entry}__`)) return true
+    if (lower.includes(`__${entry}_`)) return true
+  }
+  return false
+}
 
 export function decideToolCall(
   mode: string | undefined,
@@ -185,8 +213,8 @@ export function decideToolCall(
     return { action: 'block', reason: `Blocked by permission rule: deny ${result.rule.tool}${suffix}` }
   }
   if (result.decision === 'allow') return { action: 'allow' }
-  if (mode === MODE_ASK_EDITS && ASK_EDITS_GATED_TOOLS.has(toolName)) return { action: 'prompt' }
-  if (mode === MODE_ASK_COMMANDS && ASK_COMMANDS_GATED_TOOLS.has(toolName)) return { action: 'prompt' }
+  if (mode === MODE_ASK_EDITS && toolIsGated(toolName, ASK_EDITS_GATED_TOOLS)) return { action: 'prompt' }
+  if (mode === MODE_ASK_COMMANDS && toolIsGated(toolName, ASK_COMMANDS_GATED_TOOLS)) return { action: 'prompt' }
   return { action: 'allow' }
 }
 

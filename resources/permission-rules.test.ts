@@ -11,6 +11,7 @@ import {
   getPrimaryInput,
   evaluateRules,
   decideToolCall,
+  toolIsGated,
   workspaceRulesPath,
   loadEffectiveRules,
   clearRulesCache,
@@ -347,5 +348,60 @@ describe('loadEffectiveRules', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true })
     }
+  })
+})
+
+describe('toolIsGated', () => {
+  // The two families VesPi wires in over MCP: `browser` (Playwright, and the
+  // panel) and `computer` (desktop control). Both arrive under more than one
+  // name, and missing any of them would leave a capability ungated.
+  const gated = new Set(['browser', 'computer'])
+
+  it('matches the bare family name the kernel uses', () => {
+    assert.equal(toolIsGated('computer', gated), true)
+    assert.equal(toolIsGated('browser', gated), true)
+  })
+
+  it('matches a tool named with the family as a prefix', () => {
+    assert.equal(toolIsGated('computer_uitree', gated), true)
+    assert.equal(toolIsGated('browser_snapshot', gated), true)
+  })
+
+  it('matches a name namespaced by an MCP server', () => {
+    assert.equal(toolIsGated('mcp__computer__computer_uitree', gated), true)
+    assert.equal(toolIsGated('mcp__computer__computer', gated), true)
+    assert.equal(toolIsGated('mcp__playwright__browser_navigate', gated), true)
+  })
+
+  it('is case-insensitive', () => {
+    assert.equal(toolIsGated('Computer_UITree', gated), true)
+  })
+
+  it('leaves unrelated tools alone', () => {
+    assert.equal(toolIsGated('read_file', gated), false)
+    assert.equal(toolIsGated('computerish_helper', gated), false)
+    assert.equal(toolIsGated('grep', gated), false)
+  })
+})
+
+describe('desktop and browser tools are gated in ask modes', () => {
+  it('prompts for a namespaced desktop tool in ask-edits', () => {
+    assert.equal(decideToolCall('ask-edits', [], 'mcp__computer__computer_uitree', {}, 'win32').action, 'prompt')
+    assert.equal(decideToolCall('ask-edits', [], 'computer_click', {}, 'win32').action, 'prompt')
+  })
+
+  it('prompts for a namespaced browser tool in ask-commands', () => {
+    assert.equal(decideToolCall('ask-commands', [], 'mcp__playwright__browser_navigate', {}, 'win32').action, 'prompt')
+  })
+
+  it('gates the whole desktop family, reads included', () => {
+    // `computer_windows` only reads, but the family is gated as a whole: a model
+    // that can enumerate the user's windows has already crossed a line the user
+    // should get to decide about. Same reasoning the browser family gets.
+    assert.equal(decideToolCall('ask-commands', [], 'computer_windows', {}, 'win32').action, 'prompt')
+  })
+
+  it('leaves an unrelated read-only tool alone', () => {
+    assert.equal(decideToolCall('ask-edits', [], 'read_file', {}, 'win32').action, 'allow')
   })
 })
