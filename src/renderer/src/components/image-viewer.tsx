@@ -33,10 +33,12 @@ export function ImageViewer(): React.JSX.Element | null {
         if (cancelled) return
         if (result.kind === 'image') {
           setDataUrl(`data:${result.image.mimeType};base64,${result.image.data}`)
-        } else if (/\.svg$/i.test(image.name)) {
+        } else if (result.kind === 'text' && /\.svg$/i.test(image.name)) {
           // SVG is read as text; render it directly from its markup.
           setDataUrl(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(result.content)}`)
         } else {
+          // Includes the reader's path-only answer: an image this viewer cannot
+          // decode is one the attachment path would not have inlined either.
           setError('Not a supported image file')
         }
       } catch (err) {

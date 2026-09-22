@@ -30,8 +30,11 @@ export const BINARY_SNIFF_BYTES = 8192
  * people attach by accident — PDF, ZIP, Office, an executable, an image whose
  * extension is not in IMAGE_MIME_BY_EXTENSION — has one within its first few
  * hundred bytes, while UTF-8/ASCII text never does. (UTF-16 text does, and is
- * refused with it — correctly, since decoding it as UTF-8 is what produced the
- * mojibake in the first place.)
+ * treated as binary with them — correctly, since decoding it as UTF-8 is what
+ * produced the mojibake in the first place.)
+ *
+ * A positive answer no longer refuses the file; it routes it to a path
+ * reference, where the agent can open it properly.
  */
 export function looksBinary(head: Buffer): boolean {
   return head.subarray(0, BINARY_SNIFF_BYTES).includes(0)
@@ -45,22 +48,26 @@ export function imageMimeTypeForPath(filePath: string): string | null {
 
 /**
  * Reads a user-selected attachment by absolute path (chosen via the native open
- * dialog, so it may live outside the workspace). Images become a Pi-ready base64
- * payload; everything else is read as UTF-8 text to inline.
+ * dialog, or dropped on the composer, so it may live outside the workspace).
  *
- * "Everything else" has to actually be text. A non-image file used to be decoded
- * as UTF-8 whatever it held, so attaching a PDF or a ZIP inlined a stream of
- * replacement characters into the model's context — and once the transcript
- * began collapsing attachments into cards, that garbage became invisible to the
- * person paying for it. Refusing is the honest answer: a text-decoded archive
- * was never any use to the model either.
+ * Three answers, and the third is the one that keeps this honest:
+ *
+ *  - an image becomes a Pi-ready base64 payload, because the model can look at it;
+ *  - text is inlined, because the model can read it directly with no extra step;
+ *  - anything else — a binary format, or a file too large to carry — becomes a
+ *    REFERENCE: the app hands over the path and lets the agent open it with its
+ *    own tools. A ZIP or a PDF cannot be inlined as text at all, and refusing
+ *    them outright (what this used to do, with a lengthy explanation) threw away
+ *    work the agent could have done. Reading a path is a normal, permission-
+ *    governed agent action, so nothing here widens what the app itself may read.
  */
 export async function readAttachment(filePath: string): Promise<AttachmentReadResult> {
   const fileStat = await stat(filePath)
-  if (fileStat.size > MAX_ATTACHMENT_BYTES) {
-    throw new Error(`Attachment is too large (max ${MAX_ATTACHMENT_BYTES / (1024 * 1024)} MB)`)
-  }
   const name = basename(filePath)
+  if (fileStat.size > MAX_ATTACHMENT_BYTES) {
+    // Still returned, not thrown: the agent can read it from disk in slices.
+    return { kind: 'reference', name, sizeBytes: fileStat.size, reason: 'too-large' }
+  }
   const mimeType = imageMimeTypeForPath(filePath)
   if (mimeType) {
     const bytes = await readFile(filePath)
@@ -72,9 +79,7 @@ export async function readAttachment(filePath: string): Promise<AttachmentReadRe
   }
   const bytes = await readFile(filePath)
   if (looksBinary(bytes)) {
-    throw new Error(
-      `Attachment is not text, and its type is not one of the supported images (${Object.keys(IMAGE_MIME_BY_EXTENSION).join(', ')})`
-    )
+    return { kind: 'reference', name, sizeBytes: fileStat.size, reason: 'binary' }
   }
   return { kind: 'text', name, content: bytes.toString('utf-8') }
 }

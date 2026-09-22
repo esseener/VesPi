@@ -16,7 +16,7 @@ import {
   type PromptImage,
   type FileSearchResult,
 } from '../../../shared/ipc-contracts'
-import { formatAttachedFileBlock } from '../../../shared/attached-file'
+import { formatAttachedByPathBlock, formatAttachedFileBlock } from '../../../shared/attached-file'
 import { attachableDropPaths } from '../../../shared/composer-drop'
 import { rankFileResults } from '../utils/rank-file-results'
 import { ScaledImage } from '../utils/image-thumbnail'
@@ -67,10 +67,19 @@ function detectMention(ta: HTMLTextAreaElement): MentionState | null {
   return { start: pos - query.length - 1, query }
 }
 
-// A staged attachment: either inlined as text or sent to Pi as an image block.
+// A staged attachment: inlined as text, sent to Pi as an image block, or — for
+// anything the prompt cannot carry — passed on as a path for the agent's own
+// tools to open.
 type Attachment =
   | { kind: 'text'; name: string; path: string; content: string }
   | { kind: 'image'; name: string; path: string; image: PromptImage }
+  | {
+      kind: 'reference'
+      name: string
+      path: string
+      sizeBytes: number
+      reason: 'binary' | 'too-large'
+    }
 
 export function ChatInput(): React.JSX.Element {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -315,6 +324,12 @@ export function ChatInput(): React.JSX.Element {
 
   const composePayload = useCallback((message: string) => {
       const textAttachments = attachments.filter((a) => a.kind === 'text')
+      // Files the prompt cannot carry: the agent is told where they are and
+      // opens them itself. Inlining was never possible for these, and refusing
+      // them threw away work the agent could do.
+      const byPathAttachments = attachments.filter(
+        (a): a is Extract<Attachment, { kind: 'reference' }> => a.kind === 'reference'
+      )
       const imageAttachments = attachments.filter(
         (a): a is Extract<Attachment, { kind: 'image' }> => a.kind === 'image'
       )
@@ -329,6 +344,11 @@ export function ChatInput(): React.JSX.Element {
       if (textAttachments.length > 0) {
         fullMessage += textAttachments
           .map((a) => `\n\n${formatAttachedFileBlock(a.name, a.content)}`)
+          .join('')
+      }
+      if (byPathAttachments.length > 0) {
+        fullMessage += byPathAttachments
+          .map((a) => `\n\n${formatAttachedByPathBlock(a.name, a.path, a.reason)}`)
           .join('')
       }
       return { fullMessage, images, displayAttachments }
@@ -407,7 +427,15 @@ export function ChatInput(): React.JSX.Element {
     const next: Attachment =
       result.kind === 'image'
         ? { kind: 'image', name: result.name, path, image: result.image }
-        : { kind: 'text', name: result.name, path, content: result.content }
+        : result.kind === 'reference'
+          ? {
+              kind: 'reference',
+              name: result.name,
+              path,
+              sizeBytes: result.sizeBytes,
+              reason: result.reason,
+            }
+          : { kind: 'text', name: result.name, path, content: result.content }
     setAttachments((prev) => (prev.some((a) => a.path === path) ? prev : [...prev, next]))
   }, [])
 

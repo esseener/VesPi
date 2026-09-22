@@ -55,15 +55,35 @@ test('readAttachment rejects a missing path', async () => {
   await assert.rejects(() => readAttachment('/no/such/file-xyz.png'))
 })
 
-test('readAttachment refuses a binary file instead of inlining mojibake', async () => {
-  // A PDF/ZIP/executable has no text in it, and decoding one as UTF-8 used to
-  // send a stream of replacement characters into the prompt — invisible once
-  // the transcript started collapsing attachments into cards.
+test('a binary file comes back as a path reference, not as mojibake', async () => {
+  // A PDF/ZIP/executable has no text in it. Decoding one as UTF-8 used to send a
+  // stream of replacement characters into the prompt — invisible once the
+  // transcript started collapsing attachments into cards — and refusing it
+  // outright threw away work the agent could do with the path.
   const dir = await mkdtemp(join(tmpdir(), 'pi-attach-bin-'))
   const file = join(dir, 'archive.zip')
   await writeFile(file, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x08, 0x00, 0xff, 0xfe]))
 
-  await assert.rejects(() => readAttachment(file), /not text/)
+  const result = await readAttachment(file)
+
+  assert.equal(result.kind, 'reference')
+  if (result.kind !== 'reference') return
+  assert.equal(result.name, 'archive.zip')
+  assert.equal(result.reason, 'binary')
+  assert.ok(result.sizeBytes > 0, 'the size is what the card shows instead of a line count')
+})
+
+test('a file too large to inline is referenced rather than refused', async () => {
+  const dir = await mkdtemp(join(tmpdir(), 'pi-attach-big-'))
+  const file = join(dir, 'huge.log')
+  // Sparse-ish: only the length matters, and `stat` is what the reader checks.
+  await writeFile(file, Buffer.alloc(26 * 1024 * 1024, 0x61))
+
+  const result = await readAttachment(file)
+
+  assert.equal(result.kind, 'reference')
+  if (result.kind !== 'reference') return
+  assert.equal(result.reason, 'too-large')
 })
 
 test('a NUL byte is only a binary signal inside the sniffed head', () => {

@@ -5,6 +5,7 @@ import { test } from 'node:test'
 import {
   ATTACHED_FILE_LABEL,
   ATTACHMENT_DATA_NOTE,
+  formatAttachedByPathBlock,
   formatAttachedFileBlock,
   splitAttachedFiles,
 } from './attached-file'
@@ -97,4 +98,43 @@ test('an attachment named like a marker still round-trips', () => {
   const { files } = splitAttachedFiles(formatAttachedFileBlock(name, 'body'))
   assert.equal(files.length, 1)
   assert.equal(files[0].name, name)
+})
+
+test('a by-path block round-trips as a reference, with its location', () => {
+  // The agent is handed a path instead of contents for anything the prompt
+  // cannot carry. The transcript has to say so — a card that looks like every
+  // other one would imply the model was given the file.
+  const sent = `看一下这个\n\n${formatAttachedByPathBlock('archive.zip', 'C:\\Temp\\archive.zip', 'binary')}`
+
+  const { prose, files } = splitAttachedFiles(sent)
+
+  assert.equal(prose, '看一下这个')
+  assert.equal(files.length, 1)
+  assert.equal(files[0].name, 'archive.zip')
+  assert.equal(files[0].byPath?.path, 'C:\\Temp\\archive.zip')
+  assert.match(files[0].byPath?.note ?? '', /Open it with your own tools/, 'the guidance rides along')
+  assert.ok(!files[0].content.includes('PATH:'), 'the path is data, not body text')
+})
+
+test('an inlined block is not mistaken for a by-path one', () => {
+  const { files } = splitAttachedFiles(formatAttachedFileBlock('notes.md', 'PATH: not really a path'))
+  assert.equal(files.length, 1)
+  assert.equal(files[0].byPath, undefined, 'only the by-path label creates a reference')
+  assert.equal(files[0].content, 'PATH: not really a path')
+})
+
+test('both kinds in one message survive in order', () => {
+  const sent = [
+    formatAttachedFileBlock('notes.md', 'text body'),
+    formatAttachedByPathBlock('archive.zip', '/tmp/archive.zip', 'binary'),
+  ].join('\n\n')
+
+  const { files } = splitAttachedFiles(sent)
+
+  assert.deepEqual(
+    files.map((file) => file.name),
+    ['notes.md', 'archive.zip']
+  )
+  assert.equal(files[0].byPath, undefined)
+  assert.equal(files[1].byPath?.path, '/tmp/archive.zip')
 })

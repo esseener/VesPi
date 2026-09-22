@@ -17,6 +17,11 @@ import { useAppStore } from '../store'
  * attached. The card is the transcript's side of that trade: the name and the
  * size are enough to recognise it, and the content is one click away.
  *
+ * A file the prompt cannot carry — binary, or too large — is here too, marked as
+ * passed by path: the name and the location, and what the agent was told to do
+ * with them. Showing it as a plain file card would imply the model was handed
+ * the contents, which is exactly the misunderstanding the marker prevents.
+ *
  * Collapsed by default, and each card holds its own state so opening one never
  * moves the others.
  */
@@ -34,13 +39,15 @@ export function AttachedFileCard({ file }: { file: AttachedFileBlock }): React.J
         onClick={() => setOpen((value) => !value)}
         aria-expanded={open}
         aria-label={`${t(language, open ? 'attachedFileHide' : 'attachedFileShow')} ${file.name}`}
-        title={file.name}
+        title={file.byPath ? file.byPath.path : file.name}
         className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-surface-hover"
       >
         <FileText size={13} className="shrink-0 text-muted" />
         <span className="min-w-0 flex-1 truncate font-chat text-xs text-primary">{file.name}</span>
         <span className="shrink-0 text-[10px] text-dim">
-          {t(language, 'attachedFileLines', { count: String(lines) })}
+          {file.byPath
+            ? t(language, 'attachedFileByPath')
+            : t(language, 'attachedFileLines', { count: String(lines) })}
         </span>
         {open ? (
           <ChevronDown size={13} className="shrink-0 text-muted" />
@@ -48,11 +55,21 @@ export function AttachedFileCard({ file }: { file: AttachedFileBlock }): React.J
           <ChevronRight size={13} className="shrink-0 text-muted" />
         )}
       </button>
-      {open && (
-        <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border px-2.5 py-2 font-jetbrains text-[11px] leading-relaxed text-secondary">
-          {file.content}
-        </pre>
-      )}
+      {open &&
+        (file.byPath ? (
+          <div className="border-t border-border px-2.5 py-2">
+            <div className="break-all font-jetbrains text-[11px] leading-relaxed text-secondary">
+              {file.byPath.path}
+            </div>
+            <div className="mt-1.5 whitespace-pre-wrap text-[11px] leading-relaxed text-dim">
+              {file.byPath.note}
+            </div>
+          </div>
+        ) : (
+          <pre className="max-h-72 overflow-auto whitespace-pre-wrap break-words border-t border-border px-2.5 py-2 font-jetbrains text-[11px] leading-relaxed text-secondary">
+            {file.content}
+          </pre>
+        ))}
     </div>
   )
 }

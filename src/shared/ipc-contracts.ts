@@ -955,9 +955,19 @@ export interface PromptImage {
  * Result of reading a user-selected attachment. Images are returned as a
  * Pi-ready `PromptImage`; everything else is read as UTF-8 text to inline.
  */
+/**
+ * What the attachment reader could make of a path.
+ *
+ * `reference` is the third answer, and the honest one for anything the prompt
+ * cannot carry: a binary file, or one too large to inline. The app does not read
+ * it — it hands the agent the path and lets the agent's own tools open it, which
+ * is the only way a ZIP or a PDF can be useful at all. Refusing those outright
+ * (which is what used to happen) threw away work the agent could do.
+ */
 export type AttachmentReadResult =
   | { kind: 'image'; name: string; image: PromptImage }
   | { kind: 'text'; name: string; content: string }
+  | { kind: 'reference'; name: string; sizeBytes: number; reason: 'binary' | 'too-large' }
 
 /** Options for the native open dialog. Defaults to picking a directory. */
 export interface OpenDialogOptions {
