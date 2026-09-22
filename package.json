@@ -38,7 +38,7 @@
     "test": "tsx --test --test-concurrency=1 \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
     "test:coverage": "tsx --test --test-concurrency=1 --experimental-test-coverage \"src/**/*.test.ts\" \"resources/**/*.test.ts\"",
     "typecheck": "tsc -b --noEmit",
-    "lint": "eslint src bin scripts resources && node scripts/check-semantic-colors.mjs",
+    "lint": "eslint src bin scripts resources && node scripts/check-semantic-colors.mjs && node scripts/check-css-layers.mjs",
     "check:release": "node scripts/check-release-consistency.mjs",
     "kernel:check": "node scripts/check-kernel-latest.mjs",
     "kernel:update": "node scripts/update-kernel-lock.mjs",

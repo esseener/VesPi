@@ -547,7 +547,16 @@ const api: PiDesktopAPI = {
   system: {
     openDialog: (options) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_DIALOG, options),
     getPath: (name) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_GET_PATH, name),
-    getPathForFile: (file) => webUtils.getPathForFile(file),
+    // Resolving a File to a path is also the moment the user's own drag becomes
+    // known to the app, so the path is registered as approved for the attachment
+    // reader in the same breath. `webUtils` only resolves a File the page was
+    // actually handed, so this cannot be used to authorize an arbitrary path —
+    // see the handler in main/ipc/system-handlers.ts.
+    getPathForFile: (file) => {
+      const path = webUtils.getPathForFile(file)
+      if (path) ipcRenderer.send(IPC_CHANNELS.SYSTEM_APPROVE_ATTACHMENT_PATH, path)
+      return path
+    },
     pathKind: (path) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_PATH_KIND, path),
     // Sandboxed preload still has a process polyfill with platform.
     platform: process.platform,

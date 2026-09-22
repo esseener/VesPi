@@ -6,7 +6,7 @@ import { IPC_CHANNELS } from '../../shared/ipc-contracts'
 import { activityStatsStore } from '../activity-stats'
 import { stat } from 'fs/promises'
 import { join, resolve } from 'path'
-import { isString, isObject } from './validation'
+import { isString, isObject, assertTrustedSender } from './validation'
 import type { IpcContext } from './context'
 
 type OpenDialogMode = NonNullable<OpenDialogOptions['mode']>
@@ -56,6 +56,30 @@ export function registerSystemHandlers(ctx: IpcContext): void {
     // even when it lives outside the workspace.
     if (pickFile) approvedAttachmentPaths.add(resolve(picked))
     return picked
+  })
+
+  /**
+   * A file the user dragged into the window.
+   *
+   * The attachment reader only opens paths the user picked through the native
+   * dialog or files inside the workspace (see `isAuthorizedAttachmentPath`), and
+   * a drop is neither — so dragging a file in from outside the project was
+   * refused with "Attachment path is not permitted" and the drop did nothing.
+   *
+   * Only the preload ever sends this, and it can only send a path `webUtils`
+   * resolved from a `File` the user actually handed the page: the call is what
+   * turns a drop into a path, and a `File` built in JavaScript has no path to
+   * resolve. So the value carries the same authority as a dialog pick, which is
+   * exactly the gap this closes. It stays a `send` (not an `invoke`) because the
+   * renderer needs the path synchronously, and it cannot arrive late: the
+   * renderer can only ask the reader for a path after `getPathForFile` returned
+   * it, which is after this message was queued.
+   */
+  ipcMain.on(IPC_CHANNELS.SYSTEM_APPROVE_ATTACHMENT_PATH, (event, filePath: unknown) => {
+    assertTrustedSender(event)
+    if (!isString(filePath)) return
+    const resolved = resolve(filePath)
+    if (resolved.length > 0) approvedAttachmentPaths.add(resolved)
   })
 
   ipcMain.handle(IPC_CHANNELS.SYSTEM_GET_PATH, async (_event, name: unknown) => {

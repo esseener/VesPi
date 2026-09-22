@@ -685,6 +685,11 @@ interface AppActions {
   updateNote: (id: string, patch: NoteUpdate) => Promise<void>
   deleteNote: (id: string) => Promise<void>
   insertPrompt: (text: string, replace?: boolean) => void
+  /**
+   * A file was dropped where only a folder does anything — say so, instead of
+   * the silent no-op that made the composer's own drop look broken.
+   */
+  notifyFileNeedsComposer: () => void
   clearPendingInsert: () => void
   setNotePickerOpen: (open: boolean) => void
   setCommandPalette: (open: boolean) => void
@@ -1155,6 +1160,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set((state) => ({
       messages: [...state.messages, message],
     })),
+
+  notifyFileNeedsComposer: () => {
+    get().addMessage(notice('dropFileNeedsComposer'))
+  },
 
   setMessages: (messages) => set({ messages }),
 

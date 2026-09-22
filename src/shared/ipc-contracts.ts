@@ -83,6 +83,12 @@ export const IPC_CHANNELS = {
   SYSTEM_OPEN_DIALOG: 'system:open-dialog',
   SYSTEM_GET_PATH: 'system:get-path',
   SYSTEM_PATH_KIND: 'system:path-kind',
+  /**
+   * Preload → main, send-only: the user dragged this file into the window, so
+   * the attachment reader may open it by absolute path. Never sent by the
+   * renderer — see `system.getPathForFile` in the preload for why that matters.
+   */
+  SYSTEM_APPROVE_ATTACHMENT_PATH: 'system:approve-attachment-path',
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
   SYSTEM_REVEAL_PATH: 'system:reveal-path',
   SYSTEM_OPEN_TRASH: 'system:open-trash',

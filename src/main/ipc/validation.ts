@@ -1,11 +1,20 @@
-import type { IpcMainInvokeEvent } from 'electron'
+import type { WebFrameMain } from 'electron'
 import { isTrustedRendererUrl, RENDERER_INDEX_PATH } from '../renderer-origin'
+
+/**
+ * The slice of an IPC event the trust check reads. Both `IpcMainInvokeEvent`
+ * and `IpcMainEvent` carry it, so one check serves `ipcMain.handle` and
+ * `ipcMain.on` alike.
+ */
+export interface TrustedSenderEvent {
+  senderFrame: WebFrameMain | null
+}
 
 // Reject privileged IPC calls whose sender frame is not the app's own renderer.
 // A belt-and-suspenders check: navigation is already pinned (see index.ts) and
 // preview <webview> guests have no preload, so nothing else should be able to
 // reach these channels — this makes that guarantee explicit at the boundary.
-export function assertTrustedSender(event: IpcMainInvokeEvent): void {
+export function assertTrustedSender(event: TrustedSenderEvent): void {
   const url = event.senderFrame?.url
   if (
     !url ||

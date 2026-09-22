@@ -646,6 +646,11 @@ html.light .app-console-mesh {
   pointer-events: auto;
 }
 
+/* The caption buttons need to sit above the drag region and stay clickable.
+   Deliberately unlayered and deliberately reaching a bare element: their markup
+   is in window-controls.tsx, none of them carries a position or z-index
+   utility, and narrowing this to a class would mean editing the component every
+   time a button is added. css-layer-exempt — see scripts/check-css-layers.mjs. */
 .window-controls-overlay button {
   position: relative;
   z-index: 1;
@@ -661,11 +666,27 @@ html.light .app-console-mesh {
   z-index: 40;
 }
 
-/* Mesh sits behind chrome. Overlay children keep their own positioning
-   (caption buttons must stay `fixed`, not be forced `relative`). */
-.app-console > *:not(.app-console-mesh):not(.window-controls-overlay):not(.titlebar-drag-overlay) {
-  position: relative;
-  z-index: 2;
+/* Mesh sits behind chrome, so chrome is lifted to `z-index: 2`.
+ *
+ * This belongs in a layer. Tailwind puts `.fixed`, `.absolute` and `z-*` in
+ * `@layer utilities`, and an UNLAYERED declaration outranks every layer — so
+ * while this rule sat outside one, it silently rewrote the positioning of every
+ * direct child: `absolute inset-0` became `relative` and stopped meaning "fill
+ * the window", `fixed` stopped meaning "pin to the viewport", and any `z-*` was
+ * flattened to 2. It was written with `:not()` exemptions for the two overlays
+ * that were known at the time, which is why this reads as intentional — but it
+ * could never cover the next one. The folder-drop overlay and the collapsed-
+ * sidebar toggle were both laid out as ordinary blocks because of it.
+ *
+ * Inside `components` (which precedes `utilities`) the rule still gives plain
+ * children `relative`/`2`, and a child that names its own position or z-index
+ * now wins, exactly as authored. The `:not()` clauses are kept: the two classes
+ * they name declare their own positioning in this same file. */
+@layer components {
+  .app-console > *:not(.app-console-mesh):not(.window-controls-overlay):not(.titlebar-drag-overlay) {
+    position: relative;
+    z-index: 2;
+  }
 }
 
 .sidebar-console {
