@@ -22,6 +22,8 @@ import { localizeToolCallLabel, localizeToolGroupTitle } from '../tool-status-i1
 import { DEFAULT_LANGUAGE, t, isMessageKey } from '../../../shared/i18n'
 import { RelativeTime } from '../utils/relative-time'
 import { ScaledImage } from '../utils/image-thumbnail'
+import { splitAttachedFiles } from '../../../shared/attached-file'
+import { AttachedFileCard } from './attached-file-card'
 import { clsx } from 'clsx'
 import {
   Copy,
@@ -209,6 +211,13 @@ function UserMessage({
   // re-render on every stream start/stop — only user messages use this.
   const isStreaming = useAppStore((state) => state.isStreaming)
   const editRef = useRef<HTMLTextAreaElement>(null)
+  // Text attachments ride inside the prompt as labeled blocks (the model has to
+  // be able to read them), so the raw content is mostly file. Split it back out
+  // and the bubble shows the conversation again instead of the attachment.
+  const { prose, files: attachedFiles } = useMemo(
+    () => splitAttachedFiles(message.content),
+    [message.content]
+  )
 
   if (isEditing) {
     return (
@@ -272,7 +281,7 @@ function UserMessage({
       <div className="relative max-w-[80%]">
         <div className="rounded-2xl rounded-br-md bg-card px-4 py-2.5 text-sm text-primary">
           {message.attachments && message.attachments.length > 0 && (
-            <div className={clsx('flex flex-wrap gap-2', message.content && 'mb-2')}>
+            <div className={clsx('flex flex-wrap gap-2', (prose || attachedFiles.length > 0) && 'mb-2')}>
               {message.attachments.map((attachment, index) => (
                 <div
                   key={`${attachment.name}-${index}`}
@@ -289,7 +298,16 @@ function UserMessage({
               ))}
             </div>
           )}
-          <div className="font-chat whitespace-pre-wrap break-words">{message.content}</div>
+          {attachedFiles.length > 0 && (
+            <div className={clsx('flex flex-col gap-1.5', prose && 'mb-2')}>
+              {attachedFiles.map((file, index) => (
+                <AttachedFileCard key={`${file.name}-${index}`} file={file} />
+              ))}
+            </div>
+          )}
+          {prose.length > 0 && (
+            <div className="font-chat whitespace-pre-wrap break-words">{prose}</div>
+          )}
         </div>
       </div>
       {/* Actions — a sibling of the bubble, not a width driver: an invisible

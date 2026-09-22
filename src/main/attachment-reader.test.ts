@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { mkdtemp, writeFile } from 'fs/promises'
 import { join } from 'path'
 import { tmpdir } from 'os'
-import { imageMimeTypeForPath, readAttachment } from './attachment-reader'
+import { BINARY_SNIFF_BYTES, imageMimeTypeForPath, looksBinary, readAttachment } from './attachment-reader'
 
 // ─── Extension -> MIME mapping ──────────────────────────────────────────────
 
@@ -53,4 +53,24 @@ test('readAttachment returns UTF-8 text for a non-image file', async () => {
 
 test('readAttachment rejects a missing path', async () => {
   await assert.rejects(() => readAttachment('/no/such/file-xyz.png'))
+})
+
+test('readAttachment refuses a binary file instead of inlining mojibake', async () => {
+  // A PDF/ZIP/executable has no text in it, and decoding one as UTF-8 used to
+  // send a stream of replacement characters into the prompt — invisible once
+  // the transcript started collapsing attachments into cards.
+  const dir = await mkdtemp(join(tmpdir(), 'pi-attach-bin-'))
+  const file = join(dir, 'archive.zip')
+  await writeFile(file, Buffer.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00, 0x08, 0x00, 0xff, 0xfe]))
+
+  await assert.rejects(() => readAttachment(file), /not text/)
+})
+
+test('a NUL byte is only a binary signal inside the sniffed head', () => {
+  // Binary formats declare themselves in the first bytes; a long text file with
+  // a stray NUL far past that is still text as far as a prompt is concerned.
+  assert.equal(looksBinary(Buffer.from('plain text, no NULs')), false)
+  assert.equal(looksBinary(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x00])), true)
+  const far = Buffer.concat([Buffer.from('x'.repeat(BINARY_SNIFF_BYTES)), Buffer.from([0])])
+  assert.equal(looksBinary(far), false)
 })
