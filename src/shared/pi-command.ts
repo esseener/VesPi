@@ -30,13 +30,17 @@ export interface CommandGroup {
  * ignored so typing "/rev" matches the same as "rev". Matching is
  * case-insensitive across name and description.
  */
-export function filterCommands(commands: PiCommand[], query: string): PiCommand[] {
+export function filterCommands(
+  commands: PiCommand[],
+  query: string,
+  displayTextOf: (cmd: PiCommand) => string = (c) => `${c.name} ${c.description}`,
+): PiCommand[] {
   const q = query.replace(/^\//, '').trim().toLowerCase()
   if (!q) return commands
-  return commands.filter(
-    (c) =>
-      c.name.toLowerCase().includes(q) || c.description.toLowerCase().includes(q)
-  )
+  return commands.filter((c) => {
+    const hay = `${c.name} ${c.description} ${displayTextOf(c)}`.toLowerCase()
+    return hay.includes(q)
+  })
 }
 
 /**

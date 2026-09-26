@@ -1,18 +1,19 @@
-import { FolderTree, Globe, ShieldCheck, SquareTerminal } from 'lucide-react'
+import { FolderTree, Globe, ShieldCheck } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 
-type SideTab = 'review' | 'terminal' | 'browser' | 'files'
+// Terminal is intentionally absent: the only terminal lives in the main
+// column (`TerminalPanel`), toggled from the status bar.
+type SideTab = 'review' | 'browser' | 'files'
 
 const TABS: Array<{
   id: SideTab
   icon: React.ReactNode
-  title: 'sideTabReview' | 'sideTabTerminal' | 'sideTabBrowser' | 'sideTabFiles'
-  hint: 'sideTabReviewHint' | 'sideTabTerminalHint' | 'sideTabBrowserHint' | 'sideTabFilesHint'
+  title: 'sideTabReview' | 'sideTabBrowser' | 'sideTabFiles'
+  hint: 'sideTabReviewHint' | 'sideTabBrowserHint' | 'sideTabFilesHint'
 }> = [
   { id: 'review', icon: <ShieldCheck size={15} />, title: 'sideTabReview', hint: 'sideTabReviewHint' },
-  { id: 'terminal', icon: <SquareTerminal size={15} />, title: 'sideTabTerminal', hint: 'sideTabTerminalHint' },
   { id: 'browser', icon: <Globe size={15} />, title: 'sideTabBrowser', hint: 'sideTabBrowserHint' },
   { id: 'files', icon: <FolderTree size={15} />, title: 'sideTabFiles', hint: 'sideTabFilesHint' },
 ]

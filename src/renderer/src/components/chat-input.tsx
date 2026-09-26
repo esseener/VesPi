@@ -28,6 +28,10 @@ import {
   isSlashCommandToken,
   type PiCommand,
 } from '../../../shared/pi-command'
+import {
+  commandDisplayDescription,
+  commandDisplayLabel,
+} from '../../../shared/command-display'
 
 const MAX_INPUT_HEIGHT = 160
 const MIN_INPUT_HEIGHT = 40
@@ -290,7 +294,11 @@ export function ChatInput(): React.JSX.Element {
     () =>
       slashToken === null
         ? { grouped: [], flat: [] }
-        : groupCommands(filterCommands(allCommands, slashToken)),
+        : groupCommands(
+            filterCommands(allCommands, slashToken, (cmd) =>
+              `${commandDisplayLabel(cmd.name, language)} ${commandDisplayDescription(cmd.name, cmd.description, language)}`
+            )
+          ),
     [slashToken, allCommands]
   )
   const slashOpen = slashResults.flat.length > 0

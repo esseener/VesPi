@@ -4,6 +4,7 @@ import { isString, isObject, isOptionalBoolean, isOptionalString } from './valid
 import { validateStartOptions, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
 import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
+import { applyInteractionModes } from './interaction-modes'
 import type { WorkspaceTabOptions } from '../../shared/ipc-contracts'
 import { isWithinSessionRoots } from '../pi-paths'
 import { existsSync } from 'fs'
@@ -90,6 +91,7 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
       )
     )
     const pi = workspaceManager.getPiManager(workspaceId)
+    if (pi) applyInteractionModes(pi, settings)
     return pi?.getStatus() ?? { status: 'stopped', pid: null, error: null }
   })
 
@@ -128,7 +130,12 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
         ),
         settings
       )
-    ).catch((error) => appLog.warn('workspaces', 'Background worktree Pi start failed', error))
+    )
+      .then(() => {
+        const pi = workspaceManager.getPiManager(workspace.id)
+        if (pi) applyInteractionModes(pi, settings)
+      })
+      .catch((error) => appLog.warn('workspaces', 'Background worktree Pi start failed', error))
     return workspace
   })
 }

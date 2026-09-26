@@ -4,6 +4,7 @@ import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { pickEmptyChatSuggestions } from '../empty-chat-suggestions'
 import { ChatInput } from './chat-input'
 import { GoalStrip } from './goal-strip'
+import { SubagentStrip } from './subagent-strip'
 
 import { ChatProjectPicker } from './chat-project-picker'
 import { CouncilPanels } from './council-panels'
@@ -36,10 +37,8 @@ import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
 import { clsx } from 'clsx'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import {
-  FolderTree,
   LayoutPanelLeft,
   X,
-  ChevronDown,
 } from 'lucide-react'
 
 // Fallback padding when the composer has not measured yet (~idle pill + gradient).
@@ -141,6 +140,7 @@ export function ChatPanel(): React.JSX.Element {
   // In-conversation search (Ctrl/Cmd+F while in chat). The nonce bumps on every
   // press so re-triggering refocuses/selects the already-open input.
   const [searchOpen, setSearchOpen] = useState(false)
+  const terminalOpen = useAppStore((state) => state.terminalOpen)
   const [searchNonce, setSearchNonce] = useState(0)
   useEffect(() => {
     // Same visibility test as the scroll hook: a hidden panel must not capture
@@ -223,18 +223,9 @@ export function ChatPanel(): React.JSX.Element {
       <div className="flex flex-1 overflow-hidden">
         {/* Main chat area */}
         <div className="chat-center flex flex-1 flex-col overflow-hidden">
-          {/* Toolbar: path + view toggles. Sidebar/terminal live in status bar. */}
-          <div className="flex h-8 items-center justify-between border-b border-border px-2">
-            <div className="flex min-w-0 items-center gap-2">
-              {activeWorkspace && (
-                <div className="flex min-w-0 items-center gap-1.5 border border-border px-1.5 py-0.5" title={activeWorkspace.path}>
-                  <FolderTree size={12} className="shrink-0 text-secondary" />
-                  <span className="truncate font-jetbrains text-[11px] text-secondary">
-                    {activeWorkspace.path}
-                  </span>
-                </div>
-              )}
-            </div>
+          {/* Chrome is intentionally minimal: workspace lives in the top tabs,
+              terminal owns the body. Only the side-panel toggle remains. */}
+          <div className="flex h-7 items-center justify-end border-b border-border/60 px-2">
             <div className="flex shrink-0 items-center gap-px">
               <ToolbarButton
                 icon={<LayoutPanelLeft size={13} />}
@@ -253,125 +244,10 @@ export function ChatPanel(): React.JSX.Element {
                 onClose={() => setSearchOpen(false)}
               />
             )}
-            {(() => {
-              const isEmptyChat =
-                !sessionLoading && messages.length === 0 && !isStreaming
-
-              // Empty session: Codex-style center prompt + project picker (sidebar chrome).
-              if (isEmptyChat) {
-                return (
-                  <div className="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-10">
-                    <div className="mb-8 text-center">
-                      <img
-                        src={vespiCenterLogo}
-                        alt={t(language, 'appName')}
-                        draggable={false}
-                        className="mx-auto mb-4 block h-32 w-auto max-w-[40rem]"
-                      />
-                      <p className="text-sm text-dim">
-                        {piStatus === 'error'
-                          ? t(language, 'failedStartCheckSettings', { engine: engineLabel })
-                          : piStatus === 'stopped'
-                            ? t(language, 'chooseProjectStartsOnSend')
-                            : t(language, 'pickProjectDescribe')}
-                      </p>
-                    </div>
-                    <div className="w-full max-w-3xl">
-                      {piStatus !== 'error' && (
-                        <div className="mb-4 flex flex-wrap justify-center gap-2 px-4">
-                          {emptyChatSuggestions.map((prompt) => (
-                            <button
-                              key={prompt}
-                              type="button"
-                              onClick={() => {
-                                useAppStore.getState().insertPrompt(prompt, true)
-                              }}
-                              className="rounded-lg border border-border-strong px-3 py-1.5 text-xs text-muted hover:border-border-strong-hover hover:text-secondary transition-colors"
-                            >
-                              {prompt}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                      <GoalStrip />
-                    <ChatInput />
-                      <div className="px-4">
-                        <ChatProjectPicker />
-                      </div>
-                    </div>
-                  </div>
-                )
-              }
-
-              return (
-                <>
-                  <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
-                    {sessionLoading && messages.length === 0 ? (
-                      <div className="flex h-full flex-col items-center justify-center gap-2 text-sm text-dim">
-                        <div className="h-5 w-5 animate-spin rounded-full border-2 border-border-strong border-t-accent" />
-                        {piStatus === 'running' ? t(language, 'startingAgent', { engine: engineLabel }) : t(language, 'startingAgent', { engine: engineLabel })}
-
-                      </div>
-                    ) : (
-                      <NowContext.Provider value={now}>
-                        <div
-                          className="mx-auto max-w-5xl px-4 pt-6"
-                          style={{ paddingBottom: composerPadPx }}
-                        >
-                          {renderItems.map((item) =>
-                            item.kind === 'toolGroup' ? (
-                              <ToolGroupBubble
-                                key={item.id}
-                                title={item.title}
-                                messages={item.messages}
-                                onRetry={handleRetry}
-                              />
-                            ) : (
-                              <MessageBubble
-                                key={item.message.id}
-                                message={item.message}
-                                onRetry={handleRetry}
-                              />
-                            )
-                          )}
-                          <ActiveStreamingBubble />
-                        </div>
-                      </NowContext.Provider>
-                    )}
-                  </div>
-
-                  {!atBottom && (
-                    <button
-                      onClick={scrollToBottom}
-                      className="absolute left-1/2 z-20 flex h-8 w-8 -translate-x-1/2 items-center justify-center rounded-full border border-border-strong bg-card/90 text-secondary shadow-lg shadow-black/30 backdrop-blur transition-all duration-200 hover:bg-elevated hover:text-primary"
-                      // With the composer out of the way this is the only way
-                      // back, so it drops to the bottom edge rather than
-                      // hovering where the composer used to be.
-                      style={{ bottom: composerHidden ? 16 : composerPadPx + 12 }}
-                      title={t(language, 'scrollToBottom')}
-                      aria-label={t(language, 'scrollToBottom')}
-                    >
-                      <ChevronDown size={16} />
-                    </button>
-                  )}
-
-
-                  <div
-                    ref={composerWrapRef}
-                    className={`pointer-events-none absolute inset-x-0 bottom-0 z-10 pb-3 pt-8 bg-gradient-to-t from-chat-column via-chat-column/80 to-transparent transition-opacity duration-200 ease-out ${composerHidden ? 'invisible opacity-0' : 'opacity-100'}`}
-                    // Hidden from assistive tech too, so a keyboard user cannot
-                    // tab into a composer they cannot see.
-                    aria-hidden={composerHidden || undefined}
-                  >
-                    <div className="pointer-events-auto mx-auto w-full max-w-5xl px-4">
-                      <CouncilPanels />
-                    </div>
-                    <GoalStrip />
-                    <ChatInput />
-                  </div>
-                </>
-              )
-            })()}
+            {/* 唯一交互面：OMP TUI + 会打进 TUI 的命令条 */}
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <TerminalPanel className="flex-1" />
+            </div>
           </div>
         </div>
 
@@ -458,9 +334,6 @@ export function ChatPanel(): React.JSX.Element {
         )}
       </div>
 
-      {/* Terminal panel */}
-      <TerminalPanel />
-
       {/* File search modal */}
       <FileSearch isOpen={fileSearchOpen} onClose={toggleFileSearch} />
     </div>
@@ -494,3 +367,123 @@ function ToolbarButton({
   )
 }
 
+
+
+/** OMP TUI 常用命令（显示中文，回车发原文）。 */
+const OMP_SLASH: Array<{ cmd: string; zh: string }> = [
+  { cmd: '/help', zh: '帮助' },
+  { cmd: '/model', zh: '切换模型' },
+  { cmd: '/models', zh: '模型列表' },
+  { cmd: '/think', zh: '思考档位' },
+  { cmd: '/compact', zh: '压缩上下文' },
+  { cmd: '/new', zh: '新会话' },
+  { cmd: '/resume', zh: '恢复会话' },
+  { cmd: '/fork', zh: '分支 / 分叉' },
+  { cmd: '/sessions', zh: '会话列表' },
+  { cmd: '/skills', zh: '技能' },
+  { cmd: '/mcp', zh: '外部工具 MCP' },
+  { cmd: '/config', zh: '配置 / 设置' },
+  { cmd: '/settings', zh: '设置' },
+  { cmd: '/login', zh: '登录供应商' },
+  { cmd: '/cost', zh: '费用 / 用量' },
+  { cmd: '/stats', zh: '统计' },
+  { cmd: '/status', zh: '状态' },
+  { cmd: '/export', zh: '导出' },
+  { cmd: '/diff', zh: '查看改动' },
+  { cmd: '/review', zh: '审查' },
+  { cmd: '/plan', zh: '计划模式' },
+  { cmd: '/undo', zh: '撤销' },
+  { cmd: '/clear', zh: '清屏' },
+  { cmd: '/doctor', zh: '诊断' },
+  { cmd: '/version', zh: '版本' },
+  { cmd: '/update', zh: '更新 OMP' },
+  { cmd: '/quit', zh: '退出' },
+]
+
+/** 底部唯一输入：打进 OMP TUI；`/` 弹出中文命令面板。 */
+function OmpCommandBar(): React.JSX.Element {
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
+  const [value, setValue] = useState('')
+  const [active, setActive] = useState(0)
+  const slashOpen = value.startsWith('/') && !value.includes(' ')
+  const slashList = (() => {
+    if (!value.startsWith('/')) return OMP_SLASH
+    const q = value.slice(1).toLowerCase()
+    if (!q) return OMP_SLASH
+    return OMP_SLASH.filter((item) => item.cmd.slice(1).includes(q) || item.zh.includes(value.slice(1)))
+  })()
+
+  const send = (text: string) => {
+    const out = text.trim()
+    if (!out) return
+    window.piDesktop.terminal.input(out.endsWith('\r') ? out : out + '\r')
+    setValue('')
+  }
+
+  return (
+    <div className="relative shrink-0 border-t border-border bg-surface px-3 py-2">
+      {slashOpen && slashList.length > 0 && (
+        <div className="absolute bottom-full left-3 right-3 z-30 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border-strong bg-elevated shadow-xl">
+          <div className="border-b border-border px-3 py-1.5 text-[11px] text-dim">
+            {t(language, 'ompSlashHint')}
+          </div>
+          {slashList.map((item, i) => (
+            <button
+              key={item.cmd}
+              type="button"
+              onMouseEnter={() => setActive(i)}
+              onClick={() => send(item.cmd)}
+              className={clsx(
+                'flex w-full items-center gap-3 px-3 py-2 text-left',
+                i === active ? 'bg-accent-bg' : 'hover:bg-surface-hover'
+              )}
+            >
+              <span className="w-24 shrink-0 font-jetbrains text-xs text-accent-fg">{item.cmd}</span>
+              <span className="text-sm text-primary">{item.zh}</span>
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex w-full items-center gap-2">
+        <span className="font-jetbrains text-[11px] text-accent-fg">OMP</span>
+        <input
+          value={value}
+          onChange={(e) => {
+            setValue(e.target.value)
+            setActive(0)
+          }}
+          onKeyDown={(e) => {
+            if (slashOpen && slashList.length > 0) {
+              if (e.key === 'ArrowDown') {
+                e.preventDefault()
+                setActive((i) => Math.min(i + 1, slashList.length - 1))
+                return
+              }
+              if (e.key === 'ArrowUp') {
+                e.preventDefault()
+                setActive((i) => Math.max(i - 1, 0))
+                return
+              }
+              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
+                e.preventDefault()
+                const pick = slashList[active]
+                if (pick) send(pick.cmd)
+                return
+              }
+              if (e.key === 'Escape') {
+                setValue('')
+                return
+              }
+            }
+            if (e.key === 'Enter' && value.trim()) {
+              send(value)
+            }
+          }}
+          placeholder={t(language, 'ompCommandPlaceholder')}
+          className="h-9 flex-1 rounded-full border border-border-strong bg-app px-3 text-sm outline-none focus:border-accent"
+        />
+        <span className="font-jetbrains text-[10px] text-dim">Enter → OMP</span>
+      </div>
+    </div>
+  )
+}

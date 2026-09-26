@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import { Terminal as XTerm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
@@ -6,18 +6,13 @@ import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { translateTerminalChunk } from '../../../shared/omp-labels'
 import { clsx } from 'clsx'
-import {
-  Terminal as TerminalIcon,
-  X,
-  Maximize2,
-  Minimize2,
-  Trash2,
-} from 'lucide-react'
 
 // Build the xterm color theme from the active app theme's CSS variables so the
 // terminal matches whichever theme (dark/light/nord/gruvbox/breeze) is applied.
 // Falls back to the dark palette if a variable is missing.
+// Gray/dim ramps are pushed up so small chrome text stays readable (WCAG-ish 4.5:1).
 function buildTerminalTheme(): ITheme {
   const css = getComputedStyle(document.documentElement)
   const v = (name: string, fallback: string): string => {
@@ -25,45 +20,66 @@ function buildTerminalTheme(): ITheme {
     return value || fallback
   }
 
-  const bg = v('--color-app', '#0a0a0a')
-  const fg = v('--color-primary', '#d4d4d4')
+  const bg = v('--color-app', '#121419')
+  const fg = v('--color-primary', '#d4d8e4')
 
   return {
-    background: bg,
+    background: 'rgba(0,0,0,0)',
     foreground: fg,
-    cursor: fg,
-    selectionBackground: v('--cm-selection-bg', '#3b82f666'),
-    black: bg,
-    red: v('--color-error', '#ef4444'),
-    green: v('--color-success', '#22c55e'),
-    yellow: v('--color-warning', '#eab308'),
-    blue: v('--color-accent', '#3b82f6'),
-    magenta: v('--cm-keyword', '#a855f7'),
-    cyan: v('--cm-link', '#06b6d4'),
+    cursor: v('--color-accent-fg', '#f08a62'),
+    cursorAccent: bg,
+    selectionBackground: 'rgba(232, 115, 74, 0.35)',
+    black: '#1a1e26',
+    red: v('--color-error', '#e06b66'),
+    green: v('--color-success', '#8fbf7a'),
+    yellow: v('--color-warning', '#e8a85c'),
+    blue: v('--color-accent', '#e8734a'),
+    magenta: '#c46a4a',
+    cyan: '#8ab0c4',
     white: fg,
-    brightBlack: v('--color-muted', '#525252'),
-    brightRed: v('--color-error', '#f87171'),
-    brightGreen: v('--color-success', '#4ade80'),
-    brightYellow: v('--color-warning', '#facc15'),
-    brightBlue: v('--color-accent', '#60a5fa'),
-    brightMagenta: v('--cm-keyword', '#c084fc'),
-    brightCyan: v('--cm-link', '#22d3ee'),
-    brightWhite: v('--color-secondary', '#ffffff'),
+    // ANSI 8 — OMP uses this for secondary/tip text. Must stay readable.
+    brightBlack: '#a8aebc',
+    brightRed: '#ef807a',
+    brightGreen: '#a4d48c',
+    brightYellow: '#f0bc72',
+    brightBlue: '#f08a62',
+    brightMagenta: '#d48868',
+    brightCyan: '#a8ccd8',
+    brightWhite: '#eef1f7',
   }
 }
 
-export function TerminalPanel(): React.JSX.Element | null {
+export function TerminalPanel({ className }: { className?: string } = {}): React.JSX.Element | null {
   const terminalOpen = useAppStore((state) => state.terminalOpen)
-  const toggleTerminal = useAppStore((state) => state.toggleTerminal)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const theme = useAppStore((state) => state.settings?.theme)
-  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
-  const [maximized, setMaximized] = useState(false)
-  const [shellLabel, setShellLabel] = useState<string>('Terminal')
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+
+  // 内核更新完成后重启终端，换用新 omp.exe / 新译包
+  useEffect(() => {
+    const off = window.piDesktop.updates.onKernelProgress((p) => {
+      if (p.phase === 'done') {
+        window.piDesktop.terminal.stop()
+        // 重新 start 会由 terminalOpen 的 effect 完成；这里只停掉旧 PTY
+        setTimeout(() => {
+          window.location.reload()
+        }, 400)
+      }
+    })
+    return off
+  }, [])
+
+  // OMP TUI 自己写会话文件，rpc-ui 无事件 → 轮询刷新侧栏会话
+  useEffect(() => {
+    if (!terminalOpen) return
+    const id = setInterval(() => {
+      void useAppStore.getState().refreshSessionList()
+    }, 6_000)
+    return () => clearInterval(id)
+  }, [terminalOpen])
 
   useEffect(() => {
     if (!terminalOpen || !containerRef.current) return
@@ -71,7 +87,16 @@ export function TerminalPanel(): React.JSX.Element | null {
     const terminal = new XTerm({
       cursorBlink: true,
       convertEol: true,
-      fontFamily: "'JetBrains Mono Variable', 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+      // Box-drawing (│ ─) first: Cascadia/Consolas draw full-height glyphs.
+      // JetBrains Mono stays for ligatures; CJK fonts fill wide chars.
+      fontFamily: "'Cascadia Mono', 'Consolas', 'JetBrains Mono Variable', 'JetBrains Mono', 'Cascadia Code', 'Microsoft YaHei UI', 'Microsoft YaHei', 'PingFang SC', 'Noto Sans Mono CJK SC', monospace",
+      letterSpacing: 0,
+      // Must be 1.0 so box-drawing glyphs (│ ─) touch across rows.
+      lineHeight: 1,
+      // Helps box-drawing glyphs meet at cell edges.
+      rescaleOverlappingGlyphs: true,
+      // Force readable contrast for dim/gray TUI chrome (tips, recap, meta).
+      minimumContrastRatio: 5,
       // Use the Terminal Font Size setting (or the unsaved settings draft),
       // read once at creation. Applied on the next mount — i.e. when the user
       // returns to chat — rather than live, to avoid resizing a hidden pty.
@@ -99,7 +124,7 @@ export function TerminalPanel(): React.JSX.Element | null {
       window.piDesktop.terminal.input(data)
     })
     const outputCleanup = window.piDesktop.terminal.onData((data) => {
-      terminal.write(data)
+      terminal.write(translateTerminalChunk(data))
     })
     const exitCleanup = window.piDesktop.terminal.onExit((event) => {
       terminal.writeln('')
@@ -117,7 +142,6 @@ export function TerminalPanel(): React.JSX.Element | null {
           cols: terminal.cols,
           rows: terminal.rows,
         })
-        setShellLabel(result.shell.split('/').pop() ?? result.shell)
       } catch (err) {
         const lang = useAppStore.getState().settingsDraft.language
           ?? useAppStore.getState().settings?.language
@@ -130,9 +154,12 @@ export function TerminalPanel(): React.JSX.Element | null {
     }, 0)
 
     window.addEventListener('resize', fitAndResize)
+    const ro = new ResizeObserver(() => fitAndResize())
+    if (containerRef.current) ro.observe(containerRef.current)
 
     return () => {
       window.removeEventListener('resize', fitAndResize)
+      ro.disconnect()
       dataDisposable.dispose()
       outputCleanup()
       exitCleanup()
@@ -152,7 +179,7 @@ export function TerminalPanel(): React.JSX.Element | null {
         window.piDesktop.terminal.resize(terminal.cols, terminal.rows)
       }
     }, 0)
-  }, [terminalOpen, maximized])
+  }, [terminalOpen])
 
   // Recolor the live terminal when the app theme changes, without recreating it.
   useEffect(() => {
@@ -163,48 +190,14 @@ export function TerminalPanel(): React.JSX.Element | null {
 
   if (!terminalOpen) return null
 
+  // Main-column terminal: fills the chat center. No title bar — the top
+  // workspace tabs already name the context; clear/close live in the status bar.
   return (
     <div
-      className={clsx(
-        'flex flex-col border-t border-border bg-app',
-        maximized ? 'flex-1' : 'h-64'
-      )}
+      data-main-terminal
+      className={clsx('flex min-h-0 flex-1 flex-col bg-transparent', className)}
     >
-      <div className="flex items-center justify-between border-b border-border px-3 py-1.5">
-        <div className="flex items-center gap-2">
-          <TerminalIcon size={14} className="text-dim" />
-          <span className="text-xs text-muted">{t(language, 'terminalTitle')}</span>
-          <span className="text-[10px] text-faint">{shellLabel}</span>
-        </div>
-        <div className="flex items-center gap-1">
-          <button
-            onClick={() => terminalRef.current?.clear()}
-            className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title={t(language, 'terminalClear')}
-            aria-label={t(language, 'terminalClearAria')}
-          >
-            <Trash2 size={12} />
-          </button>
-          <button
-            onClick={() => setMaximized(!maximized)}
-            className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title={t(language, maximized ? 'terminalRestore' : 'terminalMaximize')}
-            aria-label={t(language, maximized ? 'terminalRestore' : 'terminalMaximize')}
-          >
-            {maximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-          </button>
-          <button
-            onClick={toggleTerminal}
-            className="rounded p-1 text-faint hover:text-muted transition-colors"
-            title={t(language, 'terminalClose')}
-            aria-label={t(language, 'terminalClose')}
-          >
-            <X size={12} />
-          </button>
-        </div>
-      </div>
-
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden p-2" />
+      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 pt-2 pb-12" />
     </div>
   )
 }

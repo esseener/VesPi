@@ -5,6 +5,7 @@ import { filterModels } from '../utils/model-search'
 import { clsx } from 'clsx'
 import { Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
+import { thinkingSupport } from '../../../shared/thinking-levels'
 import { hasConfiguredChatModel, isProviderRetired } from '../../../shared/models-config'
 
 interface ModelSelectorProps {
@@ -222,6 +223,9 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
                 {filteredModels.map((model) => {
                   const selected =
                     currentModel?.id === model.id && currentModel?.provider === model.provider
+                  // The kernel hands back what each model accepts, so the choice
+                  // can be an informed one instead of a discovery afterwards.
+                  const support = thinkingSupport(model)
                   return (
                     <button
                       key={`${model.provider}/${model.id}`}
@@ -236,6 +240,17 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
                         <div className="truncate text-primary">{model.name}</div>
                         <div className="truncate text-xs text-dim">
                           {model.provider} · {model.id}
+                        </div>
+                        <div className="truncate text-[10px] text-faint">
+                          {support.kind === 'levels'
+                            ? t(language, 'thinkingSupported', {
+                                levels: support.levels
+                                  .filter((level) => level !== 'off')
+                                  .join(' / '),
+                              })
+                            : support.kind === 'undeclared'
+                              ? t(language, 'thinkingNotDeclared')
+                              : t(language, 'thinkingNoSupport')}
                         </div>
                       </div>
                       {selected && <Check size={12} className="shrink-0 text-success" />}

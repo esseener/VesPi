@@ -1,4 +1,5 @@
 import { t, type AppLanguage, type MessageKey } from '../../shared/i18n'
+import { ompLabel } from '../../shared/omp-labels'
 import { toolLabel } from './message-grouping'
 
 const TOOL_NAME_KEYS: Record<string, MessageKey> = {
@@ -35,7 +36,8 @@ const TOOL_ONE_KEYS: Record<string, MessageKey> = {
 export function localizeToolName(language: AppLanguage, name: string): string {
   const label = toolLabel(name)
   const key = TOOL_NAME_KEYS[label]
-  return key ? t(language, key) : label
+  if (key) return t(language, key)
+  return ompLabel(label)
 }
 
 export function localizeToolCallLabel(

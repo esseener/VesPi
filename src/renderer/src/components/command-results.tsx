@@ -1,5 +1,10 @@
 import { clsx } from 'clsx'
 import { BUILTIN_SOURCE, type CommandGroup, type PiCommand } from '../../../shared/pi-command'
+import {
+  commandDisplayDescription,
+  commandDisplayLabel,
+  commandSourceLabel,
+} from '../../../shared/command-display'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
 import { useAppStore } from '../store'
 
@@ -68,12 +73,17 @@ export function CommandResults({
                     SOURCE_BADGE[cmd.source] ?? 'bg-card text-muted'
                   )}
                 >
-                  {cmd.source}
+                  {commandSourceLabel(cmd.source, language)}
                 </span>
                 <span className="truncate text-sm text-primary">
+                  {commandDisplayLabel(cmd.name, language)}
+                </span>
+                <span className="ml-auto shrink-0 font-mono text-[11px] text-dim">
                   {cmd.source === BUILTIN_SOURCE ? `/${cmd.name}` : cmd.name}
                 </span>
-                <span className="ml-auto line-clamp-1 text-xs text-dim">{cmd.description}</span>
+                <span className="line-clamp-1 max-w-[40%] text-xs text-dim">
+                  {commandDisplayDescription(cmd.name, cmd.description, language)}
+                </span>
               </button>
             )
           })}

@@ -748,6 +748,16 @@ export class WorkspaceManager {
     return this.getPiManager(this.activeWorkspaceId)
   }
 
+  /**
+   * Every session's manager, including background and inactive ones. Needed by
+   * shell-wide pushes — a setting that is session state on the kernel side (the
+   * interaction modes) has to reach sessions the user is not currently looking
+   * at, or changing it would only take effect for the tab in front.
+   */
+  getAllPiManagers(): PiRpcManager[] {
+    return [...this.sessionRuntimes.values()].map((entry) => entry.manager)
+  }
+
   getPiManagerForSession(workspaceId: string, sessionId: string): PiRpcManager | null {
     for (const entry of this.sessionRuntimes.values()) {
       if (entry.info.workspaceId === workspaceId && entry.info.sessionId === sessionId) return entry.manager

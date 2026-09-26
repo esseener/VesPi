@@ -25,6 +25,7 @@ import { extractVersionLine } from '../diagnostics-report'
 import { downloadFile, RANGE_UNSUPPORTED, type PartSource } from '../multi-part-download'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'
+import { rebuildOmpLabelPack } from '../omp-label-pack'
 
 const UPDATE_REPO = 'esseener/VesPi'
 const KERNEL_REPO = 'can1357/oh-my-pi'
@@ -750,6 +751,7 @@ async function installKernelUpdateInner(): Promise<{ ok: true; version: string }
     kernelCheckCache = null
     appLog.warn('updates', `Installed OMP kernel ${kernel.latestVersion} at ${dest}`)
     broadcastKernelProgress({ phase: 'done', percent: 100, receivedBytes: 0, totalBytes: 0, version: kernel.latestVersion })
+    void rebuildOmpLabelPack(kernel.latestVersion).catch(() => undefined)
     return { ok: true, version: kernel.latestVersion }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)

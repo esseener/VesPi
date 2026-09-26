@@ -2,6 +2,7 @@ import { BrowserWindow, ipcMain } from 'electron'
 
 
 import { setPiExecutableOverride } from '../pi-rpc-manager'
+import { applyInteractionModesToAll } from './interaction-modes'
 import { WorkspaceManager } from '../workspace-manager'
 import { getGuiDataPath } from '../app-data-paths'
 import type { AppSettings } from '../../shared/ipc-contracts'
@@ -124,6 +125,13 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
       for (const win of BrowserWindow.getAllWindows()) {
         win.webContents.send('menu:language-changed', updated.language)
       }
+    }
+    // The interaction modes live on the kernel as session state, so a change has
+    // to be pushed at every live session — otherwise it would only take effect
+    // for whichever tab happens to be in front. New sessions get them on start
+    // (see interaction-modes.ts); this covers the ones already running.
+    if ('steeringMode' in settings || 'followUpMode' in settings || 'interruptMode' in settings) {
+      applyInteractionModesToAll(workspaceManager.getAllPiManagers(), updated)
     }
     return updated
 

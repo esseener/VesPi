@@ -1,7 +1,30 @@
 import { existsSync } from 'fs'
 import os from 'os'
+import path from 'path'
 import type { IPty } from 'node-pty'
 import type { TerminalStartOptions, TerminalStartResult } from '../shared/ipc-contracts'
+
+/** Absolute path of bundled omp.exe, or null. */
+function bundledOmpExe(): string | null {
+  const exe = process.platform === 'win32' ? 'omp.exe' : 'omp'
+  const dir = bundledOmpDir()
+  return dir ? path.join(dir, exe) : null
+}
+
+/** Directory that holds the bundled `omp.exe` (never written to global PATH). */
+function bundledOmpDir(): string | null {
+  const exe = process.platform === 'win32' ? 'omp.exe' : 'omp'
+  const candidates = [
+    process.resourcesPath ? path.join(process.resourcesPath, 'runtime', 'omp') : null,
+    path.join(path.dirname(process.execPath), 'runtime', 'omp'),
+    path.join(process.cwd(), 'runtime', 'omp'),
+    path.join(process.cwd(), '..', 'runtime', 'omp'),
+  ].filter((p): p is string => Boolean(p))
+  for (const dir of candidates) {
+    if (existsSync(path.join(dir, exe))) return dir
+  }
+  return null
+}
 
 type TerminalDataHandler = (data: string) => void
 type TerminalExitHandler = (event: { exitCode: number; signal?: number }) => void
@@ -42,13 +65,29 @@ export class TerminalService {
       ...process.env,
       TERM: 'xterm-256color',
     } as Record<string, string>
+    // Put the bundled OMP on this terminal's PATH so `omp` actually launches
+    // the kernel (the desktop never writes a global PATH).
+    const ompDir = bundledOmpDir()
+    if (ompDir) {
+      const key = process.platform === 'win32' ? 'Path' : 'PATH'
+      const current = env[key] ?? env.PATH ?? env.Path ?? ''
+      env[key] = ompDir + (current ? path.delimiter + current : '')
+      if (process.platform === 'win32') {
+        env.PATH = env[key]
+        env.Path = env[key]
+      }
+    }
+
+
+
 
     this.cwd = cwd
     const pty = await loadPty()
-    // node-pty's `encoding` option calls setEncoding() under the hood,
-    // which Windows (conpty/winpty) does not support and logs a warning
-    // for. Only pass it on POSIX platforms.
-    const terminal = pty.spawn(shell, [], {
+    // 启动 OMP 本体（TUI），不在 shell 里敲命令，避免回显 `omp --profile …`
+    const ompExe = bundledOmpExe()
+    const spawnBin = ompExe ?? shell
+    const spawnArgs = ompExe ? ['--profile', 'vespi'] : []
+    const terminal = pty.spawn(spawnBin, spawnArgs, {
       name: 'xterm-256color',
       cols: options.cols ?? 80,
       rows: options.rows ?? 24,

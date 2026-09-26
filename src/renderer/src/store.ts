@@ -5,6 +5,12 @@ import { normalizeGoalState } from './utils/goal-display'
 import { parseAgentMessage, type DisplayAttachment, type DisplayMessage } from './message-parsing'
 import type { PiCommand } from '../../shared/pi-command'
 import { normalizeForkMessages, type ForkPoint } from '../../shared/fork-point'
+import {
+  subagentRunFromLifecycle,
+  subagentRunFromProgress,
+  upsertSubagentRun,
+  type SubagentRun,
+} from '../../shared/subagents'
 import { buildLineageTree, type LineageNode } from '../../shared/session-lineage'
 import { clampSidebarWidth } from '../../shared/sidebar-width'
 import { workspaceNameFromFolderPath } from '../../shared/folder-drop'
@@ -37,6 +43,8 @@ import type {
   PiCompactionEndEvent,
   PiAutoRetryStartEvent,
   PiAutoRetryEndEvent,
+  PiSubagentLifecycleEvent,
+  PiSubagentProgressEvent,
   PiExtensionUiRequest,
   Workspace,
   InstalledPackage,
@@ -268,6 +276,13 @@ interface AppState {
   sessionRuntimes: Record<string, SessionRuntimeInfo>
   activeSessionRuntimeId: string | null
   forkMessages: ForkPoint[]
+  /**
+   * Subagents the kernel reported for the current turn, in kernel order. The
+   * kernel only emits these while a client is subscribed (see
+   * shared/subagents.ts). Reset when a turn starts so the previous turn's
+   * helpers do not linger in the strip.
+   */
+  subagents: SubagentRun[]
 
   // Messages
   messages: DisplayMessage[]
@@ -330,7 +345,7 @@ interface AppState {
   composerHasUserWork: boolean
   // Chat side panel: which secondary view is open in the chat workspace.
   // Lifted into the store so it survives navigating away from chat and back.
-  chatSidePanel: 'files' | 'diff' | 'review' | 'terminal' | 'browser' | 'picker' | null
+  chatSidePanel: 'files' | 'diff' | 'review' | 'browser' | 'picker' | null
   /**
    * What each workspace remembers about the browser panel.
    *
@@ -1016,6 +1031,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   sessionRuntimes: {},
   activeSessionRuntimeId: null,
   forkMessages: [],
+  subagents: [],
 
   messages: [],
   promptHistory: [],
@@ -1043,7 +1059,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   chatSidePanel: null,
   browserPanelByWorkspace: {},
   sidebarOpen: true,
-  terminalOpen: false,
+  terminalOpen: true,
   reviewOpen: false,
   settings: null,
   settingsDraft: {},
@@ -1472,6 +1488,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set({ creatingSession: true })
     const gen = ++sessionLoadGeneration
     try {
+      // Terminal-first: the live OMP TUI owns sessions. A GUI rpc session is
+      // a different process and would leave the terminal on the old one.
+      if (get().terminalOpen) {
+        window.piDesktop.terminal.input('/new\r')
+        // OMP writes the session file itself after the command lands.
+        window.setTimeout(() => {
+          scheduleSessionListRefresh(get)
+        }, 2000)
+        return
+      }
       // A new session owns a new Pi process. Never stop or warn about the
       // session the user is leaving; it continues working in the background.
       const result = await window.piDesktop.session.createNew() as SessionRuntimeInfo | { success?: boolean; error?: string } | null
@@ -1633,6 +1659,18 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   switchSession: async (path, projectPath) => {
+    // Terminal-first: the live OMP TUI owns the conversation. Driving the
+    // GUI rpc kernel would leave the terminal on the old session.
+    if (get().terminalOpen) {
+      // Pause any running turn so /resume is accepted.
+      window.piDesktop.terminal.input('\x03')
+      window.setTimeout(() => {
+        window.piDesktop.terminal.input('/resume\r')
+      }, 120)
+      scheduleSessionListRefresh(get)
+      set({ currentView: 'chat' as const })
+      return
+    }
     // Already on this session — avoid a full history reload. The explicit
     // sessionLoading check still handles a fast workspace switch that cleared
     // the view before the target runtime was bound.
@@ -2044,7 +2082,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setSessionName: async (name) => {
     try {
-      await window.piDesktop.session.setName(name)
+      const path = get().sessionState?.sessionFile ?? undefined
+      await window.piDesktop.session.setName(name, path)
       // No manual refresh: Pi emits `session_info_changed` after setting the
       // name, and handlePiEvent applies it to the Current Session panel and the
       // Recent row — the same path used by auto-title extensions.
@@ -2215,10 +2254,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     if (panel === 'diff') {
       if (!(await get().confirmDiscardEditorChanges())) return false
       set({ chatSidePanel: panel, editorDirty: false })
-      return true
-    }
-    if (panel === 'terminal') {
-      set({ terminalOpen: true, chatSidePanel: get().chatSidePanel === 'terminal' ? null : get().chatSidePanel })
       return true
     }
     // NOTE: deliberately does not clear `previewTarget`. Callers such as
@@ -2452,7 +2487,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       case 'agent_start':
         // A fresh turn means real stream context from its first byte — any
         // pending mid-turn-attach backfill was already handled at agent_end.
-        set({ reattachedMidTurn: false })
+        // Subagent rows belong to the turn that just ended, so they go with it.
+        set({ reattachedMidTurn: false, subagents: [] })
         // The first user message is on disk now: surface the session row in
         // the sidebar immediately instead of waiting for an unrelated refresh.
         scheduleSessionListRefresh(get)
@@ -2540,6 +2576,19 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           status: toolEvent.isError ? 'error' : 'success',
           metadata: { toolCallId: toolEvent.toolCallId, name: toolEvent.toolName },
         })
+        break
+      }
+
+      case 'subagent_lifecycle':
+      case 'subagent_progress': {
+        // The two frames differ only in where the run's id lives; the merge
+        // rules (including "a thin progress frame must not erase the labels a
+        // lifecycle frame supplied") are in shared/subagents.ts.
+        const run =
+          event.type === 'subagent_lifecycle'
+            ? subagentRunFromLifecycle((event as PiSubagentLifecycleEvent).payload)
+            : subagentRunFromProgress((event as PiSubagentProgressEvent).payload)
+        if (run) set({ subagents: upsertSubagentRun(get().subagents, run) })
         break
       }
 

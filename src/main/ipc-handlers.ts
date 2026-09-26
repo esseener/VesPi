@@ -17,6 +17,8 @@ import { registerWorkspaceHandlers } from './ipc/workspace-handlers'
 import { registerPackageHandlers } from './ipc/package-handlers'
 import { registerSkillsMcpHandlers } from './ipc/skills-mcp-handlers'
 import { registerModelsConfigHandlers } from './ipc/models-config-handlers'
+import { registerOmpAppearanceHandlers } from './ipc/omp-appearance-handlers'
+import { registerOmpLabelPackHandlers } from './ipc/omp-label-pack-handlers'
 import { registerCouncilHandlers } from './ipc/council-handlers'
 import { registerTagHandlers } from './ipc/tag-handlers'
 import { registerNotesHandlers } from './ipc/notes-handlers'
@@ -59,6 +61,8 @@ export function registerIpcHandlers(
   registerWorkspaceHandlers(ctx)
   registerPackageHandlers(ctx)
   registerSkillsMcpHandlers(ctx)
+  registerOmpAppearanceHandlers(ipcMain)
+  registerOmpLabelPackHandlers(ipcMain)
   registerModelsConfigHandlers()
   registerCouncilHandlers(ctx)
   registerTagHandlers(ctx)

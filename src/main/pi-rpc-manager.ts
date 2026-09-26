@@ -13,6 +13,7 @@ import type {
   AgentInstallation,
 } from '../shared/ipc-contracts'
 import type { CaptureOptions, PiEngine, PiResolution, ResolutionDeps } from './pi-binary-resolution'
+import { subagentSubscriptionCommand } from '../shared/subagents'
 import {
   describePiResolutionFailure,
   isOmpExecutable,
@@ -1078,6 +1079,13 @@ export class PiRpcManager extends EventEmitter {
       this.rpcFrameDecoder.configureLimits(ready)
       if (Array.isArray(ready.supportedProtocolVersions) && ready.supportedProtocolVersions.includes(2)) {
         void this.sendCommand({ type: 'negotiate_protocol', protocolVersion: 2 }).catch(() => {})
+      }
+      // Subagent progress is opt-in on the kernel — its subscription level
+      // defaults to `off` — so the shell has to ask for it. Every engine process
+      // passes through here, which is why the subscription lives here instead of
+      // being repeated at each of the session start paths.
+      if (this.getEngineKind() === 'omp') {
+        this.sendCommandFireAndForget(subagentSubscriptionCommand())
       }
       return
     }

@@ -14,9 +14,11 @@ import type {
 import type { ThemeFile } from '../../../shared/theme/theme-file'
 import { Settings, RotateCcw, X } from 'lucide-react'
 import { ThemedSelect } from './themed-select'
+import { OMP_DARK_THEMES } from '../../../shared/omp-appearance'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { PermissionSelector } from './permission-selector'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
+import type { FollowUpMode, InterruptMode, SteeringMode } from '../../../shared/interaction-modes'
 
 import { PermissionRulesEditor } from './permission-rules-editor'
 import { validateRuleList, shouldPersistScope } from './permission-rules-editor-helpers'
@@ -53,6 +55,25 @@ interface ScopeRulesState {
 
 const EMPTY_SCOPE_RULES: ScopeRulesState = { rules: [], loaded: false, loadError: null, exists: false }
 
+async function persistOmpAppearance(patch: {
+  themeDark?: string
+  symbolPreset?: string
+  thinkingLevel?: string
+}): Promise<void> {
+  try {
+    await window.piDesktop.omp.setAppearance({
+      themeDark: patch.themeDark ?? 'anthracite',
+      themeLight: 'light',
+      symbolPreset: (patch.symbolPreset ?? 'unicode') as 'unicode' | 'nerd' | 'ascii',
+      ...(patch.thinkingLevel
+        ? { thinkingLevel: patch.thinkingLevel as 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }
+        : {}),
+    })
+  } catch {
+    /* non-fatal */
+  }
+}
+
 export function SettingsPanel(): React.JSX.Element {
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   useEscapeToClose(true, () => setCurrentView('chat'))
@@ -88,6 +109,17 @@ export function SettingsPanel(): React.JSX.Element {
   const [codeEditorFontSize, setCodeEditorFontSize] = useState(draft0.codeEditorFontSize ?? settings?.codeEditorFontSize ?? DEFAULT_SETTINGS.codeEditorFontSize)
   const [showThinking, setShowThinking] = useState(draft0.showThinking ?? settings?.showThinking ?? DEFAULT_SETTINGS.showThinking)
   const [autoScroll, setAutoScroll] = useState(draft0.autoScroll ?? settings?.autoScroll ?? DEFAULT_SETTINGS.autoScroll)
+  // The kernel owns these three (it reports them back in get_state); the panel
+  // only mirrors them and pushes a change at every live session.
+  const [steeringMode, setSteeringMode] = useState<SteeringMode>(
+    draft0.steeringMode ?? settings?.steeringMode ?? DEFAULT_SETTINGS.steeringMode,
+  )
+  const [followUpMode, setFollowUpMode] = useState<FollowUpMode>(
+    draft0.followUpMode ?? settings?.followUpMode ?? DEFAULT_SETTINGS.followUpMode,
+  )
+  const [interruptMode, setInterruptMode] = useState<InterruptMode>(
+    draft0.interruptMode ?? settings?.interruptMode ?? DEFAULT_SETTINGS.interruptMode,
+  )
   const [desktopNotifications, setDesktopNotifications] = useState(draft0.desktopNotifications ?? settings?.desktopNotifications ?? DEFAULT_SETTINGS.desktopNotifications)
   const [completionChime, setCompletionChime] = useState(draft0.completionChime ?? settings?.completionChime ?? DEFAULT_SETTINGS.completionChime)
   const [completionChimeVolume, setCompletionChimeVolume] = useState(draft0.completionChimeVolume ?? settings?.completionChimeVolume ?? DEFAULT_SETTINGS.completionChimeVolume)
@@ -259,6 +291,9 @@ export function SettingsPanel(): React.JSX.Element {
     setCodeEditorFontSize(draft.codeEditorFontSize ?? settings.codeEditorFontSize)
     setShowThinking(draft.showThinking ?? settings.showThinking)
     setAutoScroll(draft.autoScroll ?? settings.autoScroll)
+    setSteeringMode(draft.steeringMode ?? settings.steeringMode)
+    setFollowUpMode(draft.followUpMode ?? settings.followUpMode)
+    setInterruptMode(draft.interruptMode ?? settings.interruptMode)
     setDesktopNotifications(draft.desktopNotifications ?? settings.desktopNotifications)
     setCompletionChime(draft.completionChime ?? settings.completionChime)
     setCompletionChimeVolume(draft.completionChimeVolume ?? settings.completionChimeVolume)
@@ -490,6 +525,9 @@ export function SettingsPanel(): React.JSX.Element {
       codeEditorFontSize: DEFAULT_SETTINGS.codeEditorFontSize,
       showThinking: DEFAULT_SETTINGS.showThinking,
       autoScroll: DEFAULT_SETTINGS.autoScroll,
+      steeringMode: DEFAULT_SETTINGS.steeringMode,
+      followUpMode: DEFAULT_SETTINGS.followUpMode,
+      interruptMode: DEFAULT_SETTINGS.interruptMode,
       desktopNotifications: DEFAULT_SETTINGS.desktopNotifications,
       completionChime: DEFAULT_SETTINGS.completionChime,
       completionChimeVolume: DEFAULT_SETTINGS.completionChimeVolume,
@@ -509,6 +547,9 @@ export function SettingsPanel(): React.JSX.Element {
     setCodeEditorFontSize(defaults.codeEditorFontSize!)
     setShowThinking(defaults.showThinking!)
     setAutoScroll(defaults.autoScroll!)
+    setSteeringMode(defaults.steeringMode!)
+    setFollowUpMode(defaults.followUpMode!)
+    setInterruptMode(defaults.interruptMode!)
     setDesktopNotifications(defaults.desktopNotifications!)
     setCompletionChime(defaults.completionChime!)
     setCompletionChimeVolume(defaults.completionChimeVolume!)
@@ -725,6 +766,54 @@ export function SettingsPanel(): React.JSX.Element {
           </SettingsRow>
         </SettingsSection>
 
+
+        <SettingsSection title="OMP">
+          <div className="mb-2 text-xs text-dim">
+            写入 <code>~/.omp/profiles/vespi/agent/config.yml</code>，终端 TUI 与 GUI 共用
+          </div>
+          <SettingsRow label="OMP 主题" description="theme.dark — 终端 TUI 配色（anthracite / titanium…）">
+            <ThemedSelect
+              value={(settings?.ompThemeDark ?? draft0.ompThemeDark ?? 'anthracite') as string}
+              onChange={(v) => {
+                void persistOmpAppearance({ themeDark: v })
+                persistSettingPatch({ ompThemeDark: v })
+              }}
+              options={OMP_DARK_THEMES.map((id) => ({ value: id, label: id }))}
+            />
+          </SettingsRow>
+          <SettingsRow label="符号集" description="symbolPreset — unicode / nerd / ascii">
+            <ThemedSelect
+              value={(settings?.ompSymbolPreset ?? 'unicode') as string}
+              onChange={(v) => {
+                void persistOmpAppearance({ symbolPreset: v })
+                persistSettingPatch({ ompSymbolPreset: v as 'unicode' | 'nerd' | 'ascii' })
+              }}
+              options={[
+                { value: 'unicode', label: 'unicode' },
+                { value: 'nerd', label: 'nerd' },
+                { value: 'ascii', label: 'ascii' },
+              ]}
+            />
+          </SettingsRow>
+          <SettingsRow label="默认思考等级" description="thinking.defaultLevel — 新会话的默认思考强度">
+            <ThemedSelect
+              value={(settings?.ompThinkingLevel ?? 'high') as string}
+              onChange={(v) => {
+                void persistOmpAppearance({ thinkingLevel: v })
+                persistSettingPatch({ ompThinkingLevel: v as 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' })
+              }}
+              options={[
+                { value: 'off', label: 'off' },
+                { value: 'minimal', label: 'minimal' },
+                { value: 'low', label: 'low' },
+                { value: 'medium', label: 'medium' },
+                { value: 'high', label: 'high' },
+                { value: 'xhigh', label: 'xhigh' },
+              ]}
+            />
+          </SettingsRow>
+        </SettingsSection>
+
         <SettingsSection title={t(language, 'behavior')}>
           <SettingsRow label={t(language, 'permissionMode')} description={t(language, 'permissionModeHint')}>
             <PermissionSelector
@@ -782,6 +871,51 @@ export function SettingsPanel(): React.JSX.Element {
 
           <SettingsRow label={t(language, 'autoScroll')} description={t(language, 'autoScrollHint')}>
             <Toggle checked={autoScroll} onChange={(v) => { setAutoScroll(v); persistSettingPatch({ autoScroll: v }) }} />
+          </SettingsRow>
+
+          <SettingsRow label={t(language, 'steeringMode')} description={t(language, 'steeringModeHint')}>
+            <ThemedSelect
+              value={steeringMode}
+              onChange={(next) => {
+                const mode = next as SteeringMode
+                setSteeringMode(mode)
+                persistSettingPatch({ steeringMode: mode })
+              }}
+              options={[
+                { value: 'one-at-a-time', label: t(language, 'modeOneAtATime') },
+                { value: 'all', label: t(language, 'modeAll') },
+              ]}
+            />
+          </SettingsRow>
+
+          <SettingsRow label={t(language, 'followUpMode')} description={t(language, 'followUpModeHint')}>
+            <ThemedSelect
+              value={followUpMode}
+              onChange={(next) => {
+                const mode = next as FollowUpMode
+                setFollowUpMode(mode)
+                persistSettingPatch({ followUpMode: mode })
+              }}
+              options={[
+                { value: 'one-at-a-time', label: t(language, 'modeOneAtATime') },
+                { value: 'all', label: t(language, 'modeAll') },
+              ]}
+            />
+          </SettingsRow>
+
+          <SettingsRow label={t(language, 'interruptMode')} description={t(language, 'interruptModeHint')}>
+            <ThemedSelect
+              value={interruptMode}
+              onChange={(next) => {
+                const mode = next as InterruptMode
+                setInterruptMode(mode)
+                persistSettingPatch({ interruptMode: mode })
+              }}
+              options={[
+                { value: 'immediate', label: t(language, 'modeImmediate') },
+                { value: 'wait', label: t(language, 'modeWait') },
+              ]}
+            />
           </SettingsRow>
 
           <SettingsRow

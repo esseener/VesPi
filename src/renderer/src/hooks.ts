@@ -33,6 +33,13 @@ export function usePiEvents(): void {
     })
   }, [])
   useEffect(() => {
+    void window.piDesktop.omp
+      .getLabels()
+      .then((pack) => import('../../shared/omp-labels').then((m) => m.loadOmpLabelPack(pack)))
+      .catch(() => undefined)
+  }, [])
+
+  useEffect(() => {
     // Subscribe to Pi events (status changes arrive here too, as 'status_change').
     const unsubscribeEvent = window.piDesktop.onEvent(handlePiEvent)
     const unsubscribeCounts = window.piDesktop.onPendingPrompts(handlePendingPromptCounts)

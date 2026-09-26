@@ -5,6 +5,7 @@
  * The preload bridge validates payloads against these contracts.
  */
 import type { PermissionRule } from '../../resources/permission-rules'
+import type { FollowUpMode, InterruptMode, SteeringMode } from './interaction-modes'
 
 // ─── IPC Channel Names ──────────────────────────────────────────────────────
 
@@ -764,6 +765,53 @@ export interface PiConfigUpdateEvent {
   thinkingLevel?: string
 }
 
+/**
+ * A subagent the kernel spawned for a `task` tool call.
+ *
+ * Only emitted when the shell subscribes (the kernel's subscription level
+ * defaults to `off` — see the ready handler in pi-rpc-manager.ts). The kernel
+ * normalizes the very first status to `running` before sending it; terminal
+ * statuses pass through as the kernel names them, so the shell classifies them
+ * rather than matching literals (see shared/subagents.ts).
+ */
+export interface PiSubagentLifecycleEvent {
+  type: 'subagent_lifecycle'
+  payload: {
+    id: string
+    index?: number
+    agent?: string
+    agentSource?: string
+    description?: string
+    status: string
+    sessionFile?: string
+    parentToolCallId?: string
+    task?: string
+    assignment?: string
+  }
+}
+
+/**
+ * A running subagent's self-reported step. Carries the id inside `progress`,
+ * unlike the lifecycle event — the one structural difference between them.
+ */
+export interface PiSubagentProgressEvent {
+  type: 'subagent_progress'
+  payload: {
+    index?: number
+    agent?: string
+    agentSource?: string
+    sessionFile?: string
+    parentToolCallId?: string
+    task?: string
+    assignment?: string
+    progress: {
+      id: string
+      status: string
+      description?: string
+    }
+  }
+}
+
 export type PiRpcEvent =
   | PiAgentStartEvent
   | PiAgentEndEvent
@@ -791,6 +839,8 @@ export type PiRpcEvent =
   | PiCommandOutputEvent
   | PiPromptResultEvent
   | PiConfigUpdateEvent
+  | PiSubagentLifecycleEvent
+  | PiSubagentProgressEvent
 
 // ─── Model Types ────────────────────────────────────────────────────────────
 
@@ -1191,6 +1241,12 @@ export interface AppSettings {
   piEngine: AgentEngine
   defaultArgs: string[]
   theme: string // 'system' or a theme id (built-in or user theme)
+  /** OMP TUI theme.dark name (anthracite, titanium, …) — written to profile config. */
+  ompThemeDark: string
+  /** OMP symbol glyph preset */
+  ompSymbolPreset: 'unicode' | 'nerd' | 'ascii'
+  /** thinking.defaultLevel written to the OMP profile config. */
+  ompThinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
   /** UI language. Chinese is the product default. */
   language: 'zh' | 'en'
   defaultModel: string | null
@@ -1205,6 +1261,12 @@ export interface AppSettings {
   codeEditorFontSize: number
   showThinking: boolean
   autoScroll: boolean
+  // How a message sent while the agent is working reaches it. The kernel owns
+  // the live state; these mirror its defaults and are pushed to every session
+  // on start (see shared/interaction-modes.ts).
+  steeringMode: SteeringMode
+  followUpMode: FollowUpMode
+  interruptMode: InterruptMode
   permissionMode: PermissionMode
   // Workspace paths whose "this workspace has its own permission rules"
   // notice has been acknowledged. Not exposed in the Settings UI.

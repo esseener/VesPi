@@ -76,8 +76,8 @@ process.on('uncaughtException', (err) => {
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
-const WINDOW_WIDTH = 1400
-const WINDOW_HEIGHT = 900
+const WINDOW_WIDTH = 1200
+const WINDOW_HEIGHT = 820
 const MIN_WINDOW_WIDTH = 800
 const MIN_WINDOW_HEIGHT = 600
 const DEV_SERVER_URL = process.env.ELECTRON_RENDERER_URL
@@ -545,7 +545,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     title: VESPI_PRODUCT_NAME,
-    backgroundColor: '#070707',
+    backgroundColor: '#121419',
     icon: appIcon,
     show: false,
     autoHideMenuBar: true,

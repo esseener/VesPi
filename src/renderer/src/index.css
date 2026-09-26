@@ -16,7 +16,7 @@
 
 @theme {
   /* Semantic tokens — pi-theme/v1. Black chassis, silver bezel. */
-  --color-app: #070707;
+  --color-app: #121419;
   --color-surface: #0e0e0e;
   --color-surface-hover: #161616;
   --color-card: #121212;
@@ -29,7 +29,7 @@
   --color-dim: #6e6e6e;
   --color-faint: #4a4a4a;
   --color-ghost: #2a2a2a;
-  --color-inverse: #070707;
+  --color-inverse: #121419;
   --color-border: #2a2a2a;
   --color-border-strong: #4a4a4a;
   --color-border-strong-hover: #6e6e6e;
@@ -799,3 +799,49 @@ html.light .status-shimmer {
    Highlight API) are injected at runtime from chat-search.tsx — Tailwind's
    Lightning CSS transformer drops the unrecognized ::highlight() pseudo-element
    at build time, so they can't live here. */
+
+/* xterm: OMP TUI — padding, smooth scroll, hide broken default scrollbar */
+.xterm {
+  padding: 12px 14px 8px 12px;
+  border-radius: 8px;
+  background: transparent !important;
+}
+/* Box-drawing (│ ─) must touch across rows. Any line-height > 1 opens 1px
+   gaps and the frame looks dashed / not vertical. */
+.xterm .xterm-rows {
+  line-height: 1 !important;
+  /* Crisp glyph edges — blurry antialiasing makes │ look fuzzy/tilted. */
+  -webkit-font-smoothing: antialiased;
+  font-smooth: never;
+  text-rendering: geometricPrecision;
+}
+.xterm .xterm-screen,
+.xterm .xterm-viewport,
+.xterm canvas {
+  background: transparent !important;
+}
+.xterm-viewport {
+  background: transparent !important;
+  overflow-y: auto !important;
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-scrollbar, #242a36) transparent;
+}
+.xterm-viewport::-webkit-scrollbar {
+  width: 10px;
+}
+.xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+.xterm-viewport::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar, #242a36);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  border-radius: 999px;
+}
+.xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover, #555e70);
+  background-clip: padding-box;
+}
+.xterm-screen {
+  border-radius: 4px;
+}

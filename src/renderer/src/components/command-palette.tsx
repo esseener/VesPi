@@ -13,6 +13,10 @@ import {
   type PiCommand,
 } from '../../../shared/pi-command'
 import {
+  commandDisplayDescription,
+  commandDisplayLabel,
+} from '../../../shared/command-display'
+import {
   filterSessions,
   filterWorkspaces,
   MAX_FILE_RESULTS,
@@ -58,7 +62,13 @@ export function CommandPalette(): React.JSX.Element | null {
   const commandsOnly = query.trimStart().startsWith('/')
   const switcherQuery = commandsOnly ? '' : query.trim()
 
-  const commandResults = useMemo(() => filterCommands(allCommands, query), [allCommands, query])
+  const commandResults = useMemo(
+    () =>
+      filterCommands(allCommands, query, (cmd) =>
+        `${commandDisplayLabel(cmd.name, language)} ${commandDisplayDescription(cmd.name, cmd.description, language)}`
+      ),
+    [allCommands, query, language]
+  )
   const { grouped, flat: commandFlat } = useMemo(() => groupCommands(commandResults), [commandResults])
 
   const workspaceItems = useMemo<SwitcherItem[]>(

@@ -5,6 +5,7 @@ import { isString, isObject } from './validation'
 import { validateStartOptions, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings } from './settings'
 import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
+import { applyInteractionModes } from './interaction-modes'
 import type { IpcContext } from './context'
 import { detectPiInstallations, getConfiguredEngineKind } from '../pi-rpc-manager'
 import type { PiRpcManager } from '../pi-rpc-manager'
@@ -68,6 +69,11 @@ export function registerPiHandlers(ctx: IpcContext): void {
     const pi = workspaceManager.getPiManager(activeWs.id)
     if (!pi) throw new Error('Failed to create Pi manager')
 
+    // `start()` resolves only once the engine is ready to take RPC — the
+    // workspace manager issues its own `get_state` at that same point — so this
+    // lands before the first prompt.
+    applyInteractionModes(pi, settings)
+
     return pi.getStatus()
   })
 
@@ -109,11 +115,14 @@ export function registerPiHandlers(ctx: IpcContext): void {
     )
     if (runtime) {
       const info = await workspaceManager.restartSessionRuntime(runtime.runtimeId, startOptions)
+      applyInteractionModes(pi, settings)
       return { status: info.status, pid: info.pid, error: info.error }
     }
 
     await pi.stopAndWait()
-    return pi.start(startOptions)
+    const restarted = await pi.start(startOptions)
+    applyInteractionModes(pi, settings)
+    return restarted
   })
 
   ipcMain.handle(IPC_CHANNELS.PI_STATUS, async () => {

@@ -3,6 +3,7 @@ import { Check, ChevronUp, Zap } from 'lucide-react'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t, type AppLanguage } from '../../../shared/i18n'
+import { effectiveThinkingLevel, thinkingSupport } from '../../../shared/thinking-levels'
 
 interface ThinkingLevelSelectorProps {
   className?: string
@@ -37,14 +38,17 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
   const [isOpen, setIsOpen] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
 
-  const modelEfforts = sessionState?.model?.thinking?.efforts?.filter(
-    (level) => typeof level === 'string' && level.length > 0,
-  )
-  const levels =
-    modelEfforts && modelEfforts.length > 0
-      ? ['off', ...modelEfforts.filter((level) => level !== 'off')]
-      : ['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
+  // Only what the kernel says this model takes. It used to fall back to all
+  // seven levels whenever a model declared none, which offered choices that did
+  // nothing on that model — and, because the kernel accepts any value without
+  // checking, nothing ever said so either.
+  const support = thinkingSupport(sessionState?.model)
+  const levels = support.kind === 'levels' ? support.levels : ['off']
   const currentLevel = sessionState?.thinkingLevel ?? 'medium'
+  // The level the kernel will really use, which is not always the one on the
+  // button: an undeclared level rounds down to the nearest supported one.
+  const effective = effectiveThinkingLevel(sessionState?.model, currentLevel)
+  const roundsDown = effective !== null && effective !== currentLevel
 
   useEffect(() => {
     if (!isOpen) return
@@ -76,10 +80,28 @@ export function ThinkingLevelSelector({ className }: ThinkingLevelSelectorProps)
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 z-50 mb-2 w-40 overflow-hidden surface-floating py-1 shadow-xl shadow-black/30 animate-fade-in">
+        <div className="absolute bottom-full right-0 z-50 mb-2 w-56 overflow-hidden surface-floating py-1 shadow-xl shadow-black/30 animate-fade-in">
           <div className="border-b border-border px-3 py-2">
             <div className="text-[10px] font-medium uppercase tracking-wide text-faint">{t(language, 'thinkingEffort')}</div>
-            <div className="mt-0.5 text-xs text-dim">{t(language, 'thinkingHint')}</div>
+            <div className="mt-0.5 text-xs leading-relaxed text-dim">
+              {support.kind === 'unsupported'
+                ? t(language, 'thinkingNoSupport')
+                : support.kind === 'undeclared'
+                  ? t(language, 'thinkingNotDeclared')
+                  : t(language, 'thinkingSupported', {
+                      levels: support.levels
+                        .filter((level) => level !== 'off')
+                        .map((level) => thinkingLevelLabel(language, level))
+                        .join(' / '),
+                    })}
+            </div>
+            {roundsDown && (
+              <div className="mt-1 text-[11px] leading-relaxed text-warning">
+                {t(language, 'thinkingRoundsDown', {
+                  level: thinkingLevelLabel(language, effective),
+                })}
+              </div>
+            )}
           </div>
           {levels.map((level) => (
             <button

@@ -35,7 +35,7 @@ import { useGlobalWorkflowOpen } from '../hooks'
 import { clampSidebarWidth, resolveSidebarWidth } from '../../../shared/sidebar-width'
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import vespiCenterLogo from '../assets/vespi-center-logo.png'
+import vespiWordmark from '../assets/vespi-wordmark-white.png'
 
 
 /** Views reachable from the sidebar's Tools group. */
@@ -538,7 +538,7 @@ export function Sidebar(): React.JSX.Element {
           >
             <Home size={14} />
           </button>
-          <img src={vespiCenterLogo} alt={t(language, 'appName')} draggable={false} className="relative -top-0.5 h-4 w-auto max-w-[4.25rem]" />
+          <img src={vespiWordmark} alt={t(language, 'appName')} draggable={false} className="relative -top-0.5 h-[18px] w-auto max-w-[5.5rem]" />
         </div>
         <button
           onClick={toggleSidebar}

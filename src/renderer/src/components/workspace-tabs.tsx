@@ -109,6 +109,22 @@ export function WorkspaceTabs(): React.JSX.Element {
       .sort((a, b) => a.runtimeId.localeCompare(b.runtimeId)),
     [activeWorkspace?.id, sessionRuntimes]
   )
+  // OMP TUI writes session files without a GUI runtime. Surface those too so
+  // `/new` (and TUI-created sessions) appear in this strip.
+  const ompSessionTabs = useMemo(() => {
+    const bound = new Set(
+      sessionTabs.map((r) => r.sessionPath).filter(Boolean) as string[],
+    )
+    return sessionList
+      .filter((item) =>
+        item.projectPath &&
+        activeWorkspace?.path &&
+        pathsEqual(item.projectPath, activeWorkspace.path) &&
+        !bound.has(item.path),
+      )
+      .sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0))
+      .slice(0, 6)
+  }, [sessionList, sessionTabs, activeWorkspace?.path])
 
   return (
     <>
@@ -280,6 +296,23 @@ export function WorkspaceTabs(): React.JSX.Element {
             </div>
           )
         })}
+        {ompSessionTabs.map((item) => (
+          <button
+            key={item.path}
+            type="button"
+            onClick={() => {
+              setCurrentView('chat')
+              void switchSession(item.path, activeWorkspace?.path)
+            }}
+            className="flex min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-highlight hover:text-secondary"
+            title={item.path}
+          >
+            <MessageSquarePlus size={11} className="shrink-0 text-faint" />
+            <span className="truncate">
+              {getSessionTitle(item.name, item.sessionId, item.preview)}
+            </span>
+          </button>
+        ))}
         <button
           type="button"
           onClick={() => {

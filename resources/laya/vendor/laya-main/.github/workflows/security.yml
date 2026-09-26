@@ -1,0 +1,115 @@
+name: Security
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 6 * * 1"     # Monday morning: catch CVEs disclosed since the last push
+
+# Cancel outdated pull request runs; let runs on main finish.
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+# Read-only by default. Jobs that need more ask for it explicitly.
+permissions: read-all
+
+jobs:
+  secrets:
+    name: secret scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0          # gitleaks needs history to scan every commit in the PR
+      - name: gitleaks (diff)
+        uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      # The action above only scans the commits in this push or PR. That misses a secret that
+      # entered on an earlier commit and is still sitting in the tree -- exactly how a CLI
+      # transcript quoting a PyPI token once survived in main. This second pass
+      # scans the checked-out files themselves, so anything present in HEAD is caught no matter
+      # which commit put it there.
+      - name: gitleaks (working tree)
+        run: |
+          VER=8.30.1
+          # Digest of gitleaks_${VER}_linux_x64.tar.gz from the v${VER} release,
+          # cross-checked against gitleaks_${VER}_checksums.txt in the same release.
+          SHA256=551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+          curl -sSL -o gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${VER}/gitleaks_${VER}_linux_x64.tar.gz"
+          echo "${SHA256}  gitleaks.tar.gz" | sha256sum -c
+          tar -xzf gitleaks.tar.gz gitleaks
+          ./gitleaks dir . --no-banner --redact --exit-code 1
+
+  deps:
+    name: dependency CVEs
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: "3.11"
+      - run: pip install pip-audit
+      - name: Audit declared dependencies
+        run: |
+          # Audit what the package DECLARES, not a local install. Installing torch from the
+          # PyTorch CPU index yields a local version (2.14.0+cpu) that does not exist on PyPI,
+          # so pip-audit cannot resolve it and --strict fails the job on that alone.
+          python - <<'PY' > requirements-audit.txt
+          import re
+          src = open("pyproject.toml").read()
+          block = re.search(r"dependencies = \[(.*?)\]", src, re.S).group(1)
+          for dep in re.findall(r'"([^"]+)"', block):
+              print(dep)
+          PY
+          cat requirements-audit.txt
+          pip-audit --strict --desc -r requirements-audit.txt
+
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: github/codeql-action/init@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+        with:
+          languages: python
+          queries: security-extended
+      - uses: github/codeql-action/analyze@1190a975f95ce23525efb6a3fc21ea29567c1b52 # v3.38.2
+
+  supply_chain:
+    name: no unsafe deserialization
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - name: Weights must load through safetensors, never pickle
+        run: |
+          # torch.load / pickle execute arbitrary code during deserialization. Laya loads
+          # checkpoints from the Hub, so a pickle path would be remote code execution on
+          # `laya.load("someone/their-model")`.
+          if grep -rnE --include='*.py' "\bpickle\b|torch\.load\(|joblib\.load\(|yaml\.load\(" laya/ laya-ts/scripts/; then
+            echo "::error::unsafe deserialization in the shipped package - use safetensors"
+            exit 1
+          fi
+          echo "OK: no unsafe deserialization in laya/ or laya-ts/scripts/"
+      - name: No shell-out or dynamic exec in the shipped package
+        run: |
+          if grep -rnE "os\.system\(|subprocess\.|shell=True|\beval\(|\bexec\(" laya/ \
+               | grep -v "\.eval()"; then
+            echo "::error::shell-out or dynamic execution in the shipped package"
+            exit 1
+          fi
+          echo "OK: no os.system/subprocess/eval/exec in laya/"
+      - name: ONNX exporter requires safetensors weights
+        run: python tests/test_export_onnx_safety.py

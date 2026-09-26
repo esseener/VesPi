@@ -185,6 +185,12 @@ export function GitConveyorActions({ onChanged }: { onChanged?: () => void }): R
               : ''}
           </span>
         )}
+        <span
+          className="shrink-0 rounded border border-border/80 px-1.5 py-0.5 text-[10px] text-faint"
+          title={t(language, 'gitLocalBadge')}
+        >
+          {t(language, 'gitLocalBadge')}
+        </span>
         <button type="button" onClick={openCommitDialog} disabled={busy !== null || !status?.dirtyFiles} className="flex shrink-0 items-center gap-1 rounded border border-border px-2 py-1 text-[10px] text-muted transition-colors hover:bg-surface-hover hover:text-primary disabled:cursor-not-allowed disabled:opacity-40" title={t(language, 'gitCommitTooltip')}>
           {busy === 'commit' ? <Loader2 size={11} className="animate-spin" /> : <GitCommitHorizontal size={11} />}
           {t(language, 'gitCommit')}

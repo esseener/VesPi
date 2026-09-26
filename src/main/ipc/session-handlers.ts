@@ -16,15 +16,17 @@ import { mapWithConcurrency } from '../map-concurrent'
 import { readSessionLineage } from '../session-lineage-reader'
 import { trimGetMessagesResponse } from '../get-messages-trim'
 import { activityStatsStore } from '../activity-stats'
-import type { SessionDeleteResult, SessionListItem, SessionRuntimeCloseResult, SessionRuntimeInfo } from '../../shared/ipc-contracts'
+import type { PiResponseEvent, SessionDeleteResult, SessionListItem, SessionRuntimeCloseResult, SessionRuntimeInfo } from '../../shared/ipc-contracts'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
-import { readdir, stat, unlink } from 'fs/promises'
+import type { PiRpcManager } from '../pi-rpc-manager'
+import { readdir, stat, unlink, appendFile } from 'fs/promises'
 import { homedir } from 'os'
 import { basename, join, resolve } from 'path'
 import { existsSync } from 'fs'
 import { moveToTrash } from '../session-trash'
 import { assertTrustedSender, isObject, isString } from './validation'
 import { applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
+import { applyInteractionModes } from './interaction-modes'
 import { loadAppSettings } from './settings'
 import { readModelsConfigFile, resolvedStartModel } from './models-config-handlers'
 import type { IpcContext } from './context'
@@ -51,6 +53,21 @@ function sessionIdFromPath(sessionPath: string): string {
  * The official guidance is "Sessions can be removed by deleting their
  * .jsonl files" — that's what this does.
  */
+/**
+ * OMP has no `clone` command, and no RPC path that copies one transcript into
+ * another session. Its own `branch` decides what "fork at the beginning" means
+ * by calling `newSession({ parentSession })`, so that is what we do directly:
+ * the new session starts empty and carries the parent link that marks it as a
+ * fork of this one. Pi keeps using its own `clone`.
+ */
+async function cloneIntoNewSession(pi: PiRpcManager): Promise<PiResponseEvent | null> {
+  const state = await pi.sendCommand({ type: 'get_state' })
+  const sessionId = (state?.data as { sessionId?: unknown } | undefined)?.sessionId
+  const cmd: Record<string, unknown> = { type: 'new_session' }
+  if (isString(sessionId) && sessionId.length > 0) cmd.parentSession = sessionId
+  return pi.sendCommand(cmd)
+}
+
 async function deleteSessionFile(sessionPath: string): Promise<SessionDeleteResult> {
   // The second test covers a helper that moved the file but still reported a
   // non-zero status; the session is in the trash either way, not destroyed.
@@ -71,7 +88,7 @@ async function deleteSessionFile(sessionPath: string): Promise<SessionDeleteResu
 }
 
 export function registerSessionHandlers(ctx: IpcContext): void {
-  const { workspaceManager, getActivePi, tagManager, archivedSessions } = ctx
+  const { workspaceManager, getActivePi, tagManager, archivedSessions, terminalService } = ctx
 
   const startRuntime = async (runtime: SessionRuntimeInfo, sessionPath?: string): Promise<void> => {
     const settings = await loadAppSettings(workspaceManager)
@@ -88,6 +105,8 @@ export function registerSessionHandlers(ctx: IpcContext): void {
       sessionPath ? applyResumePreference(options, settings) : options,
       settings
     ))
+    const pi = workspaceManager.getPiManagerForRuntime(runtime.runtimeId)
+    if (pi) applyInteractionModes(pi, settings)
   }
 
   // ─── Session Management ─────────────────────────────────────────────────
@@ -178,9 +197,12 @@ export function registerSessionHandlers(ctx: IpcContext): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.SESSION_FORK, async (_event, entryId?: unknown) => {
-    const cmd: Record<string, unknown> = { type: 'fork' }
-    if (isString(entryId)) cmd.entryId = entryId
     const pi = getActivePi()
+    // OMP renamed Pi's session-branching commands. Sending the Pi-era name gets
+    // `Unknown command: fork` back, which the renderer rendered as an empty
+    // branch list rather than an error — the feature died silently.
+    const cmd: Record<string, unknown> = { type: pi.getEngineKind() === 'omp' ? 'branch' : 'fork' }
+    if (isString(entryId)) cmd.entryId = entryId
     const response = await pi.sendCommand(cmd)
     const runtimeId = workspaceManager.runtimeIdFor(pi)
     if (runtimeId) await workspaceManager.refreshSessionRuntime(runtimeId).catch(() => null)
@@ -189,7 +211,10 @@ export function registerSessionHandlers(ctx: IpcContext): void {
 
   ipcMain.handle(IPC_CHANNELS.SESSION_CLONE, async () => {
     const pi = getActivePi()
-    const response = await pi.sendCommand({ type: 'clone' })
+    const response =
+      pi.getEngineKind() === 'omp'
+        ? await cloneIntoNewSession(pi)
+        : await pi.sendCommand({ type: 'clone' })
     const runtimeId = workspaceManager.runtimeIdFor(pi)
     if (runtimeId) await workspaceManager.refreshSessionRuntime(runtimeId).catch(() => null)
     return response
@@ -227,8 +252,24 @@ export function registerSessionHandlers(ctx: IpcContext): void {
     return pi.sendCommand({ type: 'get_session_stats' })
   })
 
-  ipcMain.handle(IPC_CHANNELS.SESSION_SET_NAME, async (_event, name: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SESSION_SET_NAME, async (_event, name: unknown, sessionPath?: unknown) => {
     if (!isString(name)) throw new Error('name must be a string')
+    const target = isString(sessionPath) ? sessionPath : null
+
+    // 1) OMP session store — append session_info so TUI + list both see it.
+    if (target && isWithinSessionRoots(target) && existsSync(target)) {
+      const line = JSON.stringify({ type: 'session_info', name }) + '\n'
+      await appendFile(target, line, 'utf-8')
+    }
+
+    // 2) Live TUI — /rename is the OMP-native command.
+    try {
+      terminalService.write(`/rename ${name}\r`)
+    } catch {
+      /* terminal may be closed */
+    }
+
+    // 3) GUI rpc kernel (if any) still gets the RPC so its session_info updates.
     return getActivePi().sendCommand({ type: 'set_session_name', name })
   })
 
@@ -239,7 +280,12 @@ export function registerSessionHandlers(ctx: IpcContext): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.SESSION_GET_FORK_MESSAGES, async () => {
-    return getActivePi().sendCommand({ type: 'get_fork_messages' })
+    const pi = getActivePi()
+    // Same rename as SESSION_FORK: OMP lists branch points via
+    // `get_branch_messages`, and `get_fork_messages` does not exist there.
+    return pi.sendCommand({
+      type: pi.getEngineKind() === 'omp' ? 'get_branch_messages' : 'get_fork_messages',
+    })
   })
 
   ipcMain.handle(IPC_CHANNELS.SESSION_DELETE, async (event, sessionPath: unknown): Promise<SessionDeleteResult> => {
@@ -274,6 +320,12 @@ export function registerSessionHandlers(ctx: IpcContext): void {
       await archivedSessions.forget(sessionId)
       await tagManager.setTags(sessionId, [])
       await tagManager.forgetAuto(sessionId)
+      // If the TUI was showing this session, drop it into a fresh one.
+      try {
+        terminalService.write('/new\r')
+      } catch {
+        /* terminal may be closed */
+      }
     }
     return { ...result, replacementSessionPath: closed?.replacementSessionPath ?? null }
   })

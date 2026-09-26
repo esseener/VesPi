@@ -118,7 +118,7 @@ interface PiDesktopAPI {
     getMessages(): Promise<unknown>
     getStats(): Promise<unknown>
     getLiveTurn(runtimeId?: string): Promise<unknown>
-    setName(name: string): Promise<unknown>
+    setName(name: string, sessionPath?: string): Promise<unknown>
     exportHtml(outputPath?: string): Promise<unknown>
     getForkMessages(): Promise<unknown>
     delete(sessionPath: string): Promise<SessionDeleteResult>
@@ -329,6 +329,12 @@ interface PiDesktopAPI {
     onUiProgress(callback: (progress: KernelUpdateProgress) => void): () => void
   }
 
+  omp: {
+    getLabels(): Promise<unknown>
+    rebuildLabels(kernel: string): Promise<unknown>
+    getAppearance(): Promise<{ themeDark: string; themeLight: string; symbolPreset: string }>
+    setAppearance(a: { themeDark: string; themeLight: string; symbolPreset: string }): Promise<{ ok: boolean }>
+  }
   terminal: {
     start(options?: TerminalStartOptions): Promise<TerminalStartResult>
     input(data: string): Promise<void>
@@ -403,7 +409,7 @@ const api: PiDesktopAPI = {
     getMessages: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_MESSAGES),
     getStats: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_STATS),
     getLiveTurn: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_LIVE_TURN, runtimeId),
-    setName: (name) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SET_NAME, name),
+    setName: (name, sessionPath) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SET_NAME, name, sessionPath),
     exportHtml: (outputPath) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_EXPORT_HTML, outputPath),
     getForkMessages: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_FORK_MESSAGES),
     getLineage: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_GET_LINEAGE),
@@ -606,6 +612,12 @@ const api: PiDesktopAPI = {
     },
   },
 
+  omp: {
+    getLabels: () => ipcRenderer.invoke('omp:labels:get'),
+    rebuildLabels: (kernel: string) => ipcRenderer.invoke('omp:labels:rebuild', kernel),
+    getAppearance: () => ipcRenderer.invoke('omp:appearance:get'),
+    setAppearance: (a) => ipcRenderer.invoke('omp:appearance:set', a),
+  },
   terminal: {
     start: (options) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_START, options),
     input: (data) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_INPUT, data),

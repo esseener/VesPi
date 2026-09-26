@@ -1,5 +1,6 @@
 import type { AppSettings } from './ipc-contracts'
 import { DEFAULT_COUNCIL_CONFIG } from './council-config'
+import { DEFAULT_INTERACTION_MODES } from './interaction-modes'
 import { DEFAULT_SIDEBAR_WIDTH } from './sidebar-width'
 import { VESPI_PRIVATE_OMP_REL } from './vespi'
 import { DEFAULT_LANGUAGE } from './i18n'
@@ -15,16 +16,22 @@ export const DEFAULT_SETTINGS: AppSettings = {
   piEngine: 'omp',
   defaultArgs: [],
   theme: 'dark',
+  ompThemeDark: 'anthracite',
+  ompSymbolPreset: 'unicode' as const,
+  ompThinkingLevel: 'high' as const,
   language: DEFAULT_LANGUAGE,
   defaultModel: null,
 
   defaultProvider: null,
   defaultCwd: null,
   fontSize: 16,
-  terminalFontSize: 12,
+  terminalFontSize: 14,
   codeEditorFontSize: 14,
   showThinking: true,
   autoScroll: true,
+  // The kernel's own defaults — see shared/interaction-modes.ts for why they
+  // are re-declared here rather than read back from it.
+  ...DEFAULT_INTERACTION_MODES,
   permissionMode: 'ask-edits',
   permissionRulesAckWorkspaces: [],
   resumeLastSession: true,
