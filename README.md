@@ -6,161 +6,193 @@
 </p>
 
 <p align="center">
-  <b>Windows 上的 OMP 桌面客户端</b><br>
-  把 Oh My Pi 的完整执行能力，收进一个可监督的窗口
+  <b>Windows 上的 OMP 桌面外壳</b><br>
+  终端优先 · 多工作区 · 中文 TUI · 设置直达 OMP 配置
 </p>
 
 <p align="center">
-  <a href="https://github.com/esseener/VesPi/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/esseener/VesPi?color=7c6ff7"></a>
-  <a href="https://github.com/esseener/VesPi/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/esseener/VesPi/total?color=7c6ff7"></a>
+  <a href="https://github.com/esseener/VesPi/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/esseener/VesPi?color=e8734a"></a>
+  <a href="https://github.com/esseener/VesPi/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/esseener/VesPi/total?color=e8734a"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D6">
-  <img alt="kernel" src="https://img.shields.io/badge/kernel-Oh%20My%20Pi-111111">
+  <img alt="kernel" src="https://img.shields.io/badge/kernel-OMP%2018.3.2-111111">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
 </p>
 
 <p align="center">
   <a href="https://esseener.github.io/VesPi/">官网</a> ·
   <a href="#下载与安装">下载</a> ·
+  <a href="#产品形态">产品形态</a> ·
   <a href="#功能">功能</a> ·
   <a href="#常见问题">常见问题</a> ·
-  <a href="#从源码构建">从源码构建</a> ·
-  <a href="CONTRIBUTING.md">参与贡献</a>
+  <a href="#从源码构建">从源码构建</a>
 </p>
 
 ---
 
 ## 简介
 
-VesPi 是 Windows 上的 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 桌面客户端。
-会话、Diff、终端、权限、模型与设置集中在同一个窗口，**内核随安装包一并交付** —— 安装后选择
-工作区、配置模型，即可开始工作。
+**VesPi** 是 **[Oh My Pi（OMP）](https://github.com/can1357/oh-my-pi)** 的 Windows 桌面外壳。
 
-它**不是**网页套壳，不是终端界面的像素复制，也不自带第二套 Agent 实现：Agent 循环、工具、
-子代理与会话始终由 OMP 负责，VesPi 负责界面、权限审批与进程治理。
+这一代产品**彻底改版**：界面从「聊天面板 + 侧栏」收敛为 **设置 + 工作区分类 + 终端**。
+真正的 Agent 交互发生在终端里的 **OMP TUI**；GUI 不再扮演第二套聊天界面，只负责
+窗口管理、工作区切换、配置写入与中文显示层。
 
 | | |
 |---|---|
-| 内核 | 私有 `omp.exe`，以 `--profile vespi --mode rpc-ui` 启动，版本随应用锁定 |
-| 运行时依赖 | **无**。不需要 Node、Bun，也不需要 PATH 上有 `omp` |
-| 会话位置 | `~/.omp/profiles/VesPi/agent/sessions` |
-| 数据 | 会话、用量统计与配置保存在本机，不上传 |
+| 主交互面 | 终端内嵌 `omp --profile vespi` TUI（完整能力） |
+| GUI 职责 | 工作区标签、会话索引、设置（写入 OMP profile）、主题与字号 |
+| 内核 | 随安装包交付的 `omp.exe`（当前 **18.3.2**），不读全局 PATH |
+| 运行时依赖 | **无**。不需要 Node、Bun |
+| 会话位置 | `~/.omp/profiles/vespi/agent/sessions` |
+| 配置位置 | `~/.omp/profiles/vespi/agent/config.yml`（GUI 与 TUI 共用） |
+
+**OMP 是能力真源。** 工具、子代理、会话、斜杠命令全部由 TUI 提供；VesPi 的按钮
+尽量驱动同一套 OMP 语义（`/new`、`/resume`、`/rename`、`config.yml`）。
+
+## 产品形态
+
+```text
+┌─────────────────────────────────────────────┐
+│  工作区标签   src │ 项目A │ 项目B │  +      │
+├──────────┬──────────────────────────────────┤
+│ 会话列表  │                                  │
+│ 项目树    │        OMP TUI（终端）           │
+│ 设置/诊断 │   欢迎页 · 对话 · 工具 · 框线    │
+│          │                                  │
+│          │   π > ● model ▸ path ▸ git       │
+└──────────┴──────────────────────────────────┘
+```
+
+- **顶栏** = 多工作区切换（每个工作区独立 cwd / 会话索引）
+- **中央** = 终端，直接跑 OMP TUI，不是伪终端聊天
+- **侧栏** = 会话、文件、设置、诊断等入口
+- **设置** = 写入 OMP profile（主题、符号、思考等级、模型）
 
 ## 界面
 
 <p align="center">
-  <img src="docs/screenshots/vespi-home.png" width="720" alt="VesPi 首页：用量看板与最近工作区">
+  <img src="docs/screenshots/vespi-main.png" width="720" alt="VesPi 主界面：工作区、会话条与 OMP 终端">
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/vespi-settings.png" width="47%" alt="VesPi 设置：外观、字体与权限">
-  <img src="docs/screenshots/vespi-settings-models.png" width="47%" alt="VesPi 设置：模型供应商与自定义模型">
+  <img src="docs/screenshots/vespi-terminal.png" width="47%" alt="OMP TUI 欢迎页与直角框线">
+  <img src="docs/screenshots/vespi-chat.png" width="47%" alt="OMP TUI 对话、工具输出与中文显示层">
 </p>
 
 ## 功能
 
-**Agent 执行**
+**终端优先**
 
-- 流式回答，思考过程默认折叠，需要时点开查看
-- 工具调用逐条成卡，显示执行状态、耗时与输出，连续调用自动归组
-- 目标模式：跨多轮的任务交给一个持续目标，进度与 Token 消耗实时可见
-- 子代理并行执行，进度汇总在输入框上方
+- 完整 PTY 内嵌 OMP TUI，ANSI 真彩色、框线、滚动齐全
+- 中文显示层：TUI 英文界面覆盖为中文（等宽替换，不撑歪框线）
+- 圆角框规范为直角，灰字对比度提升，字号/行高按 DPI 校准
+- 内核更新后自动重启终端并刷新译包
 
-**会话与并行**
+**工作区与会话**
 
-- 每个会话独占一个内核进程，切换到其他项目不会中断当前任务
-- Mission Control 总览所有工作区正在运行的会话
-- 新任务可投递到后台会话，需要隔离时为它单独开一个 Git Worktree
-- 分叉、克隆、重命名、标签、搜索与归档
+- 多工作区标签，切换即换 cwd 并重启 TUI
+- 侧栏会话列表与 OMP 会话存储同步
+- 「新建会话」→ 终端 `/new`；打开会话 → `/resume`；重命名 → `session_info` + `/rename`
+- 删除当前会话后 TUI 自动开新会话
 
-**审查与权限**
+**设置 = OMP 配置**
 
-- 文件写入与命令执行可逐次审批，也可按工具、按目录设置放行规则
-- Diff 在对话内呈现，逐文件查看
-- Review 栏汇总改动文件、权限请求与会话状态
-- 未标记信任的仓库只能收紧权限，不能放宽
+| GUI | 写入 |
+|-----|------|
+| OMP 主题 | `theme.dark`（anthracite / titanium / …） |
+| 符号集 | `symbolPreset` |
+| 默认思考等级 | `thinking.defaultLevel` |
+| 选择模型 | `modelRoles.default` + TUI `/model` |
+| 思考等级 | `thinking.defaultLevel` + TUI `/thinking` |
 
-**开发工具**
+配置为**合并写入**，不覆盖无关字段。GUI 自己的字号、语言、主题仍属 VesPi 外壳。
 
-- 文件树与文件搜索；代码、图片、PDF、HTML 内嵌预览
-- CodeMirror 6 编辑器，多语言语法高亮
-- 集成终端（完整 PTY，支持 ANSI 颜色）
-- 内嵌浏览器面板，Agent 可直接操作页面，过程同步可见
+**外观**
 
-**模型与维护**
+- Anthracite 深色为主，墨色底 + 橙强调色
+- 终端透明底，透出窗口网格；自定义滚动条
+- 灰色/半亮文字对比度强制达标（可读）
 
-- 多供应商接入，随时切换模型与思考等级
-- 技能与工具扩展管理，支持接入 MCP 服务
-- 用量看板：消息数、Token、活跃天数与模型占比，实时更新
-- 应用内更新：界面与内核分别升级，覆盖安装保留会话与配置
+**维护**
+
+- 界面与内核双通道更新（GitHub Releases）
+- 内核锁定 `resources/omp-runtime-lock.json`，打包前校验
+- 会话、配置、用量统计仅存本机
+
+## 中文层说明
+
+OMP TUI 由内核绘制，GUI **不能改它的排版**，只能在输出流上做覆盖翻译：
+
+- 等宽替换（中文双宽补空格），保证框线列对齐
+- 词边界匹配，避免 `Updated` → `更新d`
+- 轮换 Tip 按片段汉化
+- 动态内容（模型名、路径、版本号）保留原文
+
+要做到整屏无英文，需 OMP 内核自带 i18n。当前中文层是**实用近似**，不是官方本地化。
 
 ## 下载与安装
 
-前往 **[Releases](https://github.com/esseener/VesPi/releases/latest)** 下载最新安装包：
+前往 **[Releases](https://github.com/esseener/VesPi/releases/latest)** 下载：
 
 ```
 VesPi-Setup-<version>-win-x64.exe
 ```
 
-按提示完成安装，启动后在首页选择工作区、配置模型供应商，然后输入任务。
+安装后启动：选工作区 → 配置模型 → 在终端里和 OMP 对话。
 
-> **关于安全提示**：当前构建未做代码签名，首次运行 Windows SmartScreen 会给出提示，
-> 选择「更多信息」→「仍要运行」即可。安装包附有 `SHA256SUMS.txt`，可校验完整性；
-> 也可以直接从源码构建。
+> **安全提示**：当前构建未做代码签名。SmartScreen 选「更多信息」→「仍要运行」。
+> 安装包附 `SHA256SUMS.txt`，可校验完整性。
 
 ## 系统要求
 
 | | |
 |---|---|
 | 操作系统 | Windows 10 / 11（x64） |
-| 磁盘空间 | 约 500 MB |
-| 运行时 | 无需预装任何运行时或全局命令行工具 |
-| 网络 | 首次使用需配置模型供应商；更新从 GitHub 获取 |
+| 磁盘空间 | 约 600 MB |
+| 运行时 | 无需预装 |
+| 显示 | 建议 100% 缩放以获得最直的 TUI 框线 |
 
 ## 常见问题
 
-**需要先安装 Node、Bun 或 OMP 吗？**
-不需要。内核随安装包交付，不写入 PATH，也不读取全局安装的 `omp`。
+**为什么主界面是终端，不是聊天窗？**  
+OMP 的完整能力在 TUI 里（工具、子代理、斜杠命令、权限）。GUI 只做窗口与配置，避免两套逻辑打架。
 
-**内核可以自行替换吗？**
-内核版本随应用锁定，避免与界面版本错配；升级通过应用内更新完成，无需手动替换文件。
+**GUI 按钮会驱动 OMP 吗？**  
+会话新建/打开/重命名/删除、模型与思考、OMP 主题会写入 profile 或注入 TUI 命令。
+Git 传送带是本地 `git`（界面已标注「不经 agent」）。
 
-**会自动修改我的项目或系统环境吗？**
-不会。所有文件写入与命令执行都在权限审批之下，可按工具与目录配置规则。
+**需要预装 OMP / Node 吗？**  
+不需要。内核随安装包交付，不写 PATH。
 
-**数据存放在哪里？**
-会话、用量统计与配置都在本机用户目录，不会上传。删除会话后历史统计仍会保留。
+**数据在哪？**  
+`~/.omp/profiles/vespi/`，全部本机。
 
-**怎么更新？会丢配置吗？**
-应用内检查并下载更新，界面与内核分别升级；覆盖安装会保留会话记录与配置。
-
-**有 Windows 以外的版本吗？**
-当前正式支持 Windows x64。其他平台需要对应的内核构建后再行支持。
+**终端框线不直？**  
+请将 Windows 显示缩放设为 100%。字号与行高已按整像素校准。
 
 ## 从源码构建
 
-需要 Node.js 22 或更高版本。
+需要 Node.js 22+。
 
 ```bash
 git clone https://github.com/esseener/VesPi.git
 cd VesPi
 npm install
-npm run dev                # 开发模式
-npm run check              # 类型检查 + lint + 测试 + 发布一致性 + 构建
-npm run package:win:nsis   # 生成 Windows 安装包
+npm run dev
+npm run check              # typecheck + lint + test + 发布一致性 + build
+npm run package:win:nsis   # Windows 安装包
 ```
 
-内核不在版本库中：构建与打包脚本会按 `resources/omp-runtime-lock.json` 声明的版本与
-SHA-256 准备并校验内核，产物输出到 `release/`。
+内核不在仓库中：按 `resources/omp-runtime-lock.json` 下载并校验。
 
 ## 参与贡献
 
-欢迎提交 Issue 与 Pull Request。请先阅读 [CONTRIBUTING.md](CONTRIBUTING.md)（含
-[CLA](CLA.md) 说明）；安全相关问题的反馈方式见 [.github/SUPPORT.md](.github/SUPPORT.md)。
+Issue / PR 欢迎。见 [CONTRIBUTING.md](CONTRIBUTING.md)；安全问题见 [.github/SUPPORT.md](.github/SUPPORT.md)。
 
 ## 许可证
 
-Apache-2.0，见 [LICENSE](LICENSE)。本项目包含源自上游 Apache-2.0 项目的桌面界面代码，
-其版权与许可声明见 [NOTICE](NOTICE)；Agent 执行由 [oh-my-pi](https://github.com/can1357/oh-my-pi) 提供。
+Apache-2.0，见 [LICENSE](LICENSE)。桌面界面部分源自上游 Apache-2.0 项目，见 [NOTICE](NOTICE)。
+Agent 执行由 [oh-my-pi](https://github.com/can1357/oh-my-pi) 提供。捆绑 [Laya](https://github.com/NandhaKishorM/laya)（Apache-2.0）用于译名决策。
 
 ---
 
@@ -169,36 +201,18 @@ Apache-2.0，见 [LICENSE](LICENSE)。本项目包含源自上游 Apache-2.0 项
 
 <br>
 
-**VesPi** is the Windows desktop client for the **[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi)**
-coding agent. Chat, Diff, terminal, permissions, models and settings live in one window, and the
-kernel ships inside the installer — no Node, no Bun, no global `omp` on PATH.
+**VesPi** is the Windows desktop shell for the **[Oh My Pi (OMP)](https://github.com/can1357/oh-my-pi)**
+agent kernel. This generation is a **full redesign**: the UI is now **settings + workspaces + terminal**.
+The real agent surface is the **OMP TUI inside the terminal**; the GUI manages windows, workspaces,
+and writes OMP profile config.
 
-VesPi is not a web wrapper, not a pixel copy of the terminal UI, and not a second agent harness:
-the agent loop, tools, subagents and sessions stay with OMP. VesPi provides the interface, the
-permission gate and process management.
+- **Terminal-first** — full PTY hosting `omp --profile vespi`, Chinese display overlay, square boxes
+- **Workspaces** — tab strip, per-workspace cwd and session index
+- **Settings → OMP** — `theme.dark`, `symbolPreset`, `thinking.defaultLevel`, `modelRoles.default`
+- **Sessions** — `/new`, `/resume`, `/rename` drive the OMP session store
+- **Kernel** — ships in the installer (18.3.2), never a global `omp`
 
-- **Agent** — streaming replies with collapsible thinking, per-call tool cards, goal mode with live
-  progress, parallel subagents
-- **Sessions** — one kernel process per session, Mission Control across workspaces, background
-  sessions with optional Git worktrees, fork / clone / tag / search / archive
-- **Review** — per-call approval with per-tool and per-directory rules, in-chat diffs, review rail,
-  workspace trust that can only tighten
-- **Tools** — file tree and search, inline previews (code, image, PDF, HTML), CodeMirror 6 editor,
-  a full PTY terminal, and an embedded browser the agent can drive
-- **Models** — multiple providers, switchable models and thinking levels, skills, MCP servers
-- **Maintenance** — live usage dashboard, in-app updates for both the shell and the kernel
-
-Download the latest `VesPi-Setup-<version>-win-x64.exe` from
-[Releases](https://github.com/esseener/VesPi/releases/latest). The current build is unsigned;
-Windows SmartScreen will prompt once — see the note above.
-
-Build from source with Node.js 22+:
-
-```bash
-npm install && npm run dev
-```
-
-Licensed under Apache-2.0. See [NOTICE](NOTICE) for the upstream attribution of the desktop
-UI code.
+Download `VesPi-Setup-<version>-win-x64.exe` from
+[Releases](https://github.com/esseener/VesPi/releases/latest). Apache-2.0.
 
 </details>
