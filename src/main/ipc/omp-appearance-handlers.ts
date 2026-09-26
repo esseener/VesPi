@@ -5,8 +5,11 @@ import {
   type OmpAppearance,
 } from '../../shared/omp-appearance'
 import { patchOmpProfileConfig, ompAgentConfigPath } from '../omp-profile-config'
+import type { IpcContext } from './context'
 
-export function registerOmpAppearanceHandlers(ipcMain: IpcMain): void {
+export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext): void {
+  const { terminalService } = ctx
+
   ipcMain.handle('omp:appearance:get', async () => {
     try {
       const text = await readFile(ompAgentConfigPath(), 'utf-8')
@@ -24,6 +27,13 @@ export function registerOmpAppearanceHandlers(ipcMain: IpcMain): void {
       symbolPreset: appearance.symbolPreset,
       thinkingLevel: appearance.thinkingLevel,
     })
+    // OMP TUI reads theme at spawn. Restart the PTY so the change is visible
+    // immediately instead of requiring a manual terminal toggle.
+    try {
+      await terminalService.restart()
+    } catch {
+      /* terminal may not be running */
+    }
     return { ok: true }
   })
 }

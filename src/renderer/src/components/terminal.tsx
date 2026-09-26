@@ -8,6 +8,8 @@ import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { translateTerminalChunk } from '../../../shared/omp-labels'
 import { clsx } from 'clsx'
+import { Copy, ClipboardPaste, TextSelect } from 'lucide-react'
+import { useContextMenu } from './context-menu'
 
 // Build the xterm color theme from the active app theme's CSS variables so the
 // terminal matches whichever theme (dark/light/nord/gruvbox/breeze) is applied.
@@ -53,6 +55,7 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
   const terminalOpen = useAppStore((state) => state.terminalOpen)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const theme = useAppStore((state) => state.settings?.theme)
+  const { show: showMenu, ContextMenuComponent } = useContextMenu()
 
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
@@ -106,6 +109,21 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
         useAppStore.getState().settings?.terminalFontSize ??
         DEFAULT_SETTINGS.terminalFontSize,
       theme: buildTerminalTheme(),
+    })
+    // Ctrl+V / Ctrl+Shift+V paste into the PTY (right-click menu does the same).
+    terminal.attachCustomKeyEventHandler((ev) => {
+      if (ev.type !== 'keydown') return true
+      const key = ev.key.toLowerCase()
+      if ((ev.ctrlKey || ev.metaKey) && key === 'v' && !ev.shiftKey) {
+        void navigator.clipboard
+          .readText()
+          .then((text) => {
+            if (text) terminal.paste(text)
+          })
+          .catch(() => undefined)
+        return false
+      }
+      return true
     })
     const fit = new FitAddon()
     terminal.loadAddon(fit)
@@ -190,14 +208,59 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
 
   if (!terminalOpen) return null
 
+  const onContextMenu = (e: React.MouseEvent): void => {
+    const term = terminalRef.current
+    if (!term) return
+    const selection = term.getSelection()
+    const lang =
+      useAppStore.getState().settingsDraft.language ??
+      useAppStore.getState().settings?.language ??
+      DEFAULT_LANGUAGE
+    showMenu(e, [
+      {
+        id: 'copy',
+        label: t(lang, selection ? 'copySelection' : 'copy'),
+        icon: <Copy size={14} />,
+        shortcut: 'Ctrl+Shift+C',
+        disabled: !selection,
+        action: () => {
+          if (selection) void navigator.clipboard.writeText(selection).catch(() => undefined)
+        },
+      },
+      {
+        id: 'paste',
+        label: t(lang, 'paste'),
+        icon: <ClipboardPaste size={14} />,
+        shortcut: 'Ctrl+V',
+        action: () => {
+          void navigator.clipboard
+            .readText()
+            .then((text) => {
+              if (text && terminalRef.current) terminalRef.current.paste(text)
+            })
+            .catch(() => undefined)
+        },
+      },
+      {
+        id: 'select-all',
+        label: t(lang, 'selectAll'),
+        icon: <TextSelect size={14} />,
+        shortcut: 'Ctrl+A',
+        action: () => terminalRef.current?.selectAll(),
+      },
+    ])
+  }
+
   // Main-column terminal: fills the chat center. No title bar — the top
   // workspace tabs already name the context; clear/close live in the status bar.
   return (
     <div
       data-main-terminal
       className={clsx('flex min-h-0 flex-1 flex-col bg-transparent', className)}
+      onContextMenu={onContextMenu}
     >
       <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 pt-2 pb-12" />
+      {ContextMenuComponent}
     </div>
   )
 }

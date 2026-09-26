@@ -406,7 +406,7 @@ export function SettingsPanel(): React.JSX.Element {
     const ok = await useAppStore.getState().requestConfirm({
       title: 'Delete theme',
       message: `Delete theme "${themeName}"? This cannot be undone.`,
-      confirmLabel: 'Delete',
+      confirmLabel: t(language, 'delete'),
       danger: true,
     })
     if (!ok) return
@@ -465,7 +465,7 @@ export function SettingsPanel(): React.JSX.Element {
       title: 'Remove workspace rules',
       message:
         'Delete this workspace\'s .pi-desktop/permission-rules.json? Global permission rules will apply again.',
-      confirmLabel: 'Remove',
+      confirmLabel: t(language, 'remove'),
       danger: true,
     })
     if (!confirmed) return
@@ -767,21 +767,24 @@ export function SettingsPanel(): React.JSX.Element {
         </SettingsSection>
 
 
-        <SettingsSection title="OMP">
+        <SettingsSection title={t(language, 'ompSection')}>
           <div className="mb-2 text-xs text-dim">
-            写入 <code>~/.omp/profiles/vespi/agent/config.yml</code>，终端 TUI 与 GUI 共用
+            {t(language, 'ompSectionHint')} <code>~/.omp/profiles/vespi/agent/config.yml</code>
           </div>
-          <SettingsRow label="OMP 主题" description="theme.dark — 终端 TUI 配色（anthracite / titanium…）">
+          <SettingsRow label={t(language, 'ompTheme')} description={t(language, 'ompThemeHint')}>
             <ThemedSelect
               value={(settings?.ompThemeDark ?? draft0.ompThemeDark ?? 'anthracite') as string}
               onChange={(v) => {
                 void persistOmpAppearance({ themeDark: v })
                 persistSettingPatch({ ompThemeDark: v })
               }}
-              options={OMP_DARK_THEMES.map((id) => ({ value: id, label: id }))}
+              options={OMP_DARK_THEMES.map((id) => ({
+                value: id,
+                label: t(language, `theme${id.charAt(0).toUpperCase()}${id.slice(1)}` as never) || id,
+              }))}
             />
           </SettingsRow>
-          <SettingsRow label="符号集" description="symbolPreset — unicode / nerd / ascii">
+          <SettingsRow label={t(language, 'ompSymbolPreset')} description={t(language, 'ompSymbolPresetHint')}>
             <ThemedSelect
               value={(settings?.ompSymbolPreset ?? 'unicode') as string}
               onChange={(v) => {
@@ -789,13 +792,13 @@ export function SettingsPanel(): React.JSX.Element {
                 persistSettingPatch({ ompSymbolPreset: v as 'unicode' | 'nerd' | 'ascii' })
               }}
               options={[
-                { value: 'unicode', label: 'unicode' },
-                { value: 'nerd', label: 'nerd' },
-                { value: 'ascii', label: 'ascii' },
+                { value: 'unicode', label: t(language, 'symbolUnicode') },
+                { value: 'nerd', label: t(language, 'symbolNerd') },
+                { value: 'ascii', label: t(language, 'symbolAscii') },
               ]}
             />
           </SettingsRow>
-          <SettingsRow label="默认思考等级" description="thinking.defaultLevel — 新会话的默认思考强度">
+          <SettingsRow label={t(language, 'ompThinkingDefault')} description={t(language, 'ompThinkingDefaultHint')}>
             <ThemedSelect
               value={(settings?.ompThinkingLevel ?? 'high') as string}
               onChange={(v) => {
@@ -803,12 +806,12 @@ export function SettingsPanel(): React.JSX.Element {
                 persistSettingPatch({ ompThinkingLevel: v as 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' })
               }}
               options={[
-                { value: 'off', label: 'off' },
-                { value: 'minimal', label: 'minimal' },
-                { value: 'low', label: 'low' },
-                { value: 'medium', label: 'medium' },
-                { value: 'high', label: 'high' },
-                { value: 'xhigh', label: 'xhigh' },
+                { value: 'off', label: t(language, 'thinkingOff') },
+                { value: 'minimal', label: t(language, 'thinkingMinimal') },
+                { value: 'low', label: t(language, 'thinkingLow') },
+                { value: 'medium', label: t(language, 'thinkingMedium') },
+                { value: 'high', label: t(language, 'thinkingHigh') },
+                { value: 'xhigh', label: t(language, 'thinkingXhigh') },
               ]}
             />
           </SettingsRow>

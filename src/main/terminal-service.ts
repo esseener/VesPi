@@ -51,6 +51,11 @@ export class TerminalService {
   private terminal: IPty | null = null
   private disposables: { dispose(): void }[] = []
   private cwd = os.homedir()
+  private lastStart: {
+    options: TerminalStartOptions
+    onData: TerminalDataHandler
+    onExit: TerminalExitHandler
+  } | null = null
 
   async start(
     options: TerminalStartOptions,
@@ -58,6 +63,7 @@ export class TerminalService {
     onExit: TerminalExitHandler
   ): Promise<TerminalStartResult> {
     this.stop()
+    this.lastStart = { options, onData, onExit }
 
     const shell = getShell()
     const cwd = getCwd(options.cwd)
@@ -116,6 +122,16 @@ export class TerminalService {
 
   write(data: string): void {
     this.terminal?.write(data)
+  }
+
+  /**
+   * Restart the PTY with the previous start options (cwd / size / handlers).
+   * Used after OMP profile config changes so the TUI re-reads theme etc.
+   */
+  async restart(): Promise<TerminalStartResult | null> {
+    if (!this.lastStart) return null
+    const { options, onData, onExit } = this.lastStart
+    return this.start(options, onData, onExit)
   }
 
   resize(cols: number, rows: number): void {

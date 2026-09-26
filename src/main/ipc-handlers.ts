@@ -61,7 +61,7 @@ export function registerIpcHandlers(
   registerWorkspaceHandlers(ctx)
   registerPackageHandlers(ctx)
   registerSkillsMcpHandlers(ctx)
-  registerOmpAppearanceHandlers(ipcMain)
+  registerOmpAppearanceHandlers(ipcMain, ctx)
   registerOmpLabelPackHandlers(ipcMain)
   registerModelsConfigHandlers()
   registerCouncilHandlers(ctx)
