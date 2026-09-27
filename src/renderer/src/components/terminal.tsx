@@ -79,15 +79,16 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
   const terminalRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
 
-  // 内核更新完成后重启终端，换用新 omp.exe / 新译包
+  // Kernel swap: restart the local TUI onto the new omp.exe. Stay on chat —
+  // do not bounce to Home; resume keeps the conversation if any.
   useEffect(() => {
     const off = window.piDesktop.updates.onKernelProgress((p) => {
       if (p.phase === 'done') {
-        window.piDesktop.terminal.stop()
-        // 重新 start 会由 terminalOpen 的 effect 完成；这里只停掉旧 PTY
-        setTimeout(() => {
-          window.location.reload()
-        }, 400)
+        const path = useAppStore.getState().sessionState?.sessionFile ?? undefined
+        void window.piDesktop.terminal.restart(path).then(() => {
+          void useAppStore.getState().refreshSessionList()
+          void useAppStore.getState().checkForUpdates({ automatic: false })
+        })
       }
     })
     return off

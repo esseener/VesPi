@@ -344,6 +344,7 @@ interface PiDesktopAPI {
     onData(callback: (data: string) => void): () => void
     onExit(callback: (event: TerminalExitEvent) => void): () => void
     onRestarted(callback: (info: { resumed: boolean }) => void): () => void
+    restart(resumeSessionPath?: string): Promise<{ ok: boolean }>
   }
 
   // Extension UI responses
@@ -626,6 +627,8 @@ const api: PiDesktopAPI = {
     input: (data) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_INPUT, data),
     resize: (cols, rows) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, { cols, rows }),
     stop: () => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_STOP),
+    restart: (resumeSessionPath?: string) =>
+      ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESTART, resumeSessionPath),
     onData: (callback) => {
       const handler = (_event: Electron.IpcRendererEvent, data: string) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.EVENT_TERMINAL_DATA, handler)

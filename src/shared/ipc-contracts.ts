@@ -179,6 +179,8 @@ export const IPC_CHANNELS = {
   TERMINAL_INPUT: 'terminal:input',
   TERMINAL_RESIZE: 'terminal:resize',
   TERMINAL_STOP: 'terminal:stop',
+  /** Restart the PTY (kernel swap / config) keeping cwd and handlers. */
+  TERMINAL_RESTART: 'terminal:restart',
 
   // Session tags
   TAG_GET: 'tag:get',

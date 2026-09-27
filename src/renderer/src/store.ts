@@ -3819,9 +3819,31 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           totalBytes: 0,
           version: result.version,
         },
+        // Reflect the new kernel immediately so About / banner agree before
+        // the next full check lands.
+        updateInfo: get().updateInfo
+          ? {
+              ...get().updateInfo!,
+              kernel: {
+                ...get().updateInfo!.kernel,
+                currentVersion: result.version,
+                updateAvailable: false,
+                checkError: undefined,
+              },
+            }
+          : get().updateInfo,
       })
       await get().checkForUpdates()
       if (get().piStatus === 'running') await get().restartPi()
+      // Local TUI must pick up the new omp.exe — no full page reload (that
+      // dropped the user back at Home and left stale session chrome).
+      try {
+        const path = get().sessionState?.sessionFile ?? undefined
+        await window.piDesktop.terminal.restart(path)
+      } catch {
+        /* terminal closed */
+      }
+      await get().refreshSessionList()
       set({
         kernelUpdateProgress: {
           phase: 'done',

@@ -38,4 +38,11 @@ export function registerTerminalHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.TERMINAL_STOP, async () => {
     terminalService.stop()
   })
+
+  ipcMain.handle(IPC_CHANNELS.TERMINAL_RESTART, async (_event, resumeSessionPath?: unknown) => {
+    const path = typeof resumeSessionPath === 'string' && resumeSessionPath ? resumeSessionPath : null
+    const result = await terminalService.restart({ resumeSessionPath: path })
+    broadcast(IPC_CHANNELS.EVENT_TERMINAL_RESTARTED, { resumed: Boolean(path) })
+    return { ok: Boolean(result) }
+  })
 }
