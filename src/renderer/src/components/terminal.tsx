@@ -51,6 +51,21 @@ function buildTerminalTheme(): ITheme {
   }
 }
 
+/** Paste OS clipboard into the TUI: images as a file path, text as bracketed paste. */
+async function pasteClipboardToTerminal(terminal: XTerm): Promise<void> {
+  try {
+    const clip = await window.piDesktop.system.paste()
+    if (clip.kind === 'image') {
+      // OMP/agents read the PNG by path (same as a screenshot attachment).
+      terminal.paste(clip.path)
+    } else if (clip.text) {
+      terminal.paste(clip.text)
+    }
+  } catch {
+    /* clipboard unavailable */
+  }
+}
+
 export function TerminalPanel({ className }: { className?: string } = {}): React.JSX.Element | null {
   const terminalOpen = useAppStore((state) => state.terminalOpen)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
@@ -114,16 +129,12 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
       theme: buildTerminalTheme(),
     })
     // Ctrl+V / Ctrl+Shift+V paste into the PTY (right-click menu does the same).
+    // Screenshots go out as a file path the agent can read; text is bracketed paste.
     terminal.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
       const key = ev.key.toLowerCase()
       if ((ev.ctrlKey || ev.metaKey) && key === 'v' && !ev.shiftKey) {
-        void navigator.clipboard
-          .readText()
-          .then((text) => {
-            if (text) terminal.paste(text)
-          })
-          .catch(() => undefined)
+        void pasteClipboardToTerminal(terminal)
         return false
       }
       return true
@@ -257,12 +268,8 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
         icon: <ClipboardPaste size={14} />,
         shortcut: 'Ctrl+V',
         action: () => {
-          void navigator.clipboard
-            .readText()
-            .then((text) => {
-              if (text && terminalRef.current) terminalRef.current.paste(text)
-            })
-            .catch(() => undefined)
+          const term = terminalRef.current
+          if (term) void pasteClipboardToTerminal(term)
         },
       },
       {

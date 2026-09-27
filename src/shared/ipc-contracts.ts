@@ -93,6 +93,8 @@ export const IPC_CHANNELS = {
   SYSTEM_OPEN_EXTERNAL: 'system:open-external',
   SYSTEM_REVEAL_PATH: 'system:reveal-path',
   SYSTEM_OPEN_TRASH: 'system:open-trash',
+  /** Read OS clipboard for paste: text and/or screenshot image. */
+  SYSTEM_PASTE: 'system:paste',
   SYSTEM_GET_VERSION: 'system:get-version',
   SYSTEM_WINDOW_MINIMIZE: 'system:window-minimize',
   SYSTEM_WINDOW_TOGGLE_MAXIMIZE: 'system:window-toggle-maximize',

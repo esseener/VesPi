@@ -284,6 +284,7 @@ interface PiDesktopAPI {
     revealPath(path: string): Promise<void>
     /** Open the OS Recycle Bin / Trash. Deleted sessions land there. */
     openTrash(): Promise<void>
+    paste(): Promise<{ kind: 'text'; text: string } | { kind: 'image'; path: string }>
     getVersion(): Promise<string>
     minimizeWindow(): Promise<void>
     toggleMaximizeWindow(): Promise<boolean>
@@ -570,6 +571,7 @@ const api: PiDesktopAPI = {
     openExternal: (url) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_EXTERNAL, url),
     revealPath: (path) => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_REVEAL_PATH, path),
     openTrash: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_OPEN_TRASH),
+    paste: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_PASTE),
     getVersion: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_GET_VERSION),
     minimizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_MINIMIZE),
     toggleMaximizeWindow: () => ipcRenderer.invoke(IPC_CHANNELS.SYSTEM_WINDOW_TOGGLE_MAXIMIZE),
