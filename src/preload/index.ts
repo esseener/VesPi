@@ -342,6 +342,7 @@ interface PiDesktopAPI {
     stop(): Promise<void>
     onData(callback: (data: string) => void): () => void
     onExit(callback: (event: TerminalExitEvent) => void): () => void
+    onRestarted(callback: (info: { resumed: boolean }) => void): () => void
   }
 
   // Extension UI responses
@@ -632,6 +633,11 @@ const api: PiDesktopAPI = {
       const handler = (_event: Electron.IpcRendererEvent, data: TerminalExitEvent) => callback(data)
       ipcRenderer.on(IPC_CHANNELS.EVENT_TERMINAL_EXIT, handler)
       return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_TERMINAL_EXIT, handler)
+    },
+    onRestarted: (callback) => {
+      const handler = (_event: Electron.IpcRendererEvent, info: { resumed: boolean }) => callback(info)
+      ipcRenderer.on(IPC_CHANNELS.EVENT_TERMINAL_RESTARTED, handler)
+      return () => ipcRenderer.removeListener(IPC_CHANNELS.EVENT_TERMINAL_RESTARTED, handler)
     },
   },
 

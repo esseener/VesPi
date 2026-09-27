@@ -69,22 +69,22 @@ async function cloneIntoNewSession(pi: PiRpcManager): Promise<PiResponseEvent | 
 }
 
 async function deleteSessionFile(sessionPath: string): Promise<SessionDeleteResult> {
-  // The second test covers a helper that moved the file but still reported a
-  // non-zero status; the session is in the trash either way, not destroyed.
-  if (moveToTrash(sessionPath) || !existsSync(sessionPath)) {
-    return { ok: true, method: 'trash' }
-  }
-
-  try {
-    await unlink(sessionPath)
-    return { ok: true, method: 'unlink' }
-  } catch (err) {
-    return {
-      ok: false,
-      method: 'unlink',
-      error: err instanceof Error ? err.message : String(err),
+  // Windows: the TUI may still hold the jsonl for a few hundred ms after we
+  // switch away. Retry before giving up so one click is enough.
+  let lastError = ''
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    if (moveToTrash(sessionPath) || !existsSync(sessionPath)) {
+      return { ok: true, method: 'trash' }
+    }
+    try {
+      await unlink(sessionPath)
+      return { ok: true, method: 'unlink' }
+    } catch (err) {
+      lastError = err instanceof Error ? err.message : String(err)
+      await new Promise((r) => setTimeout(r, 250 * (attempt + 1)))
     }
   }
+  return { ok: false, method: 'unlink', error: lastError || 'file is locked' }
 }
 
 export function registerSessionHandlers(ctx: IpcContext): void {
@@ -313,19 +313,25 @@ export function registerSessionHandlers(ctx: IpcContext): void {
     // file, so its activity survives the deletion (see activity-stats.ts).
     activityStatsStore.captureBeforeDelete(sessionPath)
 
-    const result = await deleteSessionFile(sessionPath)
+    let result = await deleteSessionFile(sessionPath)
+    if (!result.ok) {
+      // TUI may still pin the jsonl — step off it once, then retry.
+      try {
+        terminalService.write('/new\r')
+        await new Promise((r) => setTimeout(r, 350))
+      } catch {
+        /* terminal may be closed */
+      }
+      result = await deleteSessionFile(sessionPath)
+    }
     if (result.ok) {
       const sessionId = sessionIdFromPath(sessionPath)
       // Clean up registries so deleted sessions don't accumulate stale entries
       await archivedSessions.forget(sessionId)
       await tagManager.setTags(sessionId, [])
       await tagManager.forgetAuto(sessionId)
-      // If the TUI was showing this session, drop it into a fresh one.
-      try {
-        terminalService.write('/new\r')
-      } catch {
-        /* terminal may be closed */
-      }
+      // Do NOT force /new — deleting a side session must not hijack the TUI.
+      // The renderer refreshes the list; the active session stays put.
     }
     return { ...result, replacementSessionPath: closed?.replacementSessionPath ?? null }
   })

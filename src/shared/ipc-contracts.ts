@@ -214,6 +214,8 @@ export const IPC_CHANNELS = {
   EVENT_FILE_CHANGE: 'event:file-change',
   EVENT_TERMINAL_DATA: 'event:terminal-data',
   EVENT_TERMINAL_EXIT: 'event:terminal-exit',
+  /** Local PTY restart (model/theme change) — clear + refocus xterm, stay on view. */
+  EVENT_TERMINAL_RESTARTED: 'event:terminal-restarted',
   EVENT_COUNCIL_PROGRESS: 'event:council-progress',
   // Sent when the agent acts on the embedded browser panel: the shell brings the
   // panel into view, and mounts it at `url` when the request carries one.

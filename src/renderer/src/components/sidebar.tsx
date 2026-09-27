@@ -115,6 +115,7 @@ export function Sidebar(): React.JSX.Element {
   const [renameValue, setRenameValue] = useState('')
   const renameCancelRef = useRef(false)
   const [confirmingDeletePath, setConfirmingDeletePath] = useState<string | null>(null)
+  const [deletingSessionPath, setDeletingSessionPath] = useState<string | null>(null)
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const startSessionRename = (where: 'current' | 'recent'): void => {
@@ -370,28 +371,34 @@ export function Sidebar(): React.JSX.Element {
                 <button
                   type="button"
                   onClick={() => { setConfirmingDeletePath(null); setDeleteError(null) }}
-                  className="rounded px-1.5 py-0.5 text-[11px] text-muted hover:text-primary"
+                  className="rounded px-2 py-0.5 text-[11px] text-muted hover:text-primary"
                 >
                   {t(language, 'cancel')}
                 </button>
                 <button
                   type="button"
+                  disabled={deletingSessionPath === session.path}
                   onClick={() => {
+                    if (deletingSessionPath) return
+                    setDeletingSessionPath(session.path)
+                    setDeleteError(null)
                     // Only close on success. A session still being written is
                     // locked on Windows and the delete fails — closing here made
                     // that look like it had worked while the row stayed put.
-                    void deleteSession(session).then((result) => {
-                      if (result.ok) {
-                        setConfirmingDeletePath(null)
-                        setDeleteError(null)
-                      } else {
-                        setDeleteError(result.error || t(language, 'sysDeleteError', { detail: 'unknown error' }))
-                      }
-                    })
+                    void deleteSession(session)
+                      .then((result) => {
+                        if (result.ok) {
+                          setConfirmingDeletePath(null)
+                          setDeleteError(null)
+                        } else {
+                          setDeleteError(result.error || t(language, 'sysDeleteError', { detail: 'unknown error' }))
+                        }
+                      })
+                      .finally(() => setDeletingSessionPath(null))
                   }}
-                  className="rounded-md border border-error bg-transparent px-1.5 py-0.5 text-[11px] text-error transition-colors hover:border-error-hover"
+                  className="rounded-md border border-error bg-error px-2 py-0.5 text-[11px] text-white transition-colors hover:border-error-hover disabled:opacity-60"
                 >
-                  {t(language, 'confirmRemove')}
+                  {deletingSessionPath === session.path ? '…' : t(language, 'confirmRemove')}
                 </button>
               </div>
             </div>

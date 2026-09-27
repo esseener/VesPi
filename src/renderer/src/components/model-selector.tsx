@@ -3,7 +3,7 @@ import { useAppStore } from '../store'
 import type { ModelInfo } from '../../../shared/ipc-contracts'
 import { filterModels } from '../utils/model-search'
 import { clsx } from 'clsx'
-import { Cpu, ChevronUp, Check, Loader2, Search } from 'lucide-react'
+import { Cpu, ChevronUp, ChevronDown, Check, Loader2, Search } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { thinkingSupport } from '../../../shared/thinking-levels'
 import { hasConfiguredChatModel, isProviderRetired } from '../../../shared/models-config'
@@ -11,9 +11,15 @@ import { hasConfiguredChatModel, isProviderRetired } from '../../../shared/model
 interface ModelSelectorProps {
   className?: string
   compact?: boolean
+  /** true = open upward (status bar); false = open downward (top toolbar). */
+  dropUp?: boolean
 }
 
-export function ModelSelector({ className, compact = false }: ModelSelectorProps): React.JSX.Element {
+export function ModelSelector({
+  className,
+  compact = false,
+  dropUp = true,
+}: ModelSelectorProps): React.JSX.Element {
   const sessionState = useAppStore((state) => state.sessionState)
   const setModel = useAppStore((state) => state.setModel)
   const piStatus = useAppStore((state) => state.piStatus)
@@ -83,15 +89,15 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       return
     }
     setIsOpen(true)
-    if (useAppStore.getState().piStatus === 'running') {
-      void loadModels()
-    }
+    // Always load — MODEL_LIST_AVAILABLE falls back to models.json when the
+    // GUI rpc kernel is not running (terminal-first).
+    void loadModels()
   }
 
   useEffect(() => {
-    if (!isOpen || piStatus !== 'running') return
+    if (!isOpen) return
     void loadModels()
-  }, [isOpen, piStatus, loadModels])
+  }, [isOpen, loadModels])
 
   useEffect(() => {
     if (!isOpen) return
@@ -148,14 +154,26 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
       >
         <Cpu size={10} className="shrink-0" />
         <span className="min-w-0 truncate">{fallbackLabel}</span>
-        <ChevronUp
-          size={10}
-          className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')}
-        />
+        {dropUp ? (
+          <ChevronUp
+            size={10}
+            className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')}
+          />
+        ) : (
+          <ChevronDown
+            size={10}
+            className={clsx('shrink-0 transition-transform', isOpen && 'rotate-180')}
+          />
+        )}
       </button>
 
       {isOpen && (
-        <div className="absolute bottom-full right-0 z-50 mb-1 w-72 surface-floating py-1 shadow-xl shadow-black/40 animate-fade-in">
+        <div
+          className={clsx(
+            'absolute right-0 z-50 w-72 surface-floating py-1 shadow-xl shadow-black/40 animate-fade-in',
+            dropUp ? 'bottom-full mb-1' : 'top-full mt-1',
+          )}
+        >
           {currentModel && (
             <div className="border-b border-border px-3 py-2">
               <div className="text-xs text-muted">{t(language, 'currentModel')}</div>
@@ -167,11 +185,8 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
           )}
 
           {piStatus !== 'running' && (
-            <div className="flex items-center gap-2 border-b border-border px-3 py-2 text-xs text-dim">
+            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-[10px] text-faint">
               <span className="min-w-0 flex-1">{t(language, 'startToListModels')}</span>
-              {/* The hint already tells the user the kernel has to run; leaving
-                  it without the control sent them hunting through settings for
-                  one. */}
               <button
                 type="button"
                 onClick={() => {
@@ -196,8 +211,7 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
             </button>
           )}
 
-          {piStatus === 'running' && (
-            <>
+          <>
               <div className="flex items-center gap-2 border-b border-border px-3 py-2">
                 <Search size={12} className="shrink-0 text-dim" />
                 <input
@@ -259,7 +273,6 @@ export function ModelSelector({ className, compact = false }: ModelSelectorProps
                 })}
               </div>
             </>
-          )}
         </div>
       )}
     </div>

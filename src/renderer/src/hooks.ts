@@ -706,3 +706,25 @@ export function useNotePickerShortcut(): void {
     return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 }
+
+/**
+ * Quick model switch from anywhere:
+ *   Ctrl+M / Ctrl+P — cycle to the next model (also pokes the TUI).
+ * Avoid fighting the terminal: skip when focus is in an editable field.
+ */
+export function useModelQuickSwitch(): void {
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent): void => {
+      if (e.isComposing || e.keyCode === 229) return
+      const key = e.key.toLowerCase()
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey) return
+      if (key !== 'm' && key !== 'p') return
+      const el = document.activeElement as HTMLElement | null
+      if (el && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) return
+      e.preventDefault()
+      void useAppStore.getState().cycleModel()
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+}

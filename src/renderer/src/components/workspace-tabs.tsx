@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, MessageSquarePlus, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
 import { useGlobalWorkflowOpen } from '../hooks'
-import { getSessionTitle } from '../utils/session-title'
-import { pathsEqual } from '../../../shared/path-compare'
-import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import type { Workspace } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { WindowControls } from './window-controls'
@@ -49,12 +46,9 @@ export function WorkspaceTabs(): React.JSX.Element {
   const globalWorkflowOpen = useGlobalWorkflowOpen()
   const setWorkflowPanelOpen = useAppStore((state) => state.setWorkflowPanelOpen)
   const activateWorkspace = useAppStore((state) => state.activateWorkspace)
-  const switchSession = useAppStore((state) => state.switchSession)
-  const closeSessionTab = useAppStore((state) => state.closeSessionTab)
   const removeWorkspace = useAppStore((state) => state.removeWorkspace)
   const createWorktreeTab = useAppStore((state) => state.createWorktreeTab)
-  const createNewSession = useAppStore((state) => state.createNewSession)
-  const creatingSession = useAppStore((state) => state.creatingSession)
+  const openFolderAsWorkspace = useAppStore((state) => state.openFolderAsWorkspace)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
   // Tab removal confirm. The tab strip is overflow-clipped, so the card is
@@ -102,29 +96,6 @@ export function WorkspaceTabs(): React.JSX.Element {
     () => [...workspaces].sort((a, b) => a.createdAt - b.createdAt),
     [workspaces]
   )
-  const sessionTabs = useMemo(
-    () => Object.values(sessionRuntimes)
-      .filter((runtime) => runtime.workspaceId === activeWorkspace?.id && !runtime.closed)
-      // Oldest first so a new tab appears on the right and the + button follows it.
-      .sort((a, b) => a.runtimeId.localeCompare(b.runtimeId)),
-    [activeWorkspace?.id, sessionRuntimes]
-  )
-  // OMP TUI writes session files without a GUI runtime. Surface those too so
-  // `/new` (and TUI-created sessions) appear in this strip.
-  const ompSessionTabs = useMemo(() => {
-    const bound = new Set(
-      sessionTabs.map((r) => r.sessionPath).filter(Boolean) as string[],
-    )
-    return sessionList
-      .filter((item) =>
-        item.projectPath &&
-        activeWorkspace?.path &&
-        pathsEqual(item.projectPath, activeWorkspace.path) &&
-        !bound.has(item.path),
-      )
-      .sort((a, b) => (b.lastModified ?? 0) - (a.lastModified ?? 0))
-      .slice(0, 6)
-  }, [sessionList, sessionTabs, activeWorkspace?.path])
 
   return (
     <>
@@ -220,6 +191,22 @@ export function WorkspaceTabs(): React.JSX.Element {
         )
       })}
 
+      <button
+        type="button"
+        onClick={() => {
+          void window.piDesktop.system
+            .openDialog({ title: t(language, 'openProject') })
+            .then((path: string | null) => {
+              if (path) void openFolderAsWorkspace(path)
+            })
+        }}
+        className="titlebar-no-drag flex h-7 w-7 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary"
+        title={t(language, 'openProject')}
+        aria-label={t(language, 'openProject')}
+      >
+        <FolderOpen size={12} />
+      </button>
+
       {toolsActive && (
         <div className="group flex h-7 min-w-[120px] shrink-0 items-center border-b border-accent-fg text-primary">
           <div
@@ -247,98 +234,6 @@ export function WorkspaceTabs(): React.JSX.Element {
       </div>
       <WindowControls />
     </div>
-    {activeWorkspace && (
-      <div className="flex h-8 shrink-0 items-center gap-1 overflow-x-auto border-b border-border/70 px-2">
-        <span className="mr-1 shrink-0 text-[10px] uppercase tracking-wide text-faint">{t(language, 'sessions')}</span>
-
-        {sessionTabs.map((runtime) => {
-          const session = sessionList.find((item) => runtime.sessionPath && pathsEqual(item.path, runtime.sessionPath))
-          const active = runtime.runtimeId === activeSessionRuntimeId || runtime.active
-          return (
-            <div
-              key={runtime.runtimeId}
-              onAuxClick={(event) => {
-                if (event.button !== 1) return
-                event.preventDefault()
-                void closeSessionTab(runtime.runtimeId)
-              }}
-              className={clsx(
-                'group flex min-w-0 max-w-[240px] shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-[11px] transition-colors',
-                active ? 'bg-card text-primary' : 'text-muted hover:bg-highlight hover:text-secondary'
-              )}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrentView('chat')
-                  if (runtime.runtimeId === activeSessionRuntimeId) return
-                  if (!runtime.sessionPath) return
-                  void switchSession(runtime.sessionPath, activeWorkspace?.path)
-                }}
-                className="flex min-w-0 flex-1 items-center gap-1.5 px-1 py-0.5 text-left"
-                title={runtime.sessionPath ?? t(language, 'newSession')}
-                aria-current={active ? 'page' : undefined}
-              >
-                <SessionRuntimeIndicator runtime={runtime} />
-                <span className="truncate">
-                  {session ? getSessionTitle(session.name, session.sessionId, session.preview) : t(language, 'newSession')}
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => void closeSessionTab(runtime.runtimeId)}
-                className="shrink-0 rounded p-0.5 text-faint opacity-0 transition-all hover:bg-highlight-strong hover:text-primary group-hover:opacity-100"
-                title={t(language, 'closeSessionTab')}
-                aria-label={t(language, 'closeSessionTab')}
-              >
-                <X size={11} />
-              </button>
-            </div>
-          )
-        })}
-        {ompSessionTabs.map((item) => (
-          <button
-            key={item.path}
-            type="button"
-            onClick={() => {
-              setCurrentView('chat')
-              void switchSession(item.path, activeWorkspace?.path)
-            }}
-            className="flex min-w-0 max-w-[220px] shrink-0 items-center gap-1.5 rounded px-2 py-0.5 text-[11px] text-muted transition-colors hover:bg-highlight hover:text-secondary"
-            title={item.path}
-          >
-            <MessageSquarePlus size={11} className="shrink-0 text-faint" />
-            <span className="truncate">
-              {getSessionTitle(item.name, item.sessionId, item.preview)}
-            </span>
-          </button>
-        ))}
-        <button
-          type="button"
-          onClick={() => {
-            if (creatingSession) return
-            setWorkflowPanelOpen(false)
-            setCurrentView('chat')
-            void createNewSession()
-          }}
-          disabled={creatingSession}
-          className="flex h-6 w-6 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary disabled:opacity-50"
-          title={`${t(language, 'newSession')} (Ctrl+N)`}
-          aria-label={t(language, 'newSession')}
-        >
-          <MessageSquarePlus size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => void createWorktreeTab()}
-          className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center text-muted transition-colors hover:text-primary"
-          title={t(language, 'newIsolatedGitTab')}
-          aria-label={t(language, 'newIsolatedGitTab')}
-        >
-          <Plus size={14} />
-        </button>
-      </div>
-    )}
     </div>
     {confirmTarget && createPortal(
       <>

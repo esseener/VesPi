@@ -8,7 +8,7 @@ import { patchOmpProfileConfig, ompAgentConfigPath } from '../omp-profile-config
 import type { IpcContext } from './context'
 
 export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext): void {
-  const { terminalService } = ctx
+  void ctx // used via refreshTuiKeepingSession(ctx)
 
   ipcMain.handle('omp:appearance:get', async () => {
     try {
@@ -27,10 +27,11 @@ export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext)
       symbolPreset: appearance.symbolPreset,
       thinkingLevel: appearance.thinkingLevel,
     })
-    // OMP TUI reads theme at spawn. Restart the PTY so the change is visible
-    // immediately instead of requiring a manual terminal toggle.
+    // OMP TUI reads theme at spawn. Local TUI refresh only — keep the current
+    // session (or its empty state), never jump to Home / create a new session.
     try {
-      await terminalService.restart()
+      const { refreshTuiKeepingSession } = await import('./model-handlers')
+      await refreshTuiKeepingSession(ctx)
     } catch {
       /* terminal may not be running */
     }

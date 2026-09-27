@@ -28,6 +28,7 @@ import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
 import { DiffViewer } from './diff-viewer'
 import { TerminalPanel } from './terminal'
+import { ModelSelector } from './model-selector'
 import { BrowserPanel } from './browser-panel'
 import { SideTabPicker } from './side-tab-picker'
 import { ReviewRail } from './review-rail'
@@ -39,6 +40,9 @@ import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import {
   LayoutPanelLeft,
   X,
+  Square,
+  Eraser,
+  RotateCcw,
 } from 'lucide-react'
 
 // Fallback padding when the composer has not measured yet (~idle pill + gradient).
@@ -224,9 +228,39 @@ export function ChatPanel(): React.JSX.Element {
         {/* Main chat area */}
         <div className="chat-center flex flex-1 flex-col overflow-hidden">
           {/* Chrome is intentionally minimal: workspace lives in the top tabs,
-              terminal owns the body. Only the side-panel toggle remains. */}
-          <div className="flex h-7 items-center justify-end border-b border-border/60 px-2">
-            <div className="flex shrink-0 items-center gap-px">
+              terminal owns the body. Terminal interrupt / clear / restart sit
+              beside the side-panel toggle — icon-only, color-coded. */}
+          <div className="flex h-7 items-center justify-end gap-1 border-b border-border/60 px-2">
+            <div className="flex min-w-0 shrink-0 items-center gap-px">
+              <ModelSelector compact dropUp={false} />
+              <ToolbarButton
+                icon={<Square size={12} fill="currentColor" />}
+                active={false}
+                onClick={() => {
+                  // Strong interrupt: Ctrl+C twice, then Esc — covers a stuck
+                  // tool-call loop as well as a normal generation.
+                  window.piDesktop.terminal.input('\x03')
+                  window.setTimeout(() => window.piDesktop.terminal.input('\x03'), 80)
+                  window.setTimeout(() => window.piDesktop.terminal.input('\x1b'), 160)
+                }}
+                title="Ctrl+C"
+              />
+              <ToolbarButton
+                icon={<Eraser size={12} />}
+                active={false}
+                onClick={() => window.dispatchEvent(new CustomEvent('vespi:terminal-clear'))}
+                title="Clear"
+              />
+              <ToolbarButton
+                icon={<RotateCcw size={12} />}
+                active={false}
+                onClick={() => {
+                  void window.piDesktop.terminal.stop()
+                  window.location.reload()
+                }}
+                title="Restart"
+              />
+              <div className="mx-1 h-4 w-px bg-border/80" />
               <ToolbarButton
                 icon={<LayoutPanelLeft size={13} />}
                 active={showSidePanel}

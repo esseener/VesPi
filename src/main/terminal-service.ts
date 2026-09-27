@@ -126,12 +126,26 @@ export class TerminalService {
 
   /**
    * Restart the PTY with the previous start options (cwd / size / handlers).
-   * Used after OMP profile config changes so the TUI re-reads theme etc.
+   * Used after OMP profile config changes so the TUI re-reads theme / model.
+   * `resumeSessionPath` attaches the new TUI to an existing session file —
+   * never spawn a fresh empty session for a settings change.
    */
-  async restart(): Promise<TerminalStartResult | null> {
+  async restart(opts?: { resumeSessionPath?: string | null }): Promise<TerminalStartResult | null> {
     if (!this.lastStart) return null
     const { options, onData, onExit } = this.lastStart
-    return this.start(options, onData, onExit)
+    const result = await this.start(options, onData, onExit)
+    const resume = opts?.resumeSessionPath
+    if (resume) {
+      const stem = resume.replace(/\\/g, '/').split('/').pop()?.replace(/\.jsonl$/i, '') ?? ''
+      const id = stem.includes('_') ? stem.slice(stem.lastIndexOf('_') + 1) : stem
+      if (id) {
+        // Give the TUI a beat to paint the welcome screen before attaching.
+        setTimeout(() => {
+          this.write(`/resume ${id}\r`)
+        }, 700)
+      }
+    }
+    return result
   }
 
   resize(cols: number, rows: number): void {

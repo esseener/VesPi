@@ -8,6 +8,25 @@ import { join } from 'path'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { TERMINAL_PHRASES } from '../shared/omp-labels'
 
+/** Merged community EN→ZH dict (omp-zh / omp-tui-zh), applied on rebuild. */
+function loadCommunityDict(): Record<string, string> {
+  const candidates = [
+    join(process.resourcesPath ?? '', 'omp-zh-dict.json'),
+    join(process.cwd(), 'resources', 'omp-zh-dict.json'),
+  ]
+  for (const p of candidates) {
+    try {
+      if (p && existsSync(p)) {
+        const raw = JSON.parse(readFileSync(p, 'utf-8')) as Record<string, string>
+        return raw && typeof raw === 'object' ? raw : {}
+      }
+    } catch {
+      /* try next */
+    }
+  }
+  return {}
+}
+
 /** Guaranteed Chinese for OMP welcome / setup / status chrome. */
 export const OMP_SEED_DICT: Record<string, string> = {
   ...Object.fromEntries(TERMINAL_PHRASES),
@@ -164,8 +183,9 @@ function writePackFile(pack: LabelPack): boolean {
  */
 export function readOrSeedPack(kernelVersion = ''): LabelPack {
   const prev = loadPackFile()
-  const map: Record<string, string> = { ...OMP_SEED_DICT, ...(prev?.map ?? {}) }
-  for (const k of Object.keys(OMP_SEED_DICT)) map[k] = OMP_SEED_DICT[k]
+  const community = loadCommunityDict()
+  // Priority: previous pack < community dict < hard seed (layout-critical).
+  const map: Record<string, string> = { ...community, ...(prev?.map ?? {}), ...OMP_SEED_DICT }
   const pack: LabelPack = { kernel: kernelVersion || prev?.kernel || '', map }
   writePackFile(pack)
   return pack

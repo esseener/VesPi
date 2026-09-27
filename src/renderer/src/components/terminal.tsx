@@ -55,6 +55,9 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
   const terminalOpen = useAppStore((state) => state.terminalOpen)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const theme = useAppStore((state) => state.settings?.theme)
+  const language = useAppStore(
+    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE,
+  )
   const { show: showMenu, ContextMenuComponent } = useContextMenu()
 
   const containerRef = useRef<HTMLDivElement>(null)
@@ -206,6 +209,27 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
     }
   }, [theme])
 
+  // After a local PTY restart (model/theme), keep the shell on chat: clear the
+  // stale buffer and put the caret back in the TUI input.
+  useEffect(() => {
+    const off = window.piDesktop.terminal.onRestarted(() => {
+      const term = terminalRef.current
+      if (!term) return
+      term.clear()
+      term.focus()
+    })
+    return off
+  }, [terminalOpen])
+
+  // Clear is triggered from the toolbar (icon button beside the side-panel toggle).
+  useEffect(() => {
+    const onClear = (): void => {
+      terminalRef.current?.clear()
+    }
+    window.addEventListener('vespi:terminal-clear', onClear)
+    return () => window.removeEventListener('vespi:terminal-clear', onClear)
+  }, [terminalOpen])
+
   if (!terminalOpen) return null
 
   const onContextMenu = (e: React.MouseEvent): void => {
@@ -251,8 +275,6 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
     ])
   }
 
-  // Main-column terminal: fills the chat center. No title bar — the top
-  // workspace tabs already name the context; clear/close live in the status bar.
   return (
     <div
       data-main-terminal

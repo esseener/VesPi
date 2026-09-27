@@ -21,7 +21,7 @@ import { WorkflowNavigator } from './components/workflow-navigator'
 import { WindowControls } from './components/window-controls'
 import { useContextMenu, buildDefaultContextMenu } from './components/context-menu'
 import { ErrorBoundary } from './components/error-boundary'
-import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut } from './hooks'
+import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut, useModelQuickSwitch } from './hooks'
 import { useFolderDrop } from './hooks/use-folder-drop'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
@@ -36,6 +36,7 @@ export function App(): React.JSX.Element {
   useMenuActions()
   useInitialize()
   useNotePickerShortcut()
+  useModelQuickSwitch()
   const { isDraggingFolder } = useFolderDrop()
 
   const currentView = useAppStore((state) => state.currentView)

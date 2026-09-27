@@ -1491,11 +1491,23 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       // Terminal-first: the live OMP TUI owns sessions. A GUI rpc session is
       // a different process and would leave the terminal on the old one.
       if (get().terminalOpen) {
+        // Optimistic empty chat so the previous session disappears at once.
+        get().clearMessages()
+        set({
+          currentView: 'chat' as const,
+          sessionState: null,
+          sessionLoading: false,
+          messages: [],
+        })
         window.piDesktop.terminal.input('/new\r')
-        // OMP writes the session file itself after the command lands.
+        // OMP writes the new file asynchronously — poll briefly so the sidebar
+        // drops the deleted row and shows the new one without a second click.
+        window.setTimeout(() => {
+          void get().refreshSessionList()
+        }, 300)
         window.setTimeout(() => {
           scheduleSessionListRefresh(get)
-        }, 2000)
+        }, 1200)
         return
       }
       // A new session owns a new Pi process. Never stop or warn about the
@@ -1659,17 +1671,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   switchSession: async (path, projectPath) => {
-    // Terminal-first: the live OMP TUI owns the conversation. Driving the
-    // GUI rpc kernel would leave the terminal on the old session.
+    // Terminal-first: also drive the live OMP TUI so its scrollback matches.
+    // Do NOT early-return — the GUI history load below is what lets the shell
+    // show the session immediately (regression when /resume was the only step).
     if (get().terminalOpen) {
-      // Pause any running turn so /resume is accepted.
-      window.piDesktop.terminal.input('\x03')
+      const stem = path.replace(/\\/g, '/').split('/').pop()?.replace(/\.jsonl$/i, '') ?? ''
+      const resumeId = stem.includes('_') ? stem.slice(stem.lastIndexOf('_') + 1) : stem
+      // No Ctrl+C here — it used to abort the turn and block the resume.
       window.setTimeout(() => {
-        window.piDesktop.terminal.input('/resume\r')
-      }, 120)
-      scheduleSessionListRefresh(get)
-      set({ currentView: 'chat' as const })
-      return
+        window.piDesktop.terminal.input(`/resume ${resumeId}\r`)
+      }, 80)
     }
     // Already on this session — avoid a full history reload. The explicit
     // sessionLoading check still handles a fast workspace switch that cleared
@@ -3580,33 +3591,31 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     try {
       const result = await window.piDesktop.session.delete(session.path)
       if (result.ok) {
-        // Refresh list and prune archive entry locally
+        // Optimistic removal so the row vanishes without waiting for a rescan.
         set((state) => {
-          const next = { ...state.archivedSessions }
-          delete next[session.sessionId]
-          return { archivedSessions: next }
+          const nextArchived = { ...state.archivedSessions }
+          delete nextArchived[session.sessionId]
+          return {
+            archivedSessions: nextArchived,
+            sessionList: state.sessionList.filter((item) => item.path !== session.path),
+          }
         })
 
         await get().refreshSessionList()
 
-        // The deleted session was the one on screen. Main already closed its
-        // runtime and promoted a sibling in the same workspace, so follow that
-        // promotion — creating a session here would spawn a third runtime and
-        // steal activation from the one main just made active. Only a delete
-        // that left nothing running falls back to the empty new-session view.
-        if (get().sessionState?.sessionFile === session.path) {
-          const replacement = result.replacementSessionPath
-          if (replacement) {
-            await get().switchSession(replacement, get().activeWorkspace?.path)
-          } else {
-            get().clearMessages()
-            await get().createNewSession()
-          }
+        const wasOnScreen = get().sessionState?.sessionFile === session.path
+        const remaining = get().sessionList.filter((item) => item.path !== session.path)
+        const replacement = result.replacementSessionPath
+
+        if (replacement) {
+          await get().switchSession(replacement, get().activeWorkspace?.path)
+        } else if (wasOnScreen || remaining.length === 0) {
+          // Last (or on-screen) session: land on a fresh empty session now so
+          // the sidebar and chat agree without a second "new session" click.
+          get().clearMessages()
+          await get().createNewSession()
         }
       } else {
-        // On Windows a session the engine is still writing to is locked, so the
-        // move-to-trash fails and unlink throws EBUSY. Say so instead of
-        // returning quietly — the UI used to read that as success.
         get().addMessage(notice('sysDeleteError', { detail: result.error || 'unknown error' }))
       }
       return result
