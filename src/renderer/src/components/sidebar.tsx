@@ -13,13 +13,8 @@ import {
   ChevronDown,
   Check,
   Trash2,
-  StickyNote,
   Archive,
-  Blocks,
   Info,
-  Workflow as WorkflowIcon,
-  Activity,
-  Stethoscope,
   Globe,
 } from 'lucide-react'
 
@@ -30,8 +25,6 @@ import { getSessionEngineLabel, getSessionRowLabels, hasMixedSessionEngines } fr
 import { ResizeHandle } from './resize-handle'
 import { formatRelativeTime } from '../utils/format-relative-time'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
-import { resolveRunSessionId } from '../utils/workflow-runs'
-import { useGlobalWorkflowOpen } from '../hooks'
 import { clampSidebarWidth, resolveSidebarWidth } from '../../../shared/sidebar-width'
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
@@ -39,7 +32,7 @@ import vespiWordmark from '../assets/vespi-wordmark-white.png'
 
 
 /** Views reachable from the sidebar's Tools group. */
-type ToolView = 'packages' | 'notes' | 'settings' | 'about' | 'mission-control' | 'diagnostics'
+type ToolView = 'settings' | 'about'
 
 /** Cap how many workspace groups appear in the Recent list. */
 const MAX_RECENT_GROUPS = 12
@@ -65,9 +58,6 @@ export function Sidebar(): React.JSX.Element {
   const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
   const createNewSession = useAppStore((state) => state.createNewSession)
   const openFolderAsWorkspace = useAppStore((state) => state.openFolderAsWorkspace)
-  const openWorkflowRunsForSession = useAppStore((state) => state.openWorkflowRunsForSession)
-  const setWorkflowPanelOpen = useAppStore((state) => state.setWorkflowPanelOpen)
-  const globalWorkflowOpen = useGlobalWorkflowOpen()
   const setSessionsScope = useAppStore((state) => state.setSessionsScope)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
   const creatingSession = useAppStore((state) => state.creatingSession)
@@ -269,16 +259,13 @@ export function Sidebar(): React.JSX.Element {
     if (path) await openFolderAsWorkspace(path)
   }
 
-  // A tool view is only "showing" when nothing covers it — the global workflow
-  // surface replaces the main pane while currentView stays put behind it.
-  const toolViewShowing = (view: ToolView): boolean => currentView === view && !globalWorkflowOpen
+  const toolViewShowing = (view: ToolView): boolean => currentView === view
 
   // Tool entries are toggles, like every other tab-like control here: clicking
   // the one already on screen returns to Chat (what the Tools tab's close
   // button does), while a covered one is revealed rather than dismissed.
   const openToolView = (view: ToolView): void => {
     const showing = toolViewShowing(view)
-    setWorkflowPanelOpen(false)
     setCurrentView(showing ? 'chat' : view)
   }
 
@@ -302,7 +289,6 @@ export function Sidebar(): React.JSX.Element {
         onDelete: (s) => { setConfirmingDeletePath(s.path) },
         // Rename only offered for the active session (Pi renames the active one).
         onRename: isActive ? () => startSessionRename('recent') : undefined,
-        onRuns: (s) => openWorkflowRunsForSession(resolveRunSessionId(s.piSessionId, s.sessionId) ?? s.sessionId),
       })
     )
   }
@@ -315,7 +301,6 @@ export function Sidebar(): React.JSX.Element {
     // Runs are keyed by Pi's header UUID, never the filename stem (the
     // tags/archive registry key). The stem suffix IS the UUID, so it is a
     // safe fallback when a row's header is unreadable.
-    const workflowSessionId = resolveRunSessionId(session.piSessionId, session.sessionId) ?? session.sessionId
     const runtime = runtimeBySessionPath.get(pathGroupKey(session.path))
     const isActive = sessionState?.sessionFile === session.path || runtime?.runtimeId === activeSessionRuntimeId
     const nested = options?.nested ?? false
@@ -441,18 +426,6 @@ export function Sidebar(): React.JSX.Element {
             </div>
           </div>
           {runtime && <SessionRuntimeIndicator runtime={runtime} />}
-        </button>
-        {/* Sibling (not child) of the row button, so no nested interactive
-            elements: the row's click/double-click/context-menu never fire for
-            this icon. Shows an empty filtered state when the session has no runs. */}
-        <button
-          type="button"
-          onClick={() => openWorkflowRunsForSession(workflowSessionId)}
-          className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-1 text-faint opacity-0 transition-opacity hover:bg-highlight hover:text-accent-fg focus-visible:opacity-100 group-hover:opacity-100"
-          title={t(language, 'workflowRunsForSession')}
-          aria-label={t(language, 'workflowRunsForSession')}
-        >
-          <WorkflowIcon size={12} />
         </button>
       </div>
     )
@@ -651,35 +624,13 @@ export function Sidebar(): React.JSX.Element {
       )}
 
       <div className="shrink-0 border-t border-border/80 px-1.5 py-1.5">
-        <div className="sidebar-kicker mb-1 px-2">{t(language, 'tools')}</div>
         <div className="grid grid-cols-2 gap-px">
           <SidebarItem
             compact
-            icon={<Blocks size={12} />}
-            label={t(language, 'extensions')}
-            active={toolViewShowing('packages')}
-            onClick={() => openToolView('packages')}
-          />
-          <SidebarItem
-            compact
-            icon={<StickyNote size={12} />}
-            label={t(language, 'notes')}
-            active={toolViewShowing('notes')}
-            onClick={() => openToolView('notes')}
-          />
-          <SidebarItem
-            compact
-            icon={<Activity size={12} />}
-            label={t(language, 'missionControl')}
-            active={toolViewShowing('mission-control')}
-            onClick={() => openToolView('mission-control')}
-          />
-          <SidebarItem
-            compact
-            icon={<Stethoscope size={12} />}
-            label={t(language, 'diagnostics')}
-            active={toolViewShowing('diagnostics')}
-            onClick={() => openToolView('diagnostics')}
+            icon={<Settings size={12} />}
+            label={t(language, 'settings')}
+            active={toolViewShowing('settings')}
+            onClick={() => openToolView('settings')}
           />
           <SidebarItem
             compact
@@ -688,13 +639,6 @@ export function Sidebar(): React.JSX.Element {
             active={toolViewShowing('about')}
             onClick={() => openToolView('about')}
             badge={(updateInfo?.updateAvailable || updateInfo?.kernel.updateAvailable) && !updateDismissed}
-          />
-          <SidebarItem
-            compact
-            icon={<Settings size={12} />}
-            label={t(language, 'settings')}
-            active={toolViewShowing('settings')}
-            onClick={() => openToolView('settings')}
           />
         </div>
       </div>
@@ -989,7 +933,7 @@ function SidebarItem({
       title={title}
       className={clsx(
         'sidebar-item focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-focus',
-        compact ? 'px-2 py-1 text-[11px]' : 'px-2 py-1.5 text-xs',
+        compact ? 'min-h-8 px-2 py-1 text-xs' : 'px-2 py-1.5 text-xs',
         active ? 'sidebar-item-active' : 'sidebar-item-idle'
       )}
     >

@@ -15,6 +15,7 @@ import { buildLineageTree, type LineageNode } from '../../shared/session-lineage
 import { clampSidebarWidth } from '../../shared/sidebar-width'
 import { workspaceNameFromFolderPath } from '../../shared/folder-drop'
 import { pathsEqual } from '../../shared/path-compare'
+import { readBrowserPanelState, writeBrowserPanelState } from './browser-panel-state'
 import { validateModelsConfig, mergeModelsConfig, type ModelsConfig } from '../../shared/models-config'
 import {
   resolveActiveMembers,
@@ -47,15 +48,8 @@ import type {
   PiSubagentProgressEvent,
   PiExtensionUiRequest,
   Workspace,
-  InstalledPackage,
-  InstalledSkill,
-  SkillMutationResult,
-  CatalogPackage,
   TimelineEvent,
   PermissionMode,
-  Note,
-  NoteInput,
-  NoteUpdate,
   UpdateCheckResult,
   KernelUpdateProgress,
   PromptImage,
@@ -64,9 +58,7 @@ import type {
   PermissionRulesScope,
   PendingPromptCounts,
   WorkspaceActivityMap,
-  WorkflowRunSummary,
   SessionRuntimeInfo,
-  SessionLaunchTaskOptions,
   SessionDeleteResult,
   LiveTurnSnapshot,
 } from '../../shared/ipc-contracts'
@@ -316,18 +308,14 @@ interface AppState {
   pendingFollowUp: string[]
 
   // UI
-  currentView: 'home' | 'chat' | 'mission-control' | 'settings' | 'sessions' | 'timeline' | 'packages' | 'diff' | 'notes' | 'diagnostics' | 'about' | 'model-setup'
+  currentView: 'home' | 'chat' | 'settings' | 'sessions' | 'timeline' | 'diff' | 'about' | 'model-setup'
+  /** Changes whenever user navigation wins over an async boot task. */
+  viewRevision: number
   // Scope for the Sessions view: 'current' shows only the active workspace's
   // sessions, 'all' keeps every project's history visible. Entry points set it
   // (sidebar Sessions = current, View all / command palette = all); the panel's
   // toggle flips it live.
   sessionsScope: 'all' | 'current'
-  workflowPanelOpen: boolean
-  // When set, the workflow navigator only lists runs recorded for this Pi
-  // session id (run.sessionId). null = no session scope.
-  workflowPanelFilter: string | null
-  // Project/workspace scope for the sidebar Activity entry. null = global.
-  workflowPanelWorkspaceId: string | null
   // Bumped to request the chat scroll jump to the bottom (used when resuming a
   // session/workspace from Home). In-app session switches leave it untouched so
   // the chat restores each session's remembered scroll position instead.
@@ -359,6 +347,8 @@ interface AppState {
   browserPanelByWorkspace: Record<string, WorkspaceBrowserPanel>
   sidebarOpen: boolean
   terminalOpen: boolean
+  terminalStatus: 'stopped' | 'starting' | 'running' | 'error'
+  terminalError: string | null
   reviewOpen: boolean
   settings: AppSettings | null
   // Unsaved edits from the Settings panel (theme, piPath, permission mode,
@@ -383,8 +373,6 @@ interface AppState {
   pendingPromptCounts: PendingPromptCounts
   // Per-workspace background activity derived in main (idle entries omitted).
   workspaceActivity: WorkspaceActivityMap
-  // Dynamic workflow runs read from the extension's persisted run journal.
-  workflowRuns: WorkflowRunSummary[]
   // Extension status entries (setStatus fire-and-forget). Keyed by statusKey.
   extensionStatuses: Record<string, string>
   // Live subagent progress from tool_execution_update events (subagent tool).
@@ -426,15 +414,7 @@ interface AppState {
   // Timeline
   timelineEvents: TimelineEvent[]
 
-  // Packages
-  installedPackages: InstalledPackage[]
-  catalogPackages: CatalogPackage[]
-  packageLoading: boolean // install/remove operations (affects the Installed tab)
-  catalogLoading: boolean // catalog crawl (Catalog tab only)
-  packageNotification: { type: 'success' | 'error'; message: string } | null
 
-  // Skills
-  installedSkills: InstalledSkill[]
 
   // Custom models config (~/.omp/profiles/vespi/agent/models.json for OMP)
   customModels: ModelsConfig | null
@@ -469,17 +449,10 @@ interface AppState {
   archivedSessions: Record<string, number>
   showArchived: boolean
 
-  // Notes (reusable prompts / commands)
-  notes: Note[]
-  notePickerOpen: boolean
   commandPaletteOpen: boolean
-  taskLauncherOpen: boolean
   // A prompt queued for insertion into the chat input. The nonce lets the
   // chat input re-apply the same text on repeated inserts.
   pendingInsert: { text: string; nonce: number; replace?: boolean } | null
-  // Body text captured (e.g. from a message) to seed a new note in the Notes
-  // panel. Non-null opens the panel's New Note form pre-filled.
-  noteDraft: string | null
 
   // Update check (GitHub releases). Set when a newer version is available.
   updateInfo: UpdateCheckResult | null
@@ -533,7 +506,6 @@ interface AppActions {
   createNewSession: () => Promise<void>
   /** True while a new-session request is in flight; used to debounce the button. */
   creatingSession: boolean
-  launchTask: (options: SessionLaunchTaskOptions) => Promise<boolean>
   closeSessionTab: (runtimeId: string) => Promise<void>
   switchSession: (path: string, projectPath?: string) => Promise<void>
   /**
@@ -573,10 +545,6 @@ interface AppActions {
   // UI
   setCurrentView: (view: AppState['currentView']) => void
   setSessionsScope: (scope: 'all' | 'current') => void
-  setWorkflowPanelOpen: (open: boolean) => void
-  openWorkflowRunsForSession: (sessionId: string) => void
-  openWorkflowRunsForWorkspace: (workspaceId: string | null) => void
-  refreshWorkflowRuns: () => Promise<void>
   requestChatScrollToBottom: () => void
   setComposerHasUserWork: (hasWork: boolean) => void
   // Resolves false when a dirty-editor discard was declined (diff pane only).
@@ -653,17 +621,7 @@ interface AppActions {
   addTimelineEvent: (event: TimelineEvent) => void
   clearTimeline: () => void
 
-  // Packages
-  loadInstalledPackages: () => Promise<void>
-  installPackage: (spec: string) => Promise<void>
-  removePackage: (spec: string) => Promise<void>
-  loadCatalog: () => Promise<void>
-  clearPackageNotification: () => void
 
-  loadSkills: () => Promise<void>
-  createSkill: (name: string, description: string) => Promise<SkillMutationResult>
-  deleteSkill: (path: string) => Promise<SkillMutationResult>
-  evolveSkill: (path: string, direction: string) => Promise<SkillMutationResult>
 
   // Custom models config
   loadCustomModels: () => Promise<void>
@@ -694,11 +652,6 @@ interface AppActions {
   deleteSession: (session: SessionListItem) => Promise<SessionDeleteResult>
   toggleShowArchived: () => void
 
-  // Notes
-  loadNotes: () => Promise<void>
-  saveNote: (input: NoteInput) => Promise<void>
-  updateNote: (id: string, patch: NoteUpdate) => Promise<void>
-  deleteNote: (id: string) => Promise<void>
   insertPrompt: (text: string, replace?: boolean) => void
   /**
    * A file was dropped where only a folder does anything — say so, instead of
@@ -706,11 +659,7 @@ interface AppActions {
    */
   notifyFileNeedsComposer: () => void
   clearPendingInsert: () => void
-  setNotePickerOpen: (open: boolean) => void
   setCommandPalette: (open: boolean) => void
-  setTaskLauncherOpen: (open: boolean) => void
-  startNoteFromText: (text: string) => void
-  clearNoteDraft: () => void
 
   // Update check. `automatic` marks the periodic re-check, which stands down
   // while a rate-limited check is backing off; a manual check always runs.
@@ -1050,16 +999,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // Default to the Home/launcher view; useInitialize switches to 'chat' when
   // the openToHomeOnLaunch setting is off (legacy boot-into-chat behavior).
   currentView: 'home',
+  viewRevision: 0,
   sessionsScope: 'all',
-  workflowPanelOpen: false,
-  workflowPanelFilter: null,
-  workflowPanelWorkspaceId: null,
   chatScrollBottomNonce: 0,
   composerHasUserWork: false,
   chatSidePanel: null,
-  browserPanelByWorkspace: {},
+  browserPanelByWorkspace: readBrowserPanelState(),
   sidebarOpen: true,
   terminalOpen: true,
+  terminalStatus: 'stopped',
+  terminalError: null,
   reviewOpen: false,
   settings: null,
   settingsDraft: {},
@@ -1070,7 +1019,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   extensionNotify: null,
   pendingPromptCounts: {},
   workspaceActivity: {},
-  workflowRuns: [],
   extensionStatuses: {},
   goalState: null,
   subagentProgress: [],
@@ -1081,13 +1029,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   timelineEvents: [],
 
-  installedPackages: [],
-  catalogPackages: [],
-  packageLoading: false,
-  catalogLoading: false,
-  packageNotification: null,
 
-  installedSkills: [],
 
   customModels: null,
   customModelsError: null,
@@ -1107,12 +1049,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   archivedSessions: {},
   showArchived: false,
 
-  notes: [],
-  notePickerOpen: false,
   commandPaletteOpen: false,
-  taskLauncherOpen: false,
   pendingInsert: null,
-  noteDraft: null,
   updateInfo: null,
   updateDismissed: false,
   updateSignature: null,
@@ -1205,14 +1143,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   // ─── Prompts ──────────────────────────────────────────────────────────
 
   sendPrompt: async (message, options) => {
-    const trimmed = message.trim().toLowerCase()
-    if (trimmed === '/workflow' || trimmed === '/workflows') {
-      // Route through the action so a session-scoped filter can never leak
-      // into the global view opened from chat.
-      get().setWorkflowPanelOpen(true)
-      return
-    }
-    if (trimmed.startsWith('/workflows run ')) get().setWorkflowPanelOpen(true)
 
     // Navigation never spawns Pi; the first prompt does. startPi applies the
     // resume preference, so a previously-used project continues its last
@@ -1561,62 +1491,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     }
   },
 
-  launchTask: async (options) => {
-    const prompt = options.prompt.trim()
-    if (!prompt) return false
-    let workspaceId = options.workspaceId
-    let gen = 0
-    try {
-      if (get().activeWorkspace?.id !== workspaceId) {
-        if (!(await get().activateWorkspace(workspaceId, { awaitingSession: true }))) return false
-      }
-      let reusedWorktree = false
-      if (options.isolated) {
-        const label = prompt.split(/\r?\n/, 1)[0]?.trim().slice(0, 60) || 'Task'
-        const knownWorkspaceIds = new Set(get().workspaces.map((workspace) => workspace.id))
-        const workspace = await window.piDesktop.workspace.createTab({
-          name: label,
-          sourceWorkspaceId: workspaceId,
-          taskPrompt: prompt,
-          startPi: false,
-        })
-        reusedWorktree = knownWorkspaceIds.has(workspace.id) || workspace.managed === false
-        await get().loadWorkspaces()
-        if (!(await get().activateWorkspace(workspace.id, { awaitingSession: true }))) return false
-        workspaceId = workspace.id
-      }
-
-      gen = ++sessionLoadGeneration
-      const runtime = await window.piDesktop.session.launchTask({
-        workspaceId,
-        prompt,
-      })
-      if (gen !== sessionLoadGeneration) return false
-      get().clearMessages()
-      set({
-        currentView: 'chat',
-        sessionState: null,
-        sessionStats: null,
-        sessionLoading: true,
-        activeSessionRuntimeId: runtime.runtimeId,
-        piStatus: runtime.status === 'stopped' ? 'starting' : runtime.status,
-        piPid: runtime.pid,
-        piEngine: runtime.engine ?? 'pi',
-        piError: runtime.error,
-      })
-      if (reusedWorktree) {
-        get().addMessage(notice('sysWorktreeContinued'))
-      }
-      scheduleSessionListRefresh(get)
-      return true
-    } catch (err) {
-      if (gen !== 0 && gen !== sessionLoadGeneration) return false
-      get().addMessage(notice('sysTaskLaunchError', { detail: errDetail(err) }))
-      set({ sessionLoading: false })
-      return false
-    }
-  },
-
   closeSessionTab: async (runtimeId) => {
     const runtime = get().sessionRuntimes[runtimeId]
     if (!runtime) return
@@ -1671,17 +1545,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   },
 
   switchSession: async (path, projectPath) => {
-    // Terminal-first: also drive the live OMP TUI so its scrollback matches.
-    // Do NOT early-return — the GUI history load below is what lets the shell
-    // show the session immediately (regression when /resume was the only step).
-    if (get().terminalOpen) {
-      const stem = path.replace(/\\/g, '/').split('/').pop()?.replace(/\.jsonl$/i, '') ?? ''
-      const resumeId = stem.includes('_') ? stem.slice(stem.lastIndexOf('_') + 1) : stem
-      // No Ctrl+C here — it used to abort the turn and block the resume.
-      window.setTimeout(() => {
-        window.piDesktop.terminal.input(`/resume ${resumeId}\r`)
-      }, 80)
-    }
     // Already on this session — avoid a full history reload. The explicit
     // sessionLoading check still handles a fast workspace switch that cleared
     // the view before the target runtime was bound.
@@ -1755,6 +1618,16 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
           return
         }
         const runtime = result && 'runtimeId' in result ? result : null
+        // Drive the TUI only for the accepted, coalesced target. Delayed input
+        // before validation could resume a stale session in another workspace.
+        if (get().terminalOpen) {
+          const stem = path.replace(/\\/g, '/').split('/').pop()?.replace(/\.jsonl$/i, '') ?? ''
+          const resumeId = stem.includes('_') ? stem.slice(stem.lastIndexOf('_') + 1) : stem
+          if (resumeId) window.piDesktop.terminal.input(`/resume ${resumeId}\r`)
+          set({ currentView: 'chat', sessionLoading: false })
+          scheduleSessionListRefresh(get)
+          return
+        }
         if (get().activeWorkspace?.id) void window.piDesktop.ui.flushPendingPrompts(get().activeWorkspace!.id)
         set({
           currentView: 'chat',
@@ -2148,7 +2021,8 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   setModel: async (provider, modelId) => {
     try {
-      await window.piDesktop.model.set(provider, modelId)
+      const response = await window.piDesktop.model.set(provider, modelId) as { success?: boolean; error?: string } | null
+      if (response?.success === false) throw new Error(response.error || 'Model change failed')
       // Remember for next Pi start / home composer (settings defaults).
       try {
         const updated = await window.piDesktop.settings.save({
@@ -2159,9 +2033,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       } catch {
         // Non-fatal — model still applied for this session.
       }
-      get().refreshSessionState()
+      if (get().piStatus === 'running') void get().refreshSessionState()
     } catch (err) {
       get().addMessage(notice('sysModelError', { detail: errDetail(err) }))
+      throw err
     }
   },
 
@@ -2217,40 +2092,10 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   // ─── UI ───────────────────────────────────────────────────────────────
 
-  setCurrentView: (view) => set({ currentView: view }),
+  setCurrentView: (view) => set((state) => ({ currentView: view, viewRevision: state.viewRevision + 1 })),
   // Lifted into the store so the scope survives SessionPanel remounts (it
   // unmounts on every navigation) and so sidebar entry points can set it.
   setSessionsScope: (scope) => set({ sessionsScope: scope }),
-  // A direct global entry point (slash command) clears project/session scope.
-  // Closing merely hides the panel and PRESERVES the scope so a reopen stays in
-  // the same project or session.
-  setWorkflowPanelOpen: (open) =>
-    set((state) => ({
-      workflowPanelOpen: open,
-      workflowPanelFilter: open ? null : state.workflowPanelFilter,
-      workflowPanelWorkspaceId: open ? null : state.workflowPanelWorkspaceId,
-    })),
-  openWorkflowRunsForSession: (sessionId) => set({
-    workflowPanelOpen: true,
-    workflowPanelFilter: sessionId,
-    workflowPanelWorkspaceId: null,
-  }),
-  // Project/workspace scope for the sidebar Activity entry. null = global.
-  // The signature is null-widened: the Tools entry opens the global list with
-  // an explicit null (the same value a direct global open falls back to).
-  openWorkflowRunsForWorkspace: (workspaceId: string | null) => set({
-    workflowPanelOpen: true,
-    workflowPanelFilter: null,
-    workflowPanelWorkspaceId: workspaceId,
-  }),
-  refreshWorkflowRuns: async () => {
-    try {
-      const workflowRuns = await window.piDesktop.workflows.list()
-      set({ workflowRuns })
-    } catch {
-      set({ workflowRuns: [] })
-    }
-  },
   requestChatScrollToBottom: () =>
     set((state) => ({ chatScrollBottomNonce: state.chatScrollBottomNonce + 1 })),
   // Guarded so the composer does not re-render its parent on every keystroke
@@ -2273,15 +2118,23 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     // to show. The user-facing "close the side panel" buttons in chat-panel
     // clear the preview themselves.
     const activeId = get().activeWorkspace?.id ?? null
+    if (panel === 'browser' && activeId && !get().browserPanelByWorkspace[activeId]) {
+      const browserPanelByWorkspace = {
+        ...get().browserPanelByWorkspace,
+        [activeId]: { url: null, open: true, nonce: 0 },
+      }
+      writeBrowserPanelState(browserPanelByWorkspace)
+      set({ browserPanelByWorkspace })
+    }
     // Remember the choice per workspace: leaving the browser panel is closing
     // it *here*, and must not read as closed in the project next door.
     if (activeId && get().browserPanelByWorkspace[activeId]) {
-      set((state) => ({
-        browserPanelByWorkspace: {
-          ...state.browserPanelByWorkspace,
-          [activeId]: { ...state.browserPanelByWorkspace[activeId], open: panel === 'browser' },
-        },
-      }))
+      const browserPanelByWorkspace = {
+        ...get().browserPanelByWorkspace,
+        [activeId]: { ...get().browserPanelByWorkspace[activeId], open: panel === 'browser' },
+      }
+      writeBrowserPanelState(browserPanelByWorkspace)
+      set({ browserPanelByWorkspace })
     }
     set({ chatSidePanel: panel, reviewOpen: panel === 'review' ? true : panel === null ? false : get().reviewOpen })
     return true
@@ -2302,9 +2155,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // address still remounts the guest while a metadata-only show does not.
         nonce: url ? (previous?.nonce ?? 0) + 1 : previous?.nonce ?? 0,
       }
-      const patch: Partial<AppState> = {
-        browserPanelByWorkspace: { ...state.browserPanelByWorkspace, [target]: next },
-      }
+      const browserPanelByWorkspace = { ...state.browserPanelByWorkspace, [target]: next }
+      writeBrowserPanelState(browserPanelByWorkspace)
+      const patch: Partial<AppState> = { browserPanelByWorkspace }
       // Only the workspace the user is looking at may take over the panel. A
       // background project keeps its page and its flag; the sidebar marks it.
       if (target === activeId) patch.chatSidePanel = 'browser'
@@ -2316,11 +2169,13 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     set((state) => {
       const previous = state.browserPanelByWorkspace[workspaceId]
       if (!previous) return {}
+      const browserPanelByWorkspace = {
+        ...state.browserPanelByWorkspace,
+        [workspaceId]: { ...previous, url },
+      }
+      writeBrowserPanelState(browserPanelByWorkspace)
       return {
-        browserPanelByWorkspace: {
-          ...state.browserPanelByWorkspace,
-          [workspaceId]: { ...previous, url },
-        },
+        browserPanelByWorkspace,
       }
     }),
 
@@ -2770,7 +2625,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         })
         if (statusEvent.status === 'running') {
           get().loadCommands()
-          get().loadSkills()
         }
         break
       }
@@ -2971,7 +2825,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
     try {
       const workspaces = await window.piDesktop.workspace.list()
       const active = await window.piDesktop.workspace.getActive()
-      set({ workspaces, activeWorkspace: active })
+      set((state) => {
+        const changed = state.activeWorkspace?.id !== active?.id
+        const restoreBrowser = active !== null && state.browserPanelByWorkspace[active.id]?.open === true
+        return {
+          workspaces,
+          activeWorkspace: active,
+          ...(changed ? {
+            chatSidePanel: restoreBrowser ? 'browser' as const : state.chatSidePanel === 'browser' ? null : state.chatSidePanel,
+          } : {}),
+        }
+      })
     } catch {
       // Silent failure
     }
@@ -3096,7 +2960,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // it: show the page this project left open, and stop showing the one the
         // project being left had up. Anything else stays as it was.
         const browser = state.browserPanelByWorkspace[workspace.id]
-        const showBrowser = browser?.open === true && browser.url !== null
+        const showBrowser = browser?.open === true
         return {
           workspaces: state.workspaces.some((item) => item.id === workspace.id)
             ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
@@ -3177,7 +3041,7 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         // switch too, and a workspace switch that left the previous project's
         // browser page on screen would be the bug this exists to fix.
         const browser = state.browserPanelByWorkspace[workspace.id]
-        const showBrowser = browser?.open === true && browser.url !== null
+        const showBrowser = browser?.open === true
         return {
           workspaces: state.workspaces.some((item) => item.id === workspace.id)
             ? state.workspaces.map((item) => item.id === workspace.id ? workspace : item)
@@ -3322,103 +3186,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   clearTimeline: () => set({ timelineEvents: [] }),
 
-  // ─── Packages ────────────────────────────────────────────────────────
-
-  loadInstalledPackages: async () => {
-    try {
-      const packages = await window.piDesktop.packages.listInstalled()
-      set({ installedPackages: packages })
-    } catch {
-      // Silent failure
-    }
-  },
-
-  installPackage: async (spec) => {
-    set({ packageLoading: true, packageNotification: null })
-    try {
-      const result = await window.piDesktop.packages.install(spec)
-      if (result.success) {
-        await get().loadInstalledPackages()
-        set({ packageNotification: {
-          type: 'success',
-          message: t(
-            currentLanguage(get),
-            get().piEngine === 'omp' ? 'ompPackageInstalled' : 'packageInstalled',
-            { spec },
-          ),
-        } })
-      } else {
-        set({ packageNotification: { type: 'error', message: result.output || 'Install failed' } })
-      }
-    } catch (err) {
-      set({ packageNotification: { type: 'error', message: err instanceof Error ? err.message : String(err) } })
-    } finally {
-      set({ packageLoading: false })
-    }
-  },
-
-  removePackage: async (spec) => {
-    set({ packageLoading: true, packageNotification: null })
-    try {
-      const result = await window.piDesktop.packages.remove(spec)
-      if (result.success) {
-        await get().loadInstalledPackages()
-        set({ packageNotification: { type: 'success', message: t(currentLanguage(get), 'packageRemoved', { spec }) } })
-      } else {
-        set({ packageNotification: { type: 'error', message: result.output || 'Remove failed' } })
-      }
-    } catch (err) {
-      set({ packageNotification: { type: 'error', message: err instanceof Error ? err.message : String(err) } })
-    } finally {
-      set({ packageLoading: false })
-    }
-  },
-
-  // Load the full catalog once; the Catalog tab filters it locally on each
-  // keystroke (no per-keystroke IPC). catalogLoading gates only this one-time load.
-  loadCatalog: async () => {
-    set({ catalogLoading: true })
-    try {
-      const packages = await window.piDesktop.packages.fetchCatalog()
-      set({ catalogPackages: packages })
-    } catch {
-      // Silent failure
-    } finally {
-      set({ catalogLoading: false })
-    }
-  },
-
-  clearPackageNotification: () => set({ packageNotification: null }),
-
-  // ─── Skills ──────────────────────────────────────────────────────────
-
-  loadSkills: async () => {
-    try {
-      const skills = await window.piDesktop.skills.list()
-      set({ installedSkills: skills })
-    } catch {
-      // Silent failure
-    }
-  },
-
-  createSkill: async (name, description) => {
-    const result = await window.piDesktop.skills.create(name, description)
-    if (result.ok) await get().loadSkills()
-    return result
-  },
-
-  deleteSkill: async (path) => {
-    const result = await window.piDesktop.skills.delete(path)
-    if (result.ok) await get().loadSkills()
-    return result
-  },
-
-  evolveSkill: async (path, direction) => {
-    const result = await window.piDesktop.skills.evolve(path, direction)
-    if (result.ok) await get().loadSkills()
-    return result
-  },
-
   loadCustomModels: async () => {
     try {
       const result = await window.piDesktop.models.read()
@@ -3482,7 +3249,6 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
   toggleFileSearch: () => {
     set((state) => ({
       fileSearchOpen: !state.fileSearchOpen,
-      notePickerOpen: state.fileSearchOpen ? state.notePickerOpen : false,
     }))
   },
 
@@ -3607,9 +3373,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
         const remaining = get().sessionList.filter((item) => item.path !== session.path)
         const replacement = result.replacementSessionPath
 
-        if (replacement) {
+        if (replacement && wasOnScreen) {
           await get().switchSession(replacement, get().activeWorkspace?.path)
-        } else if (wasOnScreen || remaining.length === 0) {
+        } else if (wasOnScreen || (!get().sessionState?.sessionFile && remaining.length === 0)) {
           // Last (or on-screen) session: land on a fresh empty session now so
           // the sidebar and chat agree without a second "new session" click.
           get().clearMessages()
@@ -3628,71 +3394,17 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
 
   toggleShowArchived: () => set((state) => ({ showArchived: !state.showArchived })),
 
-  // ─── Notes ────────────────────────────────────────────────────────────
-
-  loadNotes: async () => {
-    try {
-      const notes = await window.piDesktop.notes.list()
-      set({ notes })
-    } catch {
-      // Silent failure — notes are non-critical
-    }
-  },
-
-  saveNote: async (input) => {
-    try {
-      const note = await window.piDesktop.notes.create(input)
-      set((state) => ({ notes: [...state.notes, note] }))
-    } catch (err) {
-      get().addMessage(notice('sysNoteSaveError', { detail: errDetail(err) }))
-    }
-  },
-
-  updateNote: async (id, patch) => {
-    try {
-      const updated = await window.piDesktop.notes.update(id, patch)
-      set((state) => ({
-        notes: state.notes.map((n) => (n.id === id ? updated : n)),
-      }))
-    } catch (err) {
-      get().addMessage(notice('sysNoteSaveError', { detail: errDetail(err) }))
-    }
-  },
-
-  deleteNote: async (id) => {
-    try {
-      await window.piDesktop.notes.remove(id)
-      set((state) => ({ notes: state.notes.filter((n) => n.id !== id) }))
-    } catch (err) {
-      // The row was only dropped locally on success, so a failed delete now
-      // leaves the note in place and says why instead of vanishing silently.
-      get().addMessage(notice('sysNoteDeleteError', { detail: errDetail(err) }))
-    }
-  },
-
   insertPrompt: (text, replace = false) =>
     set((state) => ({
       // Stay on Home if the user is there; otherwise jump to chat (notes/palette).
       currentView: state.currentView === 'home' ? 'home' : 'chat',
-      notePickerOpen: false,
+      terminalOpen: state.currentView === 'home' ? state.terminalOpen : true,
       pendingInsert: { text, nonce: Date.now(), replace },
     })),
 
   clearPendingInsert: () => set({ pendingInsert: null }),
 
-  setNotePickerOpen: (open) =>
-    set((state) => ({
-      notePickerOpen: open,
-      fileSearchOpen: open ? false : state.fileSearchOpen,
-    })),
-
   setCommandPalette: (open) => set({ commandPaletteOpen: open }),
-  setTaskLauncherOpen: (open) => set({ taskLauncherOpen: open }),
-
-  startNoteFromText: (text) =>
-    set({ noteDraft: text, notePickerOpen: false, currentView: 'notes' }),
-
-  clearNoteDraft: () => set({ noteDraft: null }),
 
   // ─── Update check ─────────────────────────────────────────────────────
 
@@ -3835,14 +3547,9 @@ export const useAppStore = create<AppState & AppActions>((set, get) => ({
       })
       await get().checkForUpdates()
       if (get().piStatus === 'running') await get().restartPi()
-      // Local TUI must pick up the new omp.exe — no full page reload (that
-      // dropped the user back at Home and left stale session chrome).
-      try {
-        const path = get().sessionState?.sessionFile ?? undefined
-        await window.piDesktop.terminal.restart(path)
-      } catch {
-        /* terminal closed */
-      }
+      // Do NOT restart the TUI here: terminal.tsx already does one restart on
+      // kernel progress `done`. Two restarts double-refreshed and left the
+      // caret stranded mid-line.
       await get().refreshSessionList()
       set({
         kernelUpdateProgress: {

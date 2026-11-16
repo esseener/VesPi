@@ -1,51 +1,38 @@
 import { ipcMain } from 'electron'
-import { readFileSync, existsSync } from 'fs'
 import { IPC_CHANNELS } from '../../shared/ipc-contracts'
-import { isString } from './validation'
+import { assertTrustedSender, isString } from './validation'
 import type { IpcContext } from './context'
 import { patchOmpProfileConfig } from '../omp-profile-config'
-import { modelsConfigPaths } from './models-config-handlers'
-import { inspectSessionContent } from '../session-metadata'
-
-/** Local models.json → model list, so the picker works without the rpc kernel. */
-function listModelsFromConfig(): Array<{ provider: string; id: string; name?: string }> {
-  const { file } = modelsConfigPaths()
-  if (!existsSync(file)) return []
-  try {
-    const raw = JSON.parse(readFileSync(file, 'utf-8')) as {
-      providers?: Record<string, { models?: Array<{ id?: string; name?: string }> }>
-    }
-    const out: Array<{ provider: string; id: string; name?: string }> = []
-    for (const [provider, cfg] of Object.entries(raw.providers ?? {})) {
-      for (const m of cfg.models ?? []) {
-        if (m?.id) out.push({ provider, id: m.id, name: m.name ?? m.id })
-      }
-    }
-    return out
-  } catch {
-    return []
-  }
-}
+import { runPiCli } from './run-pi-cli'
+import { parseOmpModelCatalog } from '../omp-model-catalog'
+import { loadAppSettings } from './settings'
+import { terminalRuntimeOptions } from './terminal-runtime-options'
 
 /**
  * Refresh the local TUI after a settings change without creating a new
  * session and without bouncing the shell to Home.
  */
-async function refreshTuiKeepingSession(ctx: IpcContext): Promise<void> {
-  const active = ctx.workspaceManager.getActiveSessionRuntime()
-  const path = active?.sessionPath ?? null
-  // Only attach when the file has real content — empty/new tabs stay on the
-  // OMP welcome input instead of a dead read-only transcript.
-  let resume: string | null = null
-  if (path && existsSync(path)) {
-    const state = await inspectSessionContent(path)
-    if (state !== 'empty') resume = path
-  }
-  try {
-    await ctx.terminalService.restart({ resumeSessionPath: resume })
+export function assertTuiCanRestart(ctx: IpcContext): void {
+  if (!ctx.terminalService.isRunning()) return
+  const state = ctx.terminalService.getSessionState()
+  if (!state) throw new Error('OMP session is not ready. Retry after startup completes.')
+  if (state.busy) throw new Error('OMP is working. Apply terminal settings after the current turn finishes.')
+}
+
+async function refreshTuiKeepingSession(ctx: IpcContext, model?: string, thinkingLevel?: string): Promise<void> {
+  if (!ctx.terminalService.isRunning()) return
+  assertTuiCanRestart(ctx)
+  const state = ctx.terminalService.getSessionState()!
+  const resume = state.sessionPath
+  const settings = await loadAppSettings(ctx.workspaceManager)
+  const runtime = terminalRuntimeOptions(settings, ctx.terminalService.getCwd())
+  // Restored sessions carry their own effort. Override it only when the user
+  // explicitly changes effort; appearance changes preserve the live choice.
+  const effort = thinkingLevel ?? state.thinkingLevel
+  if (effort) runtime.args = [...runtime.args ?? [], '--thinking', effort]
+  const result = await ctx.terminalService.restart({ ...runtime, resumeSessionPath: resume, continueSession: false, model: model ?? state.model ?? runtime.model })
+  if (result) {
     ctx.broadcast(IPC_CHANNELS.EVENT_TERMINAL_RESTARTED, { resumed: Boolean(resume) })
-  } catch {
-    /* no live terminal */
   }
 }
 
@@ -73,17 +60,22 @@ export function registerModelHandlers(ctx: IpcContext): void {
     }
   }
 
-  ipcMain.handle(IPC_CHANNELS.MODEL_SET, async (_event, provider: unknown, modelId: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.MODEL_SET, async (event, provider: unknown, modelId: unknown) => {
+    assertTrustedSender(event)
     if (!isString(provider)) throw new Error('provider must be a string')
     if (!isString(modelId)) throw new Error('modelId must be a string')
+    assertTuiCanRestart(ctx)
 
     patchOmpProfileConfig({ defaultModel: `${provider}/${modelId}` })
 
     // Local TUI refresh: stay in chat, keep (or keep empty) session, no Home.
-    await refreshTuiKeepingSession(ctx)
+    await refreshTuiKeepingSession(ctx, `${provider}/${modelId}`)
 
-    const rpc = await tryRpc(() => getActivePi().sendCommand({ type: 'set_model', provider, modelId }))
-    return rpc ?? { ok: true }
+    const pi = ctx.workspaceManager.getActivePiManager()
+    if (pi?.getStatus().status === 'running') {
+      return await pi.sendCommand({ type: 'set_model', provider, modelId })
+    }
+    return { success: true }
   })
 
   ipcMain.handle(IPC_CHANNELS.MODEL_CYCLE, async () => {
@@ -92,30 +84,23 @@ export function registerModelHandlers(ctx: IpcContext): void {
   })
 
   ipcMain.handle(IPC_CHANNELS.MODEL_LIST_AVAILABLE, async () => {
-    try {
-      return await getActivePi().sendCommand({ type: 'get_available_models' })
-    } catch {
-      const models = listModelsFromConfig()
-      return {
-        success: true,
-        data: {
-          models: models.map((m) => ({
-            id: m.id,
-            name: m.name ?? m.id,
-            provider: m.provider,
-          })),
-        },
-      }
-    }
+    const cwd = ctx.workspaceManager.getActiveWorkspace()?.path ?? process.cwd()
+    const result = await runPiCli(['models', '--json'], cwd, 15000, 'omp')
+    if (!result.success) throw new Error('Could not load the OMP model catalog')
+    return { success: true, data: { models: parseOmpModelCatalog(result.stdout ?? result.output) } }
   })
 
-  ipcMain.handle(IPC_CHANNELS.THINKING_SET_LEVEL, async (_event, level: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.THINKING_SET_LEVEL, async (event, level: unknown) => {
+    assertTrustedSender(event)
     if (!isString(level)) throw new Error('level must be a string')
+    if (!['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'auto'].includes(level)) throw new Error('Invalid OMP thinking level')
+    assertTuiCanRestart(ctx)
 
     patchOmpProfileConfig({ thinkingLevel: level })
-    pokeTui(`/thinking ${level}\r`)
-
-    return tryRpc(() => getActivePi().sendCommand({ type: 'set_thinking_level', level }))
+    await refreshTuiKeepingSession(ctx, undefined, level)
+    const pi = ctx.workspaceManager.getActivePiManager()
+    if (pi?.getStatus().status === 'running') return pi.sendCommand({ type: 'set_thinking_level', level })
+    return { success: true }
   })
 
   ipcMain.handle(IPC_CHANNELS.THINKING_CYCLE_LEVEL, async () => {

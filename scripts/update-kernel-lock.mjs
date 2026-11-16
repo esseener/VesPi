@@ -21,6 +21,7 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { latestKernelRelease } from './kernel-release.mjs'
 
 const projectDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const lockPath = join(projectDir, 'resources', 'omp-runtime-lock.json')
@@ -32,15 +33,6 @@ const log = (message) => console.log(`[kernel-lock] ${message}`)
 function fail(message) {
   console.error(`[kernel-lock] ${message}`)
   process.exit(2)
-}
-
-async function getJson(url) {
-  const response = await fetch(url, {
-    headers: { accept: 'application/vnd.github+json', 'user-agent': 'VesPi-packaging' },
-    signal: AbortSignal.timeout(20000),
-  })
-  if (!response.ok) throw new Error(`GitHub API ${response.status} for ${url}`)
-  return response.json()
 }
 
 async function getText(url) {
@@ -75,7 +67,7 @@ if (!lock?.version || !lock?.repository || !asset?.name) {
 
 let release
 try {
-  release = await getJson(`https://api.github.com/repos/${lock.repository}/releases/latest`)
+  release = await latestKernelRelease(lock.repository)
 } catch (error) {
   fail(`could not determine the newest release: ${error.message} — treat as unknown, not as current`)
 }

@@ -23,7 +23,10 @@ export function CustomModelsEditor(): React.JSX.Element {
   const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
   const loadCustomModels = useAppStore((s) => s.loadCustomModels)
   const saveCustomModels = useAppStore((s) => s.saveCustomModels)
-  const restartPi = useAppStore((s) => s.restartPi)
+  const restartPi = async (): Promise<void> => {
+    try { await window.piDesktop.terminal.restart() }
+    catch (err) { setErrors([String(err)]) }
+  }
 
   const [rows, setRows] = useState<ProviderRow[]>([])
   const [openIds, setOpenIds] = useState<Set<string>>(new Set())
@@ -240,13 +243,8 @@ export function CustomModelsEditor(): React.JSX.Element {
         // models.json applies on kernel restart. Restart right away when no
         // session is mid-turn, so the new model shows up in the selector
         // immediately; otherwise keep the manual restart hint.
-        const state = useAppStore.getState()
-        const busyTurn = Object.values(state.sessionRuntimes).some(
-          (rt) => !rt.closed && (rt.activity === 'working' || rt.activity === 'needs-approval'),
-        )
-        if (!busyTurn) {
-          void state.restartPi()
-        }
+        const state = await window.piDesktop.terminal.state()
+        if (state.running && !state.busy) await restartPi()
       } else {
         setErrors(result.errors ?? [t(language, 'saveFailed')])
       }
@@ -544,7 +542,7 @@ export function CustomModelsEditor(): React.JSX.Element {
   return (
     <div className="space-y-4">
       <p className="text-xs text-dim">
-        {t(language, 'modelsPathHint', { path: customModelsPath ?? '~/.omp/profiles/vespi/agent/models.json' })}
+        {t(language, 'modelsPathHint', { path: customModelsPath ?? '~/.omp/profiles/vespi/agent/models.yml' })}
       </p>
       {/* Errors sit at the top: rendered after the provider list they appeared
           below the save button they referred to, far off-screen on a long list. */}

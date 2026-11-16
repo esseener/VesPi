@@ -3,22 +3,17 @@ import { Info, Loader2, ArrowUpCircle, Trash2 } from 'lucide-react'
 import { useAppStore } from '../store'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { kernelUpdateBarPercent, kernelUpdateBusy, kernelUpdateLabel } from '../utils/kernel-update-progress'
-import type { DiagnosticsReport } from '../../../shared/ipc-contracts'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import { useEscapeToClose } from '../hooks/use-escape-close'
 
-function platformLabel(platform: string | undefined, arch: string | undefined): string {
+function platformLabel(platform: string | undefined): string {
   if (!platform) return '—'
   const os =
     platform === 'win32' ? 'Windows' :
     platform === 'darwin' ? 'macOS' :
     platform === 'linux' ? 'Linux' :
     platform
-  const chip =
-    arch === 'x64' ? 'x64' :
-    arch === 'arm64' ? 'ARM64' :
-    arch ?? ''
-  return chip ? `${os} ${chip}` : os
+  return os
 }
 
 function kernelLabel(version: string | null | undefined): string {
@@ -42,7 +37,7 @@ export function AboutPanel(): React.JSX.Element {
   const uiBusy = kernelUpdateBusy(uiUpdateProgress)
   const uiDone = uiUpdateProgress?.phase === 'done'
   const uiFailed = uiUpdateProgress?.phase === 'error'
-  const [report, setReport] = useState<DiagnosticsReport | null>(null)
+  const [version, setVersion] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [checking, setChecking] = useState(false)
   const [checked, setChecked] = useState(false)
@@ -53,9 +48,9 @@ export function AboutPanel(): React.JSX.Element {
   const load = useCallback(async () => {
     setLoading(true)
     try {
-      setReport(await window.piDesktop.diagnostics.get())
+      setVersion(await window.piDesktop.system.getVersion())
     } catch {
-      setReport(null)
+      setVersion(null)
     } finally {
       setLoading(false)
     }
@@ -82,8 +77,8 @@ export function AboutPanel(): React.JSX.Element {
     }
   }, [checkForUpdates, updateInfo])
 
-  const uiVersion = report?.app.version ?? '—'
-  const ompVersion = updateInfo?.kernel.currentVersion || report?.piVersion?.trim() || '—'
+  const uiVersion = version ?? '—'
+  const ompVersion = updateInfo?.kernel.currentVersion || '—'
 
   const handleCheck = async (): Promise<void> => {
     setChecking(true)
@@ -126,15 +121,15 @@ export function AboutPanel(): React.JSX.Element {
             <p className="mt-3 text-xs text-dim">{t(language, 'aboutSubtitle')}</p>
           </div>
 
-          {loading && !report ? (
+          {loading && !version ? (
             <div className="flex justify-center py-8">
               <Loader2 size={18} className="animate-spin text-dim" />
             </div>
           ) : (
             <div className="space-y-px border border-border">
               <AboutRow label={t(language, 'aboutUi')} value={`VesPi ${uiVersion}`} />
-              <AboutRow label={t(language, 'aboutKernel')} value={kernelLabel(report?.piVersion)} />
-              <AboutRow label={t(language, 'aboutPlatform')} value={platformLabel(report?.app.platform, report?.app.arch)} />
+              <AboutRow label={t(language, 'aboutKernel')} value={kernelLabel(ompVersion)} />
+              <AboutRow label={t(language, 'aboutPlatform')} value={platformLabel(window.piDesktop.system.platform)} />
             </div>
           )}
 

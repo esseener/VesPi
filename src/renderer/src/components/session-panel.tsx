@@ -1,6 +1,6 @@
 import { useAppStore } from '../store'
 import { getSessionTitle } from '../utils/session-title'
-import { FolderOpen, Plus, Clock, Search, ChevronRight, ChevronDown, FolderTree, Tag, X, MoreVertical, Archive, ArchiveRestore, Trash2, Sparkles, Workflow as WorkflowIcon } from 'lucide-react'
+import { FolderOpen, Plus, Clock, Search, ChevronRight, ChevronDown, FolderTree, Tag, X, MoreVertical, Archive, ArchiveRestore, Trash2, Sparkles } from 'lucide-react'
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { clsx } from 'clsx'
@@ -8,7 +8,6 @@ import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { pathsEqual } from '../../../shared/path-compare'
 import { useContextMenu, buildSessionContextMenu } from './context-menu'
 import { getSessionMenuPosition, type MenuPosition } from './session-menu-position'
-import { resolveRunSessionId } from '../utils/workflow-runs'
 import { SessionRuntimeIndicator } from './session-runtime-indicator'
 import { getSessionEngineLabel, hasMixedSessionEngines } from './sidebar-session-labels'
 import { formatRelativeTime } from '../utils/format-relative-time'
@@ -375,7 +374,6 @@ function SessionEntry({
   const archiveSession = useAppStore((state) => state.archiveSession)
   const unarchiveSession = useAppStore((state) => state.unarchiveSession)
   const deleteSession = useAppStore((state) => state.deleteSession)
-  const openWorkflowRunsForSession = useAppStore((state) => state.openWorkflowRunsForSession)
   const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
 
   const tags = sessionTags[session.sessionId] ?? []
@@ -495,7 +493,6 @@ function SessionEntry({
         // Use the inline confirmation row in this surface (UX matches the
         // existing flow) instead of a window.confirm.
         onDelete: () => setConfirmingDelete(true),
-        onRuns: (s) => openWorkflowRunsForSession(resolveRunSessionId(s.piSessionId, s.sessionId) ?? s.sessionId),
       })
     )
   }
@@ -622,15 +619,6 @@ function SessionEntry({
           className="fixed z-[9999] min-w-[150px] rounded-md border border-border-strong bg-surface py-1 text-sm shadow-xl shadow-black/40"
           style={{ left: menuPosition.x, top: menuPosition.y }}
         >
-          <button
-            onClick={() => {
-              setMenuOpen(false)
-              openWorkflowRunsForSession(resolveRunSessionId(session.piSessionId, session.sessionId) ?? session.sessionId)
-            }}
-            className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-secondary hover:bg-surface-hover"
-          >
-            <WorkflowIcon size={13} /> {t(language, 'workflowRuns')}
-          </button>
           <button
             onClick={handleArchive}
             className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-secondary hover:bg-surface-hover"

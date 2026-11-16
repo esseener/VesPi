@@ -14,7 +14,7 @@
   <a href="https://github.com/esseener/VesPi/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/esseener/VesPi?color=e8734a"></a>
   <a href="https://github.com/esseener/VesPi/releases"><img alt="downloads" src="https://img.shields.io/github/downloads/esseener/VesPi/total?color=e8734a"></a>
   <img alt="platform" src="https://img.shields.io/badge/platform-Windows%20x64-0078D6">
-  <img alt="kernel" src="https://img.shields.io/badge/kernel-OMP%2018.3.2-111111">
+  <img alt="kernel" src="https://img.shields.io/badge/kernel-OMP%2018.20.2-111111">
   <a href="LICENSE"><img alt="license" src="https://img.shields.io/badge/license-Apache--2.0-blue"></a>
 </p>
 
@@ -41,7 +41,7 @@
 |---|---|
 | 主交互面 | 终端内嵌 `omp --profile vespi` TUI（完整能力） |
 | GUI 职责 | 工作区标签、会话索引、设置（写入 OMP profile）、主题与字号 |
-| 内核 | 随安装包交付的 `omp.exe`（当前 **18.3.2**），不读全局 PATH |
+| 内核 | 随安装包交付的 `omp.exe`（当前 **18.20.2**），不读全局 PATH |
 | 运行时依赖 | **无**。不需要 Node、Bun |
 | 会话位置 | `~/.omp/profiles/vespi/agent/sessions` |
 | 配置位置 | `~/.omp/profiles/vespi/agent/config.yml`（GUI 与 TUI 共用） |
@@ -57,7 +57,7 @@
 ├──────────┬──────────────────────────────────┤
 │ 会话列表  │                                  │
 │ 项目树    │        OMP TUI（终端）           │
-│ 设置/诊断 │   欢迎页 · 对话 · 工具 · 框线    │
+│ 设置/关于 │   欢迎页 · 对话 · 工具 · 框线    │
 │          │                                  │
 │          │   π > ● model ▸ path ▸ git       │
 └──────────┴──────────────────────────────────┘
@@ -65,7 +65,7 @@
 
 - **顶栏** = 多工作区切换（每个工作区独立 cwd / 会话索引）
 - **中央** = 终端，直接跑 OMP TUI，不是伪终端聊天
-- **侧栏** = 会话、文件、设置、诊断等入口
+- **侧栏** = 项目、会话、设置和关于；文件与浏览器从工作台打开
 - **设置** = 写入 OMP profile（主题、符号、思考等级、模型）
 
 ## 界面
@@ -114,6 +114,8 @@
 - 灰色/半亮文字对比度强制达标（可读）
 
 **维护**
+
+- 精简外壳：已移除任务中心、工作流监控、插件管理、速记、诊断及专用后台代码。OMP 自身的工具与插件能力仍由内核提供。
 
 - 界面与内核双通道更新（GitHub Releases）
 - 内核锁定 `resources/omp-runtime-lock.json`，打包前校验
@@ -172,7 +174,9 @@ Git 传送带是本地 `git`（界面已标注「不经 agent」）。
 
 ## 从源码构建
 
-需要 Node.js 22+。
+需要 Node.js 24.14+（24.x，与 Windows CI 一致）。
+
+当前技术选型、版本兼容性与后续架构方向见 [技术审查与升级](docs/upgrade-2026-11.md)。
 
 ```bash
 git clone https://github.com/esseener/VesPi.git

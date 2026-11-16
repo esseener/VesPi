@@ -59,7 +59,8 @@ export interface SidePanelMetrics {
 export function resolveSidePanelMetrics(
   panes: SidePanelPanes,
   sidePanelWidth: number,
-  filePaneWidth: number
+  filePaneWidth: number,
+  availableWidth = MAX_SIDE_PANEL_WIDTH
 ): SidePanelMetrics {
   const besideAnotherPane = panes.showEditor || panes.showImage
   const fileTreeOnly = panes.showFileTree && !besideAnotherPane
@@ -68,12 +69,13 @@ export function resolveSidePanelMetrics(
     panes.showFileTree && besideAnotherPane
       ? MIN_SIDE_PANEL_WIDTH_WITH_EDITOR
       : MIN_SIDE_PANEL_WIDTH
-  const sidePanel = clamp(sidePanelWidth, minSidePanelWidth, MAX_SIDE_PANEL_WIDTH)
+  const ceiling = Math.max(MIN_FILE_PANE_WIDTH, Math.min(MAX_SIDE_PANEL_WIDTH, availableWidth))
+  const sidePanel = clamp(sidePanelWidth, Math.min(minSidePanelWidth, ceiling), ceiling)
 
   // Alone, the file tree *is* the side panel, so there is nothing to reserve —
   // reserving anyway is what pinned it to a fraction of the panel.
   const maxFilePaneWidth = fileTreeOnly
-    ? MAX_SIDE_PANEL_WIDTH
+    ? ceiling
     : Math.max(MIN_FILE_PANE_WIDTH, sidePanel - MIN_EDITOR_PANE_WIDTH)
 
   const filePane = clamp(filePaneWidth, MIN_FILE_PANE_WIDTH, maxFilePaneWidth)

@@ -23,8 +23,8 @@ export interface OmpAppearance {
   themeDark: OmpDarkTheme | string
   themeLight: string
   symbolPreset: 'unicode' | 'nerd' | 'ascii'
-  /** thinking.defaultLevel when the model supports efforts */
-  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  /** Native defaultThinkingLevel; the kernel resolves support for each model. */
+  thinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto'
 }
 
 export const DEFAULT_OMP_APPEARANCE: OmpAppearance = {
@@ -42,8 +42,7 @@ export function buildOmpAppearanceYaml(a: OmpAppearance): string {
     `  dark: ${a.themeDark}`,
     `  light: ${a.themeLight}`,
     `symbolPreset: ${a.symbolPreset}`,
-    'thinking:',
-    `  defaultLevel: ${a.thinkingLevel ?? 'high'}`,
+    `defaultThinkingLevel: ${a.thinkingLevel ?? 'high'}`,
     '',
   ].join('\n')
 }

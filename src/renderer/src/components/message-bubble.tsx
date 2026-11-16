@@ -108,10 +108,9 @@ function MessageBubbleImpl({
   // Context menu for message-specific actions
   const { show: showContextMenu, ContextMenuComponent: MessageContextMenu } = useContextMenu()
 
-  const startNoteFromText = useAppStore((state) => state.startNoteFromText)
 
   const handleMessageContextMenu = (e: React.MouseEvent) => {
-    showContextMenu(e, buildMessageContextMenu(message.content, startNoteFromText))
+    showContextMenu(e, buildMessageContextMenu(message.content))
   }
 
   if (message.role === 'user') {

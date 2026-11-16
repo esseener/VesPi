@@ -3,7 +3,8 @@
   "compilerOptions": {
     "outDir": "../../out/renderer",
     "rootDir": "../..",
-    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "types": ["node", "vite/client"],
     "jsx": "react-jsx",
     "composite": true,
     "declaration": true,

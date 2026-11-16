@@ -10,8 +10,6 @@ import {
   GitCompare,
   AlertTriangle,
   Settings as SettingsIcon,
-  Stethoscope,
-  Play,
 } from 'lucide-react'
 import { useAppStore } from '../store'
 import vespiCenterLogo from '../assets/vespi-center-logo.png'
@@ -90,8 +88,8 @@ export function HomeInfoSummary({ compact }: { compact?: boolean }): React.JSX.E
     setBusy(true)
     try {
       if (!(await activateWorkspace(workspaceId))) return
-      if (useAppStore.getState().piStatus === 'error') return
-      if (useAppStore.getState().piStatus !== 'running') {
+      if (!useAppStore.getState().terminalOpen && useAppStore.getState().piStatus === 'error') return
+      if (!useAppStore.getState().terminalOpen && useAppStore.getState().piStatus !== 'running') {
         void useAppStore.getState().startPi()
       }
       requestChatScrollToBottom()
@@ -264,15 +262,6 @@ function PiErrorBanner(): React.JSX.Element | null {
         <div className="mt-1 text-xs text-error/70">{t(language, 'checkPath', { engine: engineLabel })}</div>
       </div>
       <div className="flex shrink-0 gap-1.5">
-        {/* A failed kernel is exactly what the diagnostics panel exists for —
-            settings alone leaves the user without the log and health readout. */}
-        <button
-          onClick={() => setCurrentView('diagnostics')}
-          className="flex items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
-        >
-          <Stethoscope size={12} />
-          {t(language, 'diagnostics')}
-        </button>
         <button
           onClick={() => setCurrentView('settings')}
           className="flex shrink-0 items-center gap-1.5 rounded-md bg-error/25 px-2.5 py-1 text-xs text-error hover:bg-error/40"
@@ -332,7 +321,6 @@ function HomeScreenInfo(): React.JSX.Element {
   const activateWorkspace = useAppStore((s) => s.activateWorkspace)
   const createWorkspace = useAppStore((s) => s.createWorkspace)
   const createNewSession = useAppStore((s) => s.createNewSession)
-  const setTaskLauncherOpen = useAppStore((s) => s.setTaskLauncherOpen)
   const setCurrentView = useAppStore((s) => s.setCurrentView)
   const requestChatScrollToBottom = useAppStore((s) => s.requestChatScrollToBottom)
   const language = useAppStore((s) => s.settingsDraft.language ?? s.settings?.language ?? DEFAULT_LANGUAGE)
@@ -357,7 +345,7 @@ function HomeScreenInfo(): React.JSX.Element {
       }
       if (ws) {
         if (!(await activateWorkspace(ws.id))) return
-        if (useAppStore.getState().piStatus !== 'running' && useAppStore.getState().piStatus !== 'error') {
+        if (!useAppStore.getState().terminalOpen && useAppStore.getState().piStatus !== 'running' && useAppStore.getState().piStatus !== 'error') {
           void useAppStore.getState().startPi()
         }
         goChatUnlessError()
@@ -375,8 +363,8 @@ function HomeScreenInfo(): React.JSX.Element {
     setBusy(true)
     try {
       if (!(await activateWorkspace(activeWorkspace.id))) return
-      if (useAppStore.getState().piStatus === 'error') return
-      if (useAppStore.getState().piStatus !== 'running') {
+      if (!useAppStore.getState().terminalOpen && useAppStore.getState().piStatus === 'error') return
+      if (!useAppStore.getState().terminalOpen && useAppStore.getState().piStatus !== 'running') {
         void useAppStore.getState().startPi()
       }
       await createNewSession()
@@ -419,16 +407,6 @@ function HomeScreenInfo(): React.JSX.Element {
               <div className="truncate text-xs text-dim">
                 {activeWorkspace ? t(language, 'newSessionIn', { name: activeWorkspace.name }) : t(language, 'pickFolderFirst')}
               </div>
-            </div>
-          </button>
-          <button
-            onClick={() => setTaskLauncherOpen(true)}
-            className="flex w-full items-center gap-3 rounded-sm border border-border-strong bg-transparent px-4 py-3 text-left transition-colors hover:border-accent-fg"
-          >
-            <Play size={18} className="shrink-0 text-accent-fg" />
-            <div className="min-w-0">
-              <div className="text-sm font-medium text-primary">{t(language, 'newTask')}</div>
-              <div className="truncate text-xs text-dim">{t(language, 'newTaskHint')}</div>
             </div>
           </button>
         </div>

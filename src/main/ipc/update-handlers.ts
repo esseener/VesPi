@@ -21,7 +21,7 @@ import {
   installedKernelMarkerPath,
   readInstalledKernelVersion,
 } from '../kernel-version-marker'
-import { extractVersionLine } from '../diagnostics-report'
+import { extractVersionLine } from '../version-output'
 import { downloadFile, RANGE_UNSUPPORTED, type PartSource } from '../multi-part-download'
 import { runPiCli } from './run-pi-cli'
 import { resolvePrivateOmpPath } from '../vespi-runtime'

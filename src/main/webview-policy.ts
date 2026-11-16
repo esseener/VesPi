@@ -21,3 +21,8 @@ export function isWebviewAttachAllowed(partition: string | undefined, src: strin
   if (partition === VESPI_BROWSER_PARTITION) return isHttpUrl(src)
   return src.startsWith('file://')
 }
+
+export function isWebviewNavigationAllowed(isBrowserPanel: boolean, url: string, workspaceTrusted: boolean): boolean {
+  if (isBrowserPanel) return isHttpUrl(url)
+  return url.startsWith('file://') || workspaceTrusted
+}

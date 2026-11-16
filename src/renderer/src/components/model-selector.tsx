@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback } from 'react'
+import { OverlayPortal } from './overlay-portal'
 import { useAppStore } from '../store'
 import type { ModelInfo } from '../../../shared/ipc-contracts'
 import { filterModels } from '../utils/model-search'
@@ -6,7 +7,7 @@ import { clsx } from 'clsx'
 import { Cpu, ChevronUp, ChevronDown, Check, Loader2, Search } from 'lucide-react'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { thinkingSupport } from '../../../shared/thinking-levels'
-import { hasConfiguredChatModel, isProviderRetired } from '../../../shared/models-config'
+import { hasConfiguredChatModel } from '../../../shared/models-config'
 
 interface ModelSelectorProps {
   className?: string
@@ -22,8 +23,7 @@ export function ModelSelector({
 }: ModelSelectorProps): React.JSX.Element {
   const sessionState = useAppStore((state) => state.sessionState)
   const setModel = useAppStore((state) => state.setModel)
-  const piStatus = useAppStore((state) => state.piStatus)
-  const startPi = useAppStore((state) => state.startPi)
+  const terminalStatus = useAppStore((state) => state.terminalStatus)
   const settings = useAppStore((state) => state.settings)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const customModels = useAppStore((state) => state.customModels)
@@ -35,11 +35,30 @@ export function ModelSelector({
   const [loading, setLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [pendingModel, setPendingModel] = useState<string | null>(null)
+  const [liveModel, setLiveModel] = useState<string | null>(null)
+  useEffect(() => {
+    let disposed = false
+    const refresh = async (): Promise<void> => {
+      try {
+        const state = await window.piDesktop.terminal.state()
+        if (!disposed) setLiveModel(state.model)
+      } catch { /* Terminal may be starting. */ }
+    }
+    void refresh()
+    const timer = setInterval(() => void refresh(), 2000)
+    return () => { disposed = true; clearInterval(timer) }
+  }, [])
+  const loadGeneration = useRef(0)
   const ref = useRef<HTMLDivElement>(null)
+  const menuRef = useRef<HTMLDivElement>(null)
+  const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({})
   const searchRef = useRef<HTMLInputElement>(null)
 
-  const currentModel = sessionState?.model
+  const terminalOpen = useAppStore((state) => state.terminalOpen)
+  const currentModel = terminalOpen ? undefined : sessionState?.model
   const fallbackLabel =
+    (terminalOpen ? liveModel : null) ??
     currentModel?.name ??
     (settings?.defaultModel
       ? settings.defaultProvider
@@ -55,6 +74,7 @@ export function ModelSelector({
   }
 
   const loadModels = useCallback(async (): Promise<void> => {
+    const generation = ++loadGeneration.current
     setLoading(true)
     setError(null)
     try {
@@ -70,16 +90,18 @@ export function ModelSelector({
           data?: { models?: ModelInfo[] }
         } | null>,
       ])
+      if (generation !== loadGeneration.current) return
       if (response?.success && response.data?.models) {
         setModels(response.data.models)
       } else {
-        setModels([])
+        throw new Error(t(language, 'modelListFailed'))
       }
     } catch {
+      if (generation !== loadGeneration.current) return
       setModels([])
       setError(t(language, 'modelListFailed'))
     } finally {
-      setLoading(false)
+      if (generation === loadGeneration.current) setLoading(false)
     }
   }, [language, loadCustomModels])
 
@@ -89,14 +111,13 @@ export function ModelSelector({
       return
     }
     setIsOpen(true)
-    // Always load — MODEL_LIST_AVAILABLE falls back to models.json when the
-    // GUI rpc kernel is not running (terminal-first).
-    void loadModels()
   }
 
   useEffect(() => {
     if (!isOpen) return
     void loadModels()
+    const generation = loadGeneration.current
+    return () => { loadGeneration.current = generation + 1 }
   }, [isOpen, loadModels])
 
   useEffect(() => {
@@ -108,7 +129,7 @@ export function ModelSelector({
   useEffect(() => {
     if (!isOpen) return
     const handleClick = (e: MouseEvent): void => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      if (ref.current && !ref.current.contains(e.target as Node) && !menuRef.current?.contains(e.target as Node)) {
         close()
       }
     }
@@ -116,35 +137,51 @@ export function ModelSelector({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [isOpen])
 
-  // Clearing a provider’s key retires it: the kernel keeps listing its models
-  // until it restarts, so hiding them here is what makes the deletion visible.
-  const offeredModels = useMemo(
-    () => models.filter((model) => !isProviderRetired(customModels, model.provider)),
-    [models, customModels]
-  )
-  const filteredModels = useMemo(() => filterModels(offeredModels, query), [offeredModels, query])
+  useLayoutEffect(() => {
+    if (!isOpen) return
+    const place = (): void => {
+      const trigger = ref.current?.getBoundingClientRect()
+      if (!trigger) return
+      const width = Math.min(320, window.innerWidth - 16)
+      const room = dropUp ? trigger.top - 12 : window.innerHeight - trigger.bottom - 12
+      setMenuStyle({
+        width,
+        left: Math.max(8, Math.min(trigger.right - width, window.innerWidth - width - 8)),
+        maxHeight: Math.max(120, room),
+        ...(dropUp ? { bottom: window.innerHeight - trigger.top + 4 } : { top: trigger.bottom + 4 }),
+      })
+    }
+    place()
+    window.addEventListener('resize', place)
+    return () => window.removeEventListener('resize', place)
+  }, [isOpen, dropUp])
+
+  // The fresh native catalog also includes OAuth and YAML-only providers.
+  // A legacy JSON mirror must not hide models OMP can actually use.
+  const filteredModels = useMemo(() => filterModels(models, query), [models, query])
 
   const handleSelect = async (model: ModelInfo): Promise<void> => {
-    if (useAppStore.getState().piStatus === 'running') {
+    if (pendingModel) return
+    setPendingModel(`${model.provider}/${model.id}`)
+    setError(null)
+    try {
       await setModel(model.provider, model.id)
-    } else {
-      // Persist preferred model for the next Pi start.
-      const updated = await window.piDesktop.settings.save({
-        defaultProvider: model.provider,
-        defaultModel: model.id,
-      })
-      useAppStore.setState({ settings: updated })
+      close()
+    } catch (error) {
+      setError(t(language, 'terminalActionFailed', { error: error instanceof Error ? error.message : String(error) }))
+    } finally {
+      setPendingModel(null)
     }
-    close()
   }
 
   return (
-    <div ref={ref} className={clsx('relative', className)}>
+    <div ref={ref} className={clsx('relative', className)} onKeyDown={(event) => { if (event.key === 'Escape') { close(); ref.current?.querySelector('button')?.focus(); event.stopPropagation() } }}>
       <button
         type="button"
         onClick={() => void open()}
+        disabled={terminalStatus === 'starting' || Boolean(pendingModel)}
         className={clsx(
-          'flex h-6 max-w-52 items-center gap-1 rounded-md px-2 text-[11px] transition-colors active:scale-[0.98]',
+          'flex h-8 max-w-52 items-center gap-1.5 rounded-md px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-accent-fg disabled:opacity-50',
           isOpen ? 'bg-surface-hover text-primary' : 'text-dim hover:bg-surface-hover hover:text-secondary',
           compact && 'max-w-36',
         )}
@@ -152,7 +189,7 @@ export function ModelSelector({
         aria-label={t(language, 'selectModel')}
         aria-expanded={isOpen}
       >
-        <Cpu size={10} className="shrink-0" />
+        {pendingModel ? <Loader2 size={14} className="shrink-0 animate-spin" /> : <Cpu size={14} className="shrink-0" />}
         <span className="min-w-0 truncate">{fallbackLabel}</span>
         {dropUp ? (
           <ChevronUp
@@ -167,12 +204,14 @@ export function ModelSelector({
         )}
       </button>
 
-      {isOpen && (
+      {isOpen && <OverlayPortal>
         <div
-          className={clsx(
-            'absolute right-0 z-50 w-72 surface-floating py-1 shadow-xl shadow-black/40 animate-fade-in',
-            dropUp ? 'bottom-full mb-1' : 'top-full mt-1',
-          )}
+          ref={menuRef}
+          role="dialog"
+          aria-label={t(language, 'selectModel')}
+          style={menuStyle}
+          onKeyDown={(event) => { if (event.key === 'Escape') { close(); ref.current?.querySelector('button')?.focus(); event.stopPropagation() } }}
+          className="fixed z-50 flex flex-col overflow-hidden rounded-lg border border-border-strong bg-surface py-1 shadow-xl shadow-black/40"
         >
           {currentModel && (
             <div className="border-b border-border px-3 py-2">
@@ -184,21 +223,8 @@ export function ModelSelector({
             </div>
           )}
 
-          {piStatus !== 'running' && (
-            <div className="flex items-center gap-2 border-b border-border px-3 py-1.5 text-[10px] text-faint">
-              <span className="min-w-0 flex-1">{t(language, 'startToListModels')}</span>
-              <button
-                type="button"
-                onClick={() => {
-                  void startPi()
-                }}
-                className="shrink-0 rounded-md border border-border-strong px-2 py-0.5 text-[11px] text-secondary transition-colors hover:border-accent-fg hover:text-primary"
-              >
-                {t(language, 'startKernel')}
-              </button>
-            </div>
-          )}
-          {!hasConfiguredChatModel(customModels) && (
+          <p className="border-b border-border px-3 py-2 text-xs text-muted">{t(language, 'modelPreferenceHint')}</p>
+          {!loading && models.length === 0 && !hasConfiguredChatModel(customModels) && (
             <button
               type="button"
               onClick={() => {
@@ -223,30 +249,31 @@ export function ModelSelector({
                   className="min-w-0 flex-1 bg-transparent text-sm text-primary outline-none placeholder:text-faint"
                 />
               </div>
-              <div className="max-h-56 overflow-y-auto py-1">
+              <div className="min-h-0 max-h-56 overflow-y-auto py-1">
                 {loading && (
                   <div className="flex items-center gap-2 px-3 py-2 text-xs text-dim">
                     <Loader2 size={12} className="animate-spin" />
                     {t(language, 'loading')}
                   </div>
                 )}
-                {error && <div className="px-3 py-2 text-xs text-error">{error}</div>}
+                {error && <div role="alert" className="px-3 py-2 text-xs text-error">{error}</div>}
                 {!loading && !error && filteredModels.length === 0 && (
                   <div className="px-3 py-2 text-xs text-dim">{t(language, 'noModelsMatch')}</div>
                 )}
                 {filteredModels.map((model) => {
                   const selected =
-                    currentModel?.id === model.id && currentModel?.provider === model.provider
+                    (currentModel?.id ?? settings?.defaultModel) === model.id && (currentModel?.provider ?? settings?.defaultProvider) === model.provider
                   // The kernel hands back what each model accepts, so the choice
                   // can be an informed one instead of a discovery afterwards.
-                  const support = thinkingSupport(model)
+                   const support = model.reasoning === undefined ? { kind: 'undeclared' as const } : thinkingSupport(model)
                   return (
                     <button
                       key={`${model.provider}/${model.id}`}
                       type="button"
                       onClick={() => void handleSelect(model)}
+                      disabled={Boolean(pendingModel) || loading}
                       className={clsx(
-                        'flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:bg-surface-hover transition-colors',
+                        'flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-hover transition-colors disabled:opacity-50',
                         selected && 'bg-card'
                       )}
                     >
@@ -267,14 +294,14 @@ export function ModelSelector({
                               : t(language, 'thinkingNoSupport')}
                         </div>
                       </div>
-                      {selected && <Check size={12} className="shrink-0 text-success" />}
+                      {pendingModel === `${model.provider}/${model.id}` ? <Loader2 size={14} className="animate-spin" /> : selected && <Check size={12} className="shrink-0 text-success" />}
                     </button>
                   )
                 })}
               </div>
             </>
         </div>
-      )}
+      </OverlayPortal>}
     </div>
   )
 }

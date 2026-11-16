@@ -29,7 +29,6 @@ export const IPC_CHANNELS = {
 
   // Session management
   SESSION_NEW: 'session:new',
-  SESSION_LAUNCH_TASK: 'session:launch-task',
   SESSION_CLOSE_RUNTIME: 'session:close-runtime',
   SESSION_SWITCH: 'session:switch',
   SESSION_LIST_RUNTIMES: 'session:list-runtimes',
@@ -110,14 +109,8 @@ export const IPC_CHANNELS = {
   // Activity
   ACTIVITY_GET_STATS: 'activity:get-stats',
 
-  // Workflow run monitoring
-  WORKFLOW_LIST: 'workflow:list',
-  WORKFLOW_GET_RUN: 'workflow:get-run',
-  WORKFLOW_CONTROL: 'workflow:control',
-  WORKFLOW_SET_PERSISTENCE: 'workflow:set-persistence',
 
   // Diagnostics
-  DIAGNOSTICS_GET: 'diagnostics:get',
 
   // Workspaces
   WORKSPACE_LIST: 'workspace:list',
@@ -134,17 +127,8 @@ export const IPC_CHANNELS = {
   WORKSPACE_ACTIVITY_GET: 'workspace:activity',
   WORKSPACE_TAKE_PENDING_ACTIVATION: 'workspace:take-pending-activation',
 
-  // Packages
-  PACKAGE_LIST_INSTALLED: 'package:list-installed',
-  PACKAGE_INSTALL: 'package:install',
-  PACKAGE_REMOVE: 'package:remove',
-  PACKAGE_UPDATE: 'package:update',
-  PACKAGE_CATALOG_FETCH: 'package:catalog-fetch',
 
   SKILLS_LIST: 'skills:list',
-  SKILLS_CREATE: 'skills:create',
-  SKILLS_DELETE: 'skills:delete',
-  SKILLS_EVOLVE: 'skills:evolve',
   COMMANDS_LIST: 'commands:list',
   MCP_SERVERS_LIST: 'mcp:servers-list',
 
@@ -181,6 +165,7 @@ export const IPC_CHANNELS = {
   TERMINAL_STOP: 'terminal:stop',
   /** Restart the PTY (kernel swap / config) keeping cwd and handlers. */
   TERMINAL_RESTART: 'terminal:restart',
+  TERMINAL_STATE: 'terminal:state',
 
   // Session tags
   TAG_GET: 'tag:get',
@@ -193,11 +178,6 @@ export const IPC_CHANNELS = {
   TAG_AUTO_ENSURE: 'tag:auto-ensure',
   TAG_AUTO_REMOVE: 'tag:auto-remove',
 
-  // Notes (reusable prompts / commands)
-  NOTES_LIST: 'notes:list',
-  NOTES_CREATE: 'notes:create',
-  NOTES_UPDATE: 'notes:update',
-  NOTES_REMOVE: 'notes:remove',
 
   // Themes (user-created theme storage)
   THEMES_LIST: 'themes:list',
@@ -320,12 +300,6 @@ export interface SessionRuntimeCloseResult {
    */
   appCreated: boolean
   deleted: boolean
-}
-
-export interface SessionLaunchTaskOptions {
-  workspaceId: string
-  prompt: string
-  isolated?: boolean
 }
 
 export interface GitConveyorStatus {
@@ -571,117 +545,6 @@ export interface WorkspaceActivationIntent {
   workspaceId: string
   sessionPath?: string
   runtimeId?: string
-}
-
-// ─── Workflow monitoring ────────────────────────────────────────────────────
-
-export type WorkflowRunStatus = 'pending' | 'running' | 'paused' | 'completed' | 'failed' | 'aborted' | 'unknown'
-export type WorkflowAgentStatus = 'queued' | 'running' | 'done' | 'error' | 'skipped'
-
-export interface WorkflowAgentSummary {
-  id: number
-  callId?: string
-  label: string
-  phase?: string
-  status: WorkflowAgentStatus
-  error?: string
-  errorCode?: string
-  recoverable?: boolean
-  hasHistory: boolean
-  resultPreview?: string
-  tokens?: number
-  model?: string
-  startedAt?: string
-  endedAt?: string
-  tokenUsage?: {
-    input: number
-    output: number
-    total: number
-    cost?: number
-    cacheRead?: number
-    cacheWrite?: number
-  }
-}
-
-/**
- * Control action dispatched to the run's owning workspace Pi process. `stop`
- * maps to the extension's `/workflows stop <id>` (marks the run aborted),
- * `resume` to `/workflows resume <id>` (paused/failed/pending only).
- */
-export type WorkflowControlAction = 'stop' | 'resume'
-
-export type WorkflowControlReason =
-  | 'no-pi'
-  | 'pi-not-running'
-  | 'extension-missing'
-  | 'status-not-permitted'
-  | 'dispatch-failed'
-  | 'timeout'
-
-/** Result of a workflow control dispatch (never a fake local status change). */
-export interface WorkflowControlResult {
-  action: WorkflowControlAction
-  runId: string
-  ok: boolean
-  reason?: WorkflowControlReason
-  /** True only when the extension command was actually handed to Pi. */
-  dispatched?: boolean
-}
-
-/** Safe, renderer-sized projection of a dynamic-workflow persisted run. */
-export interface WorkflowRunSummary {
-  workspaceId: string
-  workspaceName: string
-  cwd: string
-  runId: string
-  workflowName: string
-  sessionId?: string
-  status: WorkflowRunStatus
-  pauseReason?: string
-  resetHint?: string
-  phases: string[]
-  currentPhase?: string
-  agents: WorkflowAgentSummary[]
-  startedAt: string
-  updatedAt: string
-  durationMs?: number
-  tokenUsage?: {
-    input: number
-    output: number
-    total: number
-    cost?: number
-    cacheRead?: number
-    cacheWrite?: number
-  }
-}
-
-export interface WorkflowHistoryEntry {
-  id?: string
-  timestamp?: string
-  role: string
-  kind: string
-  text: string
-  toolName?: string
-  path?: string
-  diff?: string
-  isError?: boolean
-}
-
-export interface WorkflowAgentDetail extends WorkflowAgentSummary {
-  prompt?: string
-  resultText?: string
-  history: WorkflowHistoryEntry[]
-  transcriptSource: 'persisted-session' | 'run-history' | 'none'
-  transcriptComplete: boolean
-}
-
-/** Lazy-loaded detail for one run; large fields never travel in list polling. */
-export interface WorkflowRunDetail extends WorkflowRunSummary {
-  script?: string
-  argsText?: string
-  resultText?: string
-  logs: string[]
-  agents: WorkflowAgentDetail[]
 }
 
 export interface PiMessageStartEvent {
@@ -1252,7 +1115,7 @@ export interface AppSettings {
   /** OMP symbol glyph preset */
   ompSymbolPreset: 'unicode' | 'nerd' | 'ascii'
   /** thinking.defaultLevel written to the OMP profile config. */
-  ompThinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  ompThinkingLevel?: 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max' | 'auto'
   /** UI language. Chinese is the product default. */
   language: 'zh' | 'en'
   defaultModel: string | null
@@ -1412,37 +1275,6 @@ export interface Workspace {
   taskPrompt?: string
 }
 
-// ─── Notes Types ────────────────────────────────────────────────────────────
-
-/**
- * Scope of a note. Either the literal `'global'` (available everywhere) or a
- * workspace id (only surfaced when that workspace is active). Stored as a
- * single field so all notes live in one store and the UI merges by scope.
- */
-export type NoteScope = 'global' | string
-
-/** A reusable prompt or agent command the user has saved. */
-export interface Note {
-  id: string
-  title: string
-  body: string
-  tags: string[]
-  scope: NoteScope
-  createdAt: number
-  updatedAt: number
-}
-
-/** Fields supplied when creating a note. */
-export interface NoteInput {
-  title: string
-  body: string
-  tags: string[]
-  scope: NoteScope
-}
-
-/** Mutable fields when updating a note. */
-export type NoteUpdate = Partial<NoteInput>
-
 // ─── Theme Types ────────────────────────────────────────────────────────────
 
 import type { ThemeFile } from './theme/theme-file'
@@ -1498,29 +1330,6 @@ export type ThemeGalleryImageResult =
   | { ok: true; dataUri: string }
   | { ok: false; error: string }
 
-// ─── Package Types ──────────────────────────────────────────────────────────
-
-export interface InstalledPackage {
-  name: string
-  source: string
-  type: 'extension' | 'skill' | 'prompt' | 'theme' | 'package'
-  version: string | null
-  path: string
-}
-
-export interface CatalogPackage {
-  name: string
-  description: string
-  author: string
-  type: string
-  downloads: number
-  downloadsDisplay: string
-  updatedAt: string
-  npmUrl: string | null
-  repoUrl: string | null
-  installCommand: string
-}
-
 // ─── Skill Types ────────────────────────────────────────────────────────────
 
 export interface InstalledSkill {
@@ -1538,17 +1347,6 @@ export interface InstalledSkill {
   managed?: boolean
 }
 
-export interface SkillMutationResult {
-  ok: boolean
-  error?: string
-  path?: string
-  name?: string
-  skillId?: string
-  jobs?: number
-  outcomes?: number
-  statuses?: string[]
-}
-
 // ─── App Log Types ──────────────────────────────────────────────────────────
 
 /**
@@ -1564,78 +1362,6 @@ export interface AppLogEntry {
   message: string
   /** Optional stringified error / extra context. */
   detail?: string
-}
-
-// ─── Diagnostics Types ──────────────────────────────────────────────────────
-
-export interface DiagnosticsWorkspaceInfo {
-  id: string
-  name: string
-  path: string
-  pathExists: boolean
-  trusted: boolean
-  piStatus: PiProcessStatus
-}
-
-/**
- * How a provider's apiKey field resolves: a literal secret, an environment
- * variable that is present/absent, a shell command (never evaluated here), or
- * nothing configured.
- */
-export type ProviderKeyState = 'literal' | 'env-set' | 'env-missing' | 'shell' | 'none'
-
-export interface DiagnosticsProviderInfo {
-  name: string
-  modelCount: number
-  keyState: ProviderKeyState
-  /** The environment variable name when keyState is env-set / env-missing. */
-  envVar?: string
-}
-
-/** Everything the Diagnostics view shows, assembled in one main-side pass. */
-export interface DiagnosticsReport {
-  generatedAt: number
-  app: {
-    version: string
-    electron: string
-    chrome: string
-    node: string
-    platform: string
-    arch: string
-  }
-  piBinary: {
-    found: boolean
-    script: string
-    source: string
-    useNode: boolean
-    nodeBinary: string
-    nodeFound: boolean
-    needsShell: boolean
-    rejectedOverride: string | null
-    failureReason: string | null
-    /** Entries on the merged (login-shell-aware) PATH used to find Pi. */
-    pathEntryCount: number
-  }
-  /** `pi --version` output (first line), or null when it could not run. */
-  piVersion: string | null
-  workspaces: DiagnosticsWorkspaceInfo[]
-  /** Null when models.json is missing or unreadable — see providersError. */
-  providers: DiagnosticsProviderInfo[] | null
-  providersError: string | null
-  permissions: {
-    mode: PermissionMode
-    /** Rule count in the global file; null when the file is invalid. */
-    globalRuleCount: number | null
-    globalRulesError: string | null
-    workspace: PermissionRulesWorkspaceStatus
-  }
-  storage: {
-    guiDataDir: string
-    settingsPath: string
-    sessionsRoot: string
-    sessionsRootExists: boolean
-  }
-  recentErrors: AppLogEntry[]
 }
 
 // ─── File Types ────────────────────────────────────────────────────────────

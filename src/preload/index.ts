@@ -13,10 +13,7 @@ import type {
   Workspace,
   WorkspaceTabOptions,
   WorkspaceRemoveResult,
-  InstalledPackage,
   InstalledSkill,
-  SkillMutationResult,
-  CatalogPackage,
   FileTreeNode,
   FileSearchResult,
   FileChangeEvent,
@@ -24,9 +21,6 @@ import type {
   TerminalExitEvent,
   TerminalStartOptions,
   TerminalStartResult,
-  Note,
-  NoteInput,
-  NoteUpdate,
   UpdateCheckResult,
   KernelUpdateProgress,
   SessionLineageRecord,
@@ -46,7 +40,6 @@ import type {
   PathKindResult,
   PromptImage,
   ActivityStatsResult,
-  DiagnosticsReport,
   ThemesListResult,
   ThemeImportResult,
   ThemeExportResult,
@@ -62,13 +55,8 @@ import type {
   PermissionRulesRemoveResult,
   PendingPromptCounts,
   WorkspaceActivityMap,
-  WorkflowRunSummary,
-  WorkflowRunDetail,
-  WorkflowControlAction,
-  WorkflowControlResult,
   SessionRuntimeInfo,
   SessionRuntimeCloseResult,
-  SessionLaunchTaskOptions,
   WorkspaceActivationIntent,
   GitConveyorStatus,
   GitConveyorCommitOptions,
@@ -106,7 +94,6 @@ interface PiDesktopAPI {
   // Session management
   session: {
     createNew(): Promise<SessionRuntimeInfo>
-    launchTask(options: SessionLaunchTaskOptions): Promise<SessionRuntimeInfo>
     closeRuntime(runtimeId: string): Promise<SessionRuntimeCloseResult | null>
     switch(sessionPath: string, cwd?: string): Promise<SessionRuntimeInfo>
     listRuntimes(): Promise<SessionRuntimeInfo[]>
@@ -193,15 +180,6 @@ interface PiDesktopAPI {
     takePendingActivation(): Promise<WorkspaceActivationIntent | null>
   }
 
-  // Package management
-  packages: {
-    listInstalled(): Promise<InstalledPackage[]>
-    install(spec: string): Promise<{ success: boolean; output: string }>
-    remove(spec: string): Promise<{ success: boolean; output: string }>
-    update(spec?: string): Promise<{ success: boolean; output: string }>
-    fetchCatalog(query?: string): Promise<CatalogPackage[]>
-  }
-
   // Models config (read/write ~/.omp/profiles/vespi/agent/models.json)
   models: {
     read(): Promise<ModelsReadResult>
@@ -220,9 +198,6 @@ interface PiDesktopAPI {
   // Skills, Commands, MCP, Tags
   skills: {
     list(): Promise<InstalledSkill[]>
-    create(name: string, description: string): Promise<SkillMutationResult>
-    delete(path: string): Promise<SkillMutationResult>
-    evolve(path: string, direction: string): Promise<SkillMutationResult>
   }
   piCommands: {
     list(): Promise<unknown[]>
@@ -248,14 +223,6 @@ interface PiDesktopAPI {
     commit(options: GitConveyorCommitOptions): Promise<GitConveyorStatus>
     push(): Promise<GitConveyorStatus>
     createPullRequest(options: GitConveyorPullRequestOptions): Promise<GitConveyorPullRequestResult>
-  }
-
-  // Notes (reusable prompts / commands)
-  notes: {
-    list(): Promise<Note[]>
-    create(input: NoteInput): Promise<Note>
-    update(id: string, patch: NoteUpdate): Promise<Note>
-    remove(id: string): Promise<void>
   }
 
   // File operations
@@ -304,23 +271,6 @@ interface PiDesktopAPI {
     getStats(): Promise<ActivityStatsResult>
   }
 
-  // Dynamic workflow run monitoring
-  workflows: {
-    list(): Promise<WorkflowRunSummary[]>
-    getRun(workspaceId: string, runId: string): Promise<WorkflowRunDetail>
-    /**
-     * Dispatch stop/resume to the run's owning workspace Pi process. Never
-     * fakes a local status change; the persisted run flips on the next poll.
-     */
-    control(workspaceId: string, runId: string, action: WorkflowControlAction): Promise<WorkflowControlResult>
-    setPersistAgentSessions(enabled: boolean): Promise<void>
-  }
-
-  // Diagnostics report
-  diagnostics: {
-    get(): Promise<DiagnosticsReport>
-  }
-
   // Update check (GitHub releases for VesPi and the bundled OMP kernel)
   updates: {
     check(): Promise<UpdateCheckResult>
@@ -334,9 +284,10 @@ interface PiDesktopAPI {
     getLabels(): Promise<unknown>
     rebuildLabels(kernel: string): Promise<unknown>
     getAppearance(): Promise<{ themeDark: string; themeLight: string; symbolPreset: string }>
-    setAppearance(a: { themeDark: string; themeLight: string; symbolPreset: string }): Promise<{ ok: boolean }>
+    setAppearance(a: Partial<import('../shared/omp-appearance').OmpAppearance>): Promise<{ ok: boolean }>
   }
   terminal: {
+    state(): Promise<{ running: boolean; cwd: string; pid: number | null; sessionPath: string | null; model: string | null; thinkingLevel: string | null; busy: boolean; completed: number }>
     start(options?: TerminalStartOptions): Promise<TerminalStartResult>
     input(data: string): Promise<void>
     resize(cols: number, rows: number): Promise<void>
@@ -400,7 +351,6 @@ const api: PiDesktopAPI = {
 
   session: {
     createNew: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_NEW),
-    launchTask: (options) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LAUNCH_TASK, options),
     closeRuntime: (runtimeId) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_CLOSE_RUNTIME, runtimeId),
     switch: (sessionPath, cwd) => ipcRenderer.invoke(IPC_CHANNELS.SESSION_SWITCH, sessionPath, cwd),
     listRuntimes: () => ipcRenderer.invoke(IPC_CHANNELS.SESSION_LIST_RUNTIMES),
@@ -476,14 +426,6 @@ const api: PiDesktopAPI = {
     takePendingActivation: () => ipcRenderer.invoke(IPC_CHANNELS.WORKSPACE_TAKE_PENDING_ACTIVATION),
   },
 
-  packages: {
-    listInstalled: () => ipcRenderer.invoke(IPC_CHANNELS.PACKAGE_LIST_INSTALLED),
-    install: (spec) => ipcRenderer.invoke(IPC_CHANNELS.PACKAGE_INSTALL, spec),
-    remove: (spec) => ipcRenderer.invoke(IPC_CHANNELS.PACKAGE_REMOVE, spec),
-    update: (spec) => ipcRenderer.invoke(IPC_CHANNELS.PACKAGE_UPDATE, spec),
-    fetchCatalog: (query) => ipcRenderer.invoke(IPC_CHANNELS.PACKAGE_CATALOG_FETCH, query),
-  },
-
   models: {
     read: () => ipcRenderer.invoke(IPC_CHANNELS.MODELS_READ),
     write: (config) => ipcRenderer.invoke(IPC_CHANNELS.MODELS_WRITE, config),
@@ -504,9 +446,6 @@ const api: PiDesktopAPI = {
 
   skills: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_LIST),
-    create: (name, description) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_CREATE, name, description),
-    delete: (path) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_DELETE, path),
-    evolve: (path, direction) => ipcRenderer.invoke(IPC_CHANNELS.SKILLS_EVOLVE, path, direction),
   },
   piCommands: {
     list: () => ipcRenderer.invoke(IPC_CHANNELS.COMMANDS_LIST),
@@ -531,13 +470,6 @@ const api: PiDesktopAPI = {
     commit: (options) => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_COMMIT, options),
     push: () => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_PUSH),
     createPullRequest: (options) => ipcRenderer.invoke(IPC_CHANNELS.GIT_CONVEYOR_CREATE_PR, options),
-  },
-
-  notes: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.NOTES_LIST),
-    create: (input) => ipcRenderer.invoke(IPC_CHANNELS.NOTES_CREATE, input),
-    update: (id, patch) => ipcRenderer.invoke(IPC_CHANNELS.NOTES_UPDATE, id, patch),
-    remove: (id) => ipcRenderer.invoke(IPC_CHANNELS.NOTES_REMOVE, id),
   },
 
   files: {
@@ -589,17 +521,6 @@ const api: PiDesktopAPI = {
     getStats: () => ipcRenderer.invoke(IPC_CHANNELS.ACTIVITY_GET_STATS),
   },
 
-  workflows: {
-    list: () => ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_LIST),
-    getRun: (workspaceId, runId) => ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_GET_RUN, workspaceId, runId),
-    control: (workspaceId, runId, action) => ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_CONTROL, workspaceId, runId, action),
-    setPersistAgentSessions: (enabled) => ipcRenderer.invoke(IPC_CHANNELS.WORKFLOW_SET_PERSISTENCE, enabled),
-  },
-
-  diagnostics: {
-    get: () => ipcRenderer.invoke(IPC_CHANNELS.DIAGNOSTICS_GET),
-  },
-
   updates: {
     check: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_CHECK),
     installKernel: () => ipcRenderer.invoke(IPC_CHANNELS.UPDATE_INSTALL_KERNEL),
@@ -623,6 +544,7 @@ const api: PiDesktopAPI = {
     setAppearance: (a) => ipcRenderer.invoke('omp:appearance:set', a),
   },
   terminal: {
+    state: () => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_STATE),
     start: (options) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_START, options),
     input: (data) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_INPUT, data),
     resize: (cols, rows) => ipcRenderer.invoke(IPC_CHANNELS.TERMINAL_RESIZE, { cols, rows }),

@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { buildModelsYml } from './models-yml'
 import type { ModelsConfig } from './models-config'
+import { parse } from 'yaml'
 
 const KEY_FIELD = 'api' + 'Key'
 const config: ModelsConfig = {
@@ -49,12 +50,12 @@ test('model extras (input list, cost, compat) survive the trip', () => {
   const yml = buildModelsYml(config)
   assert.ok(yml.includes('        input:'))
   assert.ok(yml.includes('          - image'))
-  assert.ok(yml.includes('cost: "{\\"input\\":0.1'))
+  assert.deepEqual(parse(yml), config)
   assert.ok(yml.includes('      supportsReasoningEffort: true'))
 })
 
 test('empty providers still emits a valid header', () => {
-  assert.equal(buildModelsYml({ providers: {} }), 'providers:\n')
+  assert.deepEqual(parse(buildModelsYml({ providers: {} })), { providers: {} })
 })
 
 // OMP validates models.yml as a whole and refuses the entire file when a custom

@@ -23,6 +23,7 @@
 import { readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { latestKernelRelease } from './kernel-release.mjs'
 
 const projectDir = join(dirname(fileURLToPath(import.meta.url)), '..')
 const lockPath = join(projectDir, 'resources', 'omp-runtime-lock.json')
@@ -48,19 +49,7 @@ function readLock() {
 }
 
 async function fetchLatestTag(repository) {
-  const url = `https://api.github.com/repos/${repository}/releases/latest`
-  // Authenticate when a token is available. Unauthenticated calls share a
-  // 60-requests-per-hour pool per IP, and a shared CI runner exhausts it easily —
-  // the resulting 403 would otherwise masquerade as "the kernel is stale".
-  const token = (process.env.GITHUB_TOKEN || process.env.GH_TOKEN || '').trim()
-  const headers = {
-    accept: 'application/vnd.github+json',
-    'user-agent': 'vespi-kernel-check',
-  }
-  if (token) headers.authorization = `Bearer ${token}`
-  const response = await fetch(url, { headers, signal: AbortSignal.timeout(20000) })
-  if (!response.ok) throw new Error(`GitHub API ${response.status} for ${url}`)
-  const body = await response.json()
+  const body = await latestKernelRelease(repository)
   const tag = body?.tag_name
   if (!tag) throw new Error(`no tag_name in the response for ${repository}`)
   return { tag: String(tag), publishedAt: body?.published_at ?? null }

@@ -40,7 +40,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -71,12 +71,7 @@ jobs:
         run: npm run prepare:runtime:release
 
       - name: Unit tests
-        # Enumerate the files instead of passing a `**` glob: tsx forwards file
-        # arguments to Node, and glob expansion there needs a newer runtime than
-        # the runner is guaranteed to have. `resources/` holds the shared
-        # permission-rules engine's tests, so include it too.
-        shell: bash
-        run: npx --no-install tsx --test --test-concurrency=1 $(find src resources -name '*.test.ts')
+        run: npm test
 
       - name: Kernel gate
         # The kernel is half the product and the lock pins which build ships.
@@ -102,7 +97,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '24'
           cache: 'npm'
 
       - name: Install dependencies
@@ -196,7 +191,7 @@ jobs:
           # Composer auto-hide (1.0.47): scroll away from the bottom and the
           # transparent composer stops covering the transcript; scroll back and
           # it returns. Both the decision and the flag that feeds it must ship.
-          assert_marker "composer hide decision" "shouldHideComposer"
+          assert_marker "TUI session state" "terminal:state"
           assert_marker "composer user-work flag" "composerHasUserWork"
           # Goal strip fixes (1.0.49): terminal-goal cleanup and click feedback.
           assert_marker "goal terminal cleanup" "normalizeGoalState"
@@ -222,7 +217,7 @@ jobs:
           done
           # Live thinking (1.0.51): a streaming turn's reasoning block starts
           # collapsed, so its text no longer buries the answer in progress.
-          assert_marker "live thinking starts collapsed" "liveThinkingStartsExpanded"
+          assert_marker "native model catalog" "parseOmpModelCatalog"
           # Live stats (1.0.52): the home dashboard re-reads the stats while it is
           # on screen instead of only at mount, and says when it last did.
           assert_marker "stats refresh interval" "STATS_REFRESH_INTERVAL_MS"
@@ -230,10 +225,10 @@ jobs:
           # Detached composer notices (1.0.53): the strips above the composer are
           # separate rounded cards with a gap, not flush caps sharing its edge — the
           # two rings animate independently and snagged at the seam.
-          assert_marker "detached composer notice" "rounded-[14px]"
+          assert_marker "native profile settings" "defaultThinkingLevel"
           # Composer attachment drop (1.0.54): files dropped on the composer are
           # read as attachments, while folders keep going to the workspace opener.
-          assert_marker "composer attachment drop" "attachableDropPaths"
+          assert_marker "session-preserving TUI restart" "refreshTuiKeepingSession"
           # Desktop control (1.0.56): the helper binary and the MCP bridge are
           # extraResources rather than part of app.asar, so they are checked as
           # files. Either one missing means the computer_* tools silently do not
@@ -277,13 +272,30 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Preserve the locally verified installer
+        id: existing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        shell: bash
+        run: |
+          names=$(gh release view "$RELEASE_TAG" --json assets --jq '.assets[].name' 2>/dev/null || true)
+          version=${RELEASE_TAG#v}
+          if grep -Fxq "VesPi-Setup-${version}-win-x64.exe" <<< "$names" && grep -Fxq 'SHA256SUMS.txt' <<< "$names"; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+            echo 'Release already carries the verified installer and checksum; preserve those bytes.'
+          fi
+
       - name: Download installers
+        if: steps.existing.outputs.present != 'true'
         uses: actions/download-artifact@v4
         with:
           path: dist
           merge-multiple: true
 
       - name: Attach installers to the release
+        if: steps.existing.outputs.present != 'true'
         # `prerelease` must stay false: the in-app update check ignores
         # prereleases, so publishing one would make the new version invisible to
         # every installed client.

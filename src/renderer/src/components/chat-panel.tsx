@@ -1,16 +1,5 @@
 import { useAppStore } from '../store'
-import { agentEngineLabel } from '../../../shared/agent-engine-label'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import { pickEmptyChatSuggestions } from '../empty-chat-suggestions'
-import { ChatInput } from './chat-input'
-import { GoalStrip } from './goal-strip'
-import { SubagentStrip } from './subagent-strip'
-
-import { ChatProjectPicker } from './chat-project-picker'
-import { CouncilPanels } from './council-panels'
-import { MessageBubble, ToolGroupBubble } from './message-bubble'
-import { ActiveStreamingBubble } from './streaming-bubble'
-import { ChatSearch } from './chat-search'
 import { ResizeHandle } from './resize-handle'
 import {
   DEFAULT_FILE_PANE_WIDTH,
@@ -22,8 +11,6 @@ import {
   resolveSidePanelMetrics,
 } from './chat-panel-widths'
 
-import { groupToolMessages, prepareChatMessages } from '../message-grouping'
-import { NowContext } from '../utils/relative-time'
 import { FileTree, FileSearch, FilePreview } from './file-tree'
 import { ImageViewer } from './image-viewer'
 import { DiffViewer } from './diff-viewer'
@@ -32,51 +19,21 @@ import { ModelSelector } from './model-selector'
 import { BrowserPanel } from './browser-panel'
 import { SideTabPicker } from './side-tab-picker'
 import { ReviewRail } from './review-rail'
-import { useChatScroll, useGlobalWorkflowOpen } from '../hooks'
-import { shouldHideComposer } from '../scroll-follow'
-import { useState, useCallback, useEffect, useMemo, useRef } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { clsx } from 'clsx'
-import vespiCenterLogo from '../assets/vespi-center-logo.png'
 import {
   LayoutPanelLeft,
   X,
   Square,
   Eraser,
   RotateCcw,
+  Search,
+  Terminal,
+  Loader2,
 } from 'lucide-react'
 
-// Fallback padding when the composer has not measured yet (~idle pill + gradient).
-const DEFAULT_COMPOSER_PAD_PX = 144
-
 export function ChatPanel(): React.JSX.Element {
-  const messages = useAppStore((state) => state.messages)
-  const sessionLoading = useAppStore((state) => state.sessionLoading)
-  const isStreaming = useAppStore((state) => state.isStreaming)
-  const composerWrapRef = useRef<HTMLDivElement>(null)
-  const [composerPadPx, setComposerPadPx] = useState(DEFAULT_COMPOSER_PAD_PX)
-
-  // Drive message-list bottom padding from the real floating composer height so
-  // a tall draft / attachments row never permanently covers the last message.
-  useEffect(() => {
-    const el = composerWrapRef.current
-    if (!el) return
-    const measure = (): void => {
-      setComposerPadPx(Math.max(el.offsetHeight, DEFAULT_COMPOSER_PAD_PX))
-    }
-    measure()
-    const ro = new ResizeObserver(measure)
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
-  // NOTE: streamingContent/streamingThinking/streamingToolCalls are deliberately
-  // NOT subscribed here — ActiveStreamingBubble subscribes them itself so a
-  // per-token update only re-renders that subtree, not the whole message list.
-  const piStatus = useAppStore((state) => state.piStatus)
-  const engineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? 'Pi')
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
-  const activeWorkspace = useAppStore((state) => state.activeWorkspace)
-  const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
-  const sessionState = useAppStore((state) => state.sessionState)
 
   const previewTarget = useAppStore((state) => state.previewTarget)
   const fileSearchOpen = useAppStore((state) => state.fileSearchOpen)
@@ -100,6 +57,15 @@ export function ChatPanel(): React.JSX.Element {
   }, [setPreviewTarget, setSidePanel])
   const [sidePanelWidth, setSidePanelWidth] = useState(DEFAULT_SIDE_PANEL_WIDTH)
   const [filePaneWidth, setFilePaneWidth] = useState(DEFAULT_FILE_PANE_WIDTH)
+  const workbenchRef = useRef<HTMLDivElement>(null)
+  const [workbenchWidth, setWorkbenchWidth] = useState(0)
+  useEffect(() => {
+    const node = workbenchRef.current
+    if (!node) return
+    const observer = new ResizeObserver(([entry]) => setWorkbenchWidth(entry.contentRect.width))
+    observer.observe(node)
+    return () => observer.disconnect()
+  }, [])
 
   // When the agent acts on the embedded browser, the shell brings the panel into
   // view so the user can see what it is doing. The panel is one shared surface
@@ -113,38 +79,42 @@ export function ChatPanel(): React.JSX.Element {
     })
   }, [notePanelShow])
 
-  // One shared clock for all relative-time labels — refresh every 30s so
-  // "5 minutes ago" stays current without each label owning a timer.
-  const [now, setNow] = useState(() => Date.now())
-  useEffect(() => {
-    const id = setInterval(() => setNow(Date.now()), 30_000)
-    return () => clearInterval(id)
-  }, [])
-
   const currentView = useAppStore((state) => state.currentView)
   // The global workflow view replaces the main pane while this panel stays
   // mounted behind `display: none`, so "chat is on screen" needs both checks.
   // Without the second one the scroll hook never sees the hidden→shown edge and
   // cannot re-anchor the reading position when the workflow view closes.
-  const globalWorkflowOpen = useGlobalWorkflowOpen()
-  const chatVisible = currentView === 'chat' && !globalWorkflowOpen
-  const { scrollRef, onScroll, atBottom, scrollToBottom } = useChatScroll(chatVisible)
-  /**
-   * Whether the floating composer should be out of the way.
-   *
-   * Both conditions must hold: the transcript is scrolled away from the bottom
-   * (so the composer is covering text the user is reading), and the composer is
-   * not holding anything they would lose — see `composerHasUserWork`, published
-   * by ChatInput. Requiring both is what makes "scroll up to read, scroll back
-   * down to type" work without ever hiding an in-progress draft.
-   */
-  const composerHasUserWork = useAppStore((state) => state.composerHasUserWork)
-  const composerHidden = shouldHideComposer({ detached: !atBottom, hasUserWork: composerHasUserWork })
+  const chatVisible = currentView === 'chat'
+  const terminalStatus = useAppStore((state) => state.terminalStatus)
+  const terminalError = useAppStore((state) => state.terminalError)
+  const terminalOpen = useAppStore((state) => state.terminalOpen)
+  const workspaceName = useAppStore((state) => state.activeWorkspace?.name)
+  const busy = terminalStatus === 'starting'
+  const connected = terminalStatus === 'running'
+
+  const runTerminalAction = async (action: 'restart' | 'interrupt'): Promise<void> => {
+    useAppStore.setState({ terminalError: null })
+    try {
+      if (action === 'interrupt') {
+        await window.piDesktop.terminal.input('\x1b')
+        return
+      }
+      if (!terminalOpen) {
+        useAppStore.setState({ terminalOpen: true })
+        return
+      }
+      useAppStore.setState({ terminalStatus: 'starting' })
+      const result = await window.piDesktop.terminal.restart()
+      if (!result.ok) throw new Error(t(language, 'statusStopped'))
+      useAppStore.setState({ terminalStatus: 'running' })
+    } catch (error) {
+      useAppStore.setState({ terminalStatus: action === 'restart' ? 'error' : terminalStatus, terminalError: error instanceof Error ? error.message : String(error) })
+    }
+  }
 
   // In-conversation search (Ctrl/Cmd+F while in chat). The nonce bumps on every
   // press so re-triggering refocuses/selects the already-open input.
   const [searchOpen, setSearchOpen] = useState(false)
-  const terminalOpen = useAppStore((state) => state.terminalOpen)
   const [searchNonce, setSearchNonce] = useState(0)
   useEffect(() => {
     // Same visibility test as the scroll hook: a hidden panel must not capture
@@ -170,29 +140,6 @@ export function ChatPanel(): React.JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
   }, [chatVisible])
 
-  // Fold consecutive tool-call/result runs into collapsed groups. Memoized so
-  // the grouping only recomputes when the message list changes, and so lone
-  // MessageBubbles keep their stable refs (no markdown re-parse on re-render).
-  const renderItems = useMemo(() => groupToolMessages(prepareChatMessages(messages)), [messages])
-  const emptyChatSuggestions = useMemo(
-    () => pickEmptyChatSuggestions({
-      language,
-      seed: activeSessionRuntimeId ?? sessionState?.sessionFile ?? activeWorkspace?.id ?? 'empty',
-      workspacePath: activeWorkspace?.path,
-    }),
-    [language, activeSessionRuntimeId, sessionState?.sessionFile, activeWorkspace?.id, activeWorkspace?.path],
-  )
-
-  const handleRetry = useCallback(async (messageId: string) => {
-    // Read from the store so this callback stays referentially stable, keeping
-    // the memoized MessageBubble list from re-rendering when messages change.
-    const { messages: current, sendPrompt } = useAppStore.getState()
-    const msg = current.find((m) => m.id === messageId)
-    if (msg?.role === 'user') {
-      await sendPrompt(msg.content)
-    }
-  }, [])
-
   const showPicker = sidePanel === 'picker'
   const showSidePanel = showPicker || sidePanel !== null || previewTarget !== null
   const showFileTree = sidePanel === 'files'
@@ -201,6 +148,11 @@ export function ChatPanel(): React.JSX.Element {
   const showDiff = sidePanel === 'diff'
   const showReview = sidePanel === 'review'
   const showBrowser = sidePanel === 'browser'
+  // Keep at least 480px for the live TUI. At the supported minimum window
+  // size, stack the auxiliary pane below it instead of squeezing it to 30 cols.
+  const stacked = workbenchWidth > 0 && workbenchWidth < 840
+  const sideBudget = workbenchWidth ? (stacked ? workbenchWidth : workbenchWidth - 480) : MAX_SIDE_PANEL_WIDTH
+  const treeBesidePreview = showFileTree && (!(showEditor || showImage) || sideBudget >= 600)
   // The page this workspace owns, remembered in the store rather than in the
   // panel: the panel unmounts whenever it is not on screen, and local state
   // would take the address (and the agent's session) with it.
@@ -213,52 +165,54 @@ export function ChatPanel(): React.JSX.Element {
   // Once a page exists the side panel stays mounted and is hidden instead of
   // removed — unmounting destroys the `<webview>`, which is what used to kill
   // the page the agent was still driving the moment the user closed the panel.
-  const sidePanelMounted = showSidePanel || browserUrl !== null
+  const sidePanelMounted = showSidePanel || browserPanel !== undefined
   const {
     fileTreeOnly: showFileTreeOnly,
     minSidePanelWidth,
     contentWidth: sidePanelContentWidth,
     filePaneWidth: effectiveFilePaneWidth,
     maxFilePaneWidth,
-  } = resolveSidePanelMetrics({ showFileTree, showEditor, showImage }, sidePanelWidth, filePaneWidth)
+  } = resolveSidePanelMetrics({ showFileTree: treeBesidePreview, showEditor, showImage }, sidePanelWidth, filePaneWidth, sideBudget)
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      <div className="flex flex-1 overflow-hidden">
+      <div ref={workbenchRef} className={clsx('flex min-h-0 flex-1 overflow-hidden', stacked && 'flex-col')}>
         {/* Main chat area */}
-        <div className="chat-center flex flex-1 flex-col overflow-hidden">
+        <div className="chat-center flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
           {/* Chrome is intentionally minimal: workspace lives in the top tabs,
               terminal owns the body. Terminal interrupt / clear / restart sit
               beside the side-panel toggle — icon-only, color-coded. */}
-          <div className="flex h-7 items-center justify-end gap-1 border-b border-border/60 px-2">
-            <div className="flex min-w-0 shrink-0 items-center gap-px">
+          <div className="@container flex min-h-12 flex-wrap items-center justify-between gap-2 border-b border-border bg-surface px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs text-muted">
+              <Terminal size={16} className="shrink-0 text-accent-fg" />
+              <span className="max-w-40 truncate font-medium text-primary">{workspaceName || t(language, 'terminalWorkspace')}</span>
+              <span className={clsx('h-1.5 w-1.5 rounded-full', connected ? 'bg-success' : busy ? 'bg-warning animate-pulse' : 'bg-border-strong')} aria-hidden="true" />
+            </div>
+            <div className="flex min-w-0 flex-wrap items-center gap-1">
               <ModelSelector compact dropUp={false} />
+              <ToolbarButton icon={<Search size={14} />} active={searchOpen} disabled={!terminalOpen} onClick={() => { setSearchOpen(true); setSearchNonce((n) => n + 1) }} title={t(language, 'terminalSearch')} />
               <ToolbarButton
-                icon={<Square size={12} fill="currentColor" />}
+                icon={<Square size={13} fill="currentColor" />}
                 active={false}
-                onClick={() => {
-                  // Strong interrupt: Ctrl+C twice, then Esc — covers a stuck
-                  // tool-call loop as well as a normal generation.
-                  window.piDesktop.terminal.input('\x03')
-                  window.setTimeout(() => window.piDesktop.terminal.input('\x03'), 80)
-                  window.setTimeout(() => window.piDesktop.terminal.input('\x1b'), 160)
-                }}
-                title="Ctrl+C"
+                disabled={!connected}
+                onClick={() => void runTerminalAction('interrupt')}
+                title={t(language, 'terminalInterruptHint')}
+                label={t(language, 'terminalInterrupt')}
               />
               <ToolbarButton
                 icon={<Eraser size={12} />}
                 active={false}
+                disabled={!terminalOpen}
                 onClick={() => window.dispatchEvent(new CustomEvent('vespi:terminal-clear'))}
-                title="Clear"
+                title={t(language, 'terminalClear')}
               />
               <ToolbarButton
-                icon={<RotateCcw size={12} />}
+                icon={busy ? <Loader2 size={14} className="animate-spin" /> : <RotateCcw size={14} />}
                 active={false}
-                onClick={() => {
-                  void window.piDesktop.terminal.stop()
-                  window.location.reload()
-                }}
-                title="Restart"
+                disabled={busy}
+                onClick={() => void runTerminalAction('restart')}
+                title={t(language, 'terminalRestartHint')}
+                label={t(language, 'terminalRestart')}
               />
               <div className="mx-1 h-4 w-px bg-border/80" />
               <ToolbarButton
@@ -270,17 +224,12 @@ export function ChatPanel(): React.JSX.Element {
             </div>
           </div>
 
+          {terminalError && <div role="alert" className="border-b border-border bg-surface px-4 py-2 text-xs text-error">{t(language, 'terminalActionFailed', { error: terminalError })}</div>}
           <div className="relative flex min-h-0 flex-1 flex-col">
-            {searchOpen && (
-              <ChatSearch
-                containerRef={scrollRef}
-                focusNonce={searchNonce}
-                onClose={() => setSearchOpen(false)}
-              />
-            )}
             {/* 唯一交互面：OMP TUI + 会打进 TUI 的命令条 */}
             <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
-              <TerminalPanel className="flex-1" />
+              <TerminalPanel className="flex-1" searchOpen={searchOpen} searchNonce={searchNonce} onCloseSearch={() => setSearchOpen(false)} />
+              {!terminalOpen && <div className="flex flex-1 flex-col items-center justify-center gap-4 text-sm text-muted"><Terminal size={32} /><p>{t(language, 'terminalStoppedHint')}</p><button type="button" className="rounded-md border border-border-strong bg-surface px-4 py-2 text-primary hover:bg-surface-hover" onClick={() => useAppStore.setState({ terminalOpen: true })}>{t(language, 'terminalOpen')}</button></div>}
             </div>
           </div>
         </div>
@@ -288,10 +237,10 @@ export function ChatPanel(): React.JSX.Element {
         {/* Side panel */}
         {sidePanelMounted && (
           <div
-            className={clsx('relative flex border-l border-border bg-app', !showSidePanel && 'hidden')}
-            style={{ width: sidePanelContentWidth }}
+            className={clsx('relative flex min-h-0 shrink-0 border-border bg-transparent', stacked ? 'border-t' : 'border-l', !showSidePanel && 'hidden')}
+            style={stacked ? { width: '100%', height: '45%' } : { width: sidePanelContentWidth }}
           >
-            <ResizeHandle
+            {!stacked && <ResizeHandle
               onResize={(delta) => {
                 if (showFileTreeOnly) {
                   // Same ceiling the render uses, so the state cannot outrun it.
@@ -305,16 +254,16 @@ export function ChatPanel(): React.JSX.Element {
                   clamp(width - delta, minSidePanelWidth, MAX_SIDE_PANEL_WIDTH)
                 )
               }}
-            />
+            />}
             <div className="flex min-w-0 flex-1 overflow-hidden">
               {showPicker && <SideTabPicker />}
               {showReview && <ReviewRail embedded />}
-              {browserUrl !== null && (
+              {browserPanel !== undefined && (
                 <div className={clsx('min-w-0 flex-1 overflow-hidden', !showBrowser && 'hidden')}>
                   <BrowserPanel url={browserUrl} nonce={browserNonce} />
                 </div>
               )}
-              {showFileTree && (
+              {treeBesidePreview && (
                 <>
                   <div className="flex min-w-0 shrink-0 flex-col overflow-hidden" style={{ width: effectiveFilePaneWidth }}>
                     <FileTree />
@@ -339,7 +288,7 @@ export function ChatPanel(): React.JSX.Element {
                 <div
                   className={clsx(
                     'flex flex-1 flex-col overflow-hidden',
-                    showFileTree && 'border-l border-border'
+                    treeBesidePreview && 'border-l border-border'
                   )}
                   style={{ minWidth: MIN_EDITOR_PANE_WIDTH }}
                 >
@@ -359,7 +308,7 @@ export function ChatPanel(): React.JSX.Element {
               <button
                 onClick={closeSidePanel}
                 className="absolute top-1 right-1 z-10 rounded p-1 text-faint hover:text-muted"
-                title={t(language, 'openSideTabs')}
+                title={t(language, 'closeSideTabs')}
               >
                 <X size={12} />
               </button>
@@ -379,145 +328,33 @@ function ToolbarButton({
   active,
   onClick,
   title,
+  label,
+  disabled = false,
 }: {
   icon: React.ReactNode
   active: boolean
   onClick: () => void
   title: string
+  label?: string
+  disabled?: boolean
 }): React.JSX.Element {
   return (
     <button
+      type="button"
       onClick={onClick}
+      disabled={disabled}
+      aria-label={label || title}
+      aria-pressed={active}
       className={clsx(
-        'rounded p-1 transition-colors',
+        'flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs transition-colors focus-visible:outline-2 focus-visible:outline-accent-fg disabled:cursor-not-allowed disabled:opacity-40',
         active
           ? 'bg-card text-primary'
-          : 'hover:bg-highlight text-dim hover:text-secondary'
+          : 'hover:bg-highlight text-muted hover:text-primary'
       )}
       title={title}
     >
       {icon}
+      {label && <span className="hidden @min-[680px]:inline">{label}</span>}
     </button>
-  )
-}
-
-
-
-/** OMP TUI 常用命令（显示中文，回车发原文）。 */
-const OMP_SLASH: Array<{ cmd: string; zh: string }> = [
-  { cmd: '/help', zh: '帮助' },
-  { cmd: '/model', zh: '切换模型' },
-  { cmd: '/models', zh: '模型列表' },
-  { cmd: '/think', zh: '思考档位' },
-  { cmd: '/compact', zh: '压缩上下文' },
-  { cmd: '/new', zh: '新会话' },
-  { cmd: '/resume', zh: '恢复会话' },
-  { cmd: '/fork', zh: '分支 / 分叉' },
-  { cmd: '/sessions', zh: '会话列表' },
-  { cmd: '/skills', zh: '技能' },
-  { cmd: '/mcp', zh: '外部工具 MCP' },
-  { cmd: '/config', zh: '配置 / 设置' },
-  { cmd: '/settings', zh: '设置' },
-  { cmd: '/login', zh: '登录供应商' },
-  { cmd: '/cost', zh: '费用 / 用量' },
-  { cmd: '/stats', zh: '统计' },
-  { cmd: '/status', zh: '状态' },
-  { cmd: '/export', zh: '导出' },
-  { cmd: '/diff', zh: '查看改动' },
-  { cmd: '/review', zh: '审查' },
-  { cmd: '/plan', zh: '计划模式' },
-  { cmd: '/undo', zh: '撤销' },
-  { cmd: '/clear', zh: '清屏' },
-  { cmd: '/doctor', zh: '诊断' },
-  { cmd: '/version', zh: '版本' },
-  { cmd: '/update', zh: '更新 OMP' },
-  { cmd: '/quit', zh: '退出' },
-]
-
-/** 底部唯一输入：打进 OMP TUI；`/` 弹出中文命令面板。 */
-function OmpCommandBar(): React.JSX.Element {
-  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
-  const [value, setValue] = useState('')
-  const [active, setActive] = useState(0)
-  const slashOpen = value.startsWith('/') && !value.includes(' ')
-  const slashList = (() => {
-    if (!value.startsWith('/')) return OMP_SLASH
-    const q = value.slice(1).toLowerCase()
-    if (!q) return OMP_SLASH
-    return OMP_SLASH.filter((item) => item.cmd.slice(1).includes(q) || item.zh.includes(value.slice(1)))
-  })()
-
-  const send = (text: string) => {
-    const out = text.trim()
-    if (!out) return
-    window.piDesktop.terminal.input(out.endsWith('\r') ? out : out + '\r')
-    setValue('')
-  }
-
-  return (
-    <div className="relative shrink-0 border-t border-border bg-surface px-3 py-2">
-      {slashOpen && slashList.length > 0 && (
-        <div className="absolute bottom-full left-3 right-3 z-30 mb-2 max-h-72 overflow-y-auto rounded-xl border border-border-strong bg-elevated shadow-xl">
-          <div className="border-b border-border px-3 py-1.5 text-[11px] text-dim">
-            {t(language, 'ompSlashHint')}
-          </div>
-          {slashList.map((item, i) => (
-            <button
-              key={item.cmd}
-              type="button"
-              onMouseEnter={() => setActive(i)}
-              onClick={() => send(item.cmd)}
-              className={clsx(
-                'flex w-full items-center gap-3 px-3 py-2 text-left',
-                i === active ? 'bg-accent-bg' : 'hover:bg-surface-hover'
-              )}
-            >
-              <span className="w-24 shrink-0 font-jetbrains text-xs text-accent-fg">{item.cmd}</span>
-              <span className="text-sm text-primary">{item.zh}</span>
-            </button>
-          ))}
-        </div>
-      )}
-      <div className="flex w-full items-center gap-2">
-        <span className="font-jetbrains text-[11px] text-accent-fg">OMP</span>
-        <input
-          value={value}
-          onChange={(e) => {
-            setValue(e.target.value)
-            setActive(0)
-          }}
-          onKeyDown={(e) => {
-            if (slashOpen && slashList.length > 0) {
-              if (e.key === 'ArrowDown') {
-                e.preventDefault()
-                setActive((i) => Math.min(i + 1, slashList.length - 1))
-                return
-              }
-              if (e.key === 'ArrowUp') {
-                e.preventDefault()
-                setActive((i) => Math.max(i - 1, 0))
-                return
-              }
-              if (e.key === 'Tab' || (e.key === 'Enter' && !e.shiftKey)) {
-                e.preventDefault()
-                const pick = slashList[active]
-                if (pick) send(pick.cmd)
-                return
-              }
-              if (e.key === 'Escape') {
-                setValue('')
-                return
-              }
-            }
-            if (e.key === 'Enter' && value.trim()) {
-              send(value)
-            }
-          }}
-          placeholder={t(language, 'ompCommandPlaceholder')}
-          className="h-9 flex-1 rounded-full border border-border-strong bg-app px-3 text-sm outline-none focus:border-accent"
-        />
-        <span className="font-jetbrains text-[10px] text-dim">Enter → OMP</span>
-      </div>
-    </div>
   )
 }

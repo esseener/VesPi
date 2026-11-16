@@ -1,15 +1,18 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { SearchAddon } from '@xterm/addon-search'
 import { Terminal as XTerm, type ITheme } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { WebLinksAddon } from '@xterm/addon-web-links'
+import { Unicode11Addon } from '@xterm/addon-unicode11'
 import '@xterm/xterm/css/xterm.css'
 import { useAppStore } from '../store'
 import { DEFAULT_SETTINGS } from '../../../shared/default-settings'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
-import { translateTerminalChunk } from '../../../shared/omp-labels'
+import { createTerminalTranslator, squareBoxCorners } from '../../../shared/omp-labels'
 import { clsx } from 'clsx'
-import { Copy, ClipboardPaste, TextSelect } from 'lucide-react'
+import { Copy, ClipboardPaste, TextSelect, Search, ArrowUp, ArrowDown, X } from 'lucide-react'
 import { useContextMenu } from './context-menu'
+import { playCompletionChime } from '../completion-chime'
 
 // Build the xterm color theme from the active app theme's CSS variables so the
 // terminal matches whichever theme (dark/light/nord/gruvbox/breeze) is applied.
@@ -22,7 +25,7 @@ function buildTerminalTheme(): ITheme {
     return value || fallback
   }
 
-  const bg = v('--color-app', '#121419')
+  const bg = v('--color-app', '#070809')
   const fg = v('--color-primary', '#d4d8e4')
 
   return {
@@ -66,29 +69,45 @@ async function pasteClipboardToTerminal(terminal: XTerm): Promise<void> {
   }
 }
 
-export function TerminalPanel({ className }: { className?: string } = {}): React.JSX.Element | null {
+export function TerminalPanel({ className, searchOpen = false, searchNonce = 0, onCloseSearch }: { className?: string; searchOpen?: boolean; searchNonce?: number; onCloseSearch?: () => void } = {}): React.JSX.Element | null {
   const terminalOpen = useAppStore((state) => state.terminalOpen)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
+  const pendingInsert = useAppStore((state) => state.pendingInsert)
+  const currentView = useAppStore((state) => state.currentView)
+  const terminalStatus = useAppStore((state) => state.terminalStatus)
   const theme = useAppStore((state) => state.settings?.theme)
-  const language = useAppStore(
-    (state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE,
-  )
+  const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const { show: showMenu, ContextMenuComponent } = useContextMenu()
 
   const containerRef = useRef<HTMLDivElement>(null)
   const terminalRef = useRef<XTerm | null>(null)
   const fitRef = useRef<FitAddon | null>(null)
+  const searchRef = useRef<SearchAddon | null>(null)
+  const translatorRef = useRef(createTerminalTranslator())
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const [query, setQuery] = useState('')
+  const [noMatch, setNoMatch] = useState(false)
+  const find = (backwards = false): void => {
+    if (!query || !searchRef.current) { setNoMatch(false); return }
+    setNoMatch(!(backwards ? searchRef.current.findPrevious(query) : searchRef.current.findNext(query)))
+  }
+  useEffect(() => {
+    if (searchOpen) searchInputRef.current?.focus()
+  }, [searchOpen, searchNonce])
 
   // Kernel swap: restart the local TUI onto the new omp.exe. Stay on chat —
   // do not bounce to Home; resume keeps the conversation if any.
   useEffect(() => {
     const off = window.piDesktop.updates.onKernelProgress((p) => {
       if (p.phase === 'done') {
-        const path = useAppStore.getState().sessionState?.sessionFile ?? undefined
-        void window.piDesktop.terminal.restart(path).then(() => {
+        if (!useAppStore.getState().terminalOpen) return
+        useAppStore.setState({ terminalStatus: 'starting' })
+        void window.piDesktop.terminal.restart().then((result) => {
+          if (!result.ok) throw new Error('Terminal restart failed')
+          useAppStore.setState({ terminalStatus: 'running', terminalError: null })
           void useAppStore.getState().refreshSessionList()
           void useAppStore.getState().checkForUpdates({ automatic: false })
-        })
+        }).catch((error: unknown) => useAppStore.setState({ terminalStatus: 'error', terminalError: String(error) }))
       }
     })
     return off
@@ -97,16 +116,33 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
   // OMP TUI 自己写会话文件，rpc-ui 无事件 → 轮询刷新侧栏会话
   useEffect(() => {
     if (!terminalOpen) return
+    let previous: { pid: number | null; completed: number } | null = null
+    let disposed = false
+    const refresh = async (): Promise<void> => {
+      try {
+        const state = await window.piDesktop.terminal.state()
+        if (disposed) return
+        const settings = useAppStore.getState().settings
+        if (previous?.pid === state.pid && state.completed > previous.completed && settings?.completionChime) playCompletionChime(settings.completionChimeVolume)
+        previous = state
+      } catch { /* A stopped or restarting terminal has no state yet. */ }
+    }
     const id = setInterval(() => {
       void useAppStore.getState().refreshSessionList()
     }, 6_000)
-    return () => clearInterval(id)
+    const stateTimer = setInterval(() => void refresh(), 1500)
+    void refresh()
+    return () => { disposed = true; clearInterval(id); clearInterval(stateTimer) }
   }, [terminalOpen])
 
   useEffect(() => {
     if (!terminalOpen || !containerRef.current) return
+    let disposed = false
+    translatorRef.current.reset()
+    useAppStore.setState({ terminalStatus: 'starting', terminalError: null })
 
     const terminal = new XTerm({
+      allowProposedApi: true,
       cursorBlink: true,
       convertEol: true,
       // Box-drawing (│ ─) first: Cascadia/Consolas draw full-height glyphs.
@@ -134,21 +170,31 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
     terminal.attachCustomKeyEventHandler((ev) => {
       if (ev.type !== 'keydown') return true
       const key = ev.key.toLowerCase()
-      if ((ev.ctrlKey || ev.metaKey) && key === 'v' && !ev.shiftKey) {
+      if ((ev.ctrlKey || ev.metaKey) && key === 'v') {
         void pasteClipboardToTerminal(terminal)
+        return false
+      }
+      if ((ev.ctrlKey || ev.metaKey) && ev.shiftKey && key === 'c' && terminal.hasSelection()) {
+        void navigator.clipboard.writeText(terminal.getSelection())
         return false
       }
       return true
     })
     const fit = new FitAddon()
+    terminal.loadAddon(new Unicode11Addon())
+    terminal.unicode.activeVersion = '11'
     terminal.loadAddon(fit)
     terminal.loadAddon(new WebLinksAddon())
+    const search = new SearchAddon()
+    terminal.loadAddon(search)
+    searchRef.current = search
     terminal.open(containerRef.current)
 
     terminalRef.current = terminal
     fitRef.current = fit
 
     const fitAndResize = () => {
+      if (disposed || !containerRef.current?.clientWidth || !containerRef.current.clientHeight) return
       fit.fit()
       window.piDesktop.terminal.resize(terminal.cols, terminal.rows)
     }
@@ -157,9 +203,17 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
       window.piDesktop.terminal.input(data)
     })
     const outputCleanup = window.piDesktop.terminal.onData((data) => {
-      terminal.write(translateTerminalChunk(data))
+      if (useAppStore.getState().terminalStatus !== 'running') useAppStore.setState({ terminalStatus: 'running' })
+      const state = useAppStore.getState()
+      const lang = state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE
+      const viewport = terminal.buffer.active.viewportY
+      const follow = state.settingsDraft.autoScroll ?? state.settings?.autoScroll ?? true
+      terminal.write(lang === 'en' ? squareBoxCorners(data) : translatorRef.current.write(data), () => {
+        if (!follow) terminal.scrollToLine(viewport)
+      })
     })
     const exitCleanup = window.piDesktop.terminal.onExit((event) => {
+      useAppStore.setState({ terminalStatus: event.exitCode === 0 ? 'stopped' : 'error' })
       terminal.writeln('')
       const lang = useAppStore.getState().settingsDraft.language
         ?? useAppStore.getState().settings?.language
@@ -167,15 +221,18 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
       terminal.writeln(t(lang, 'terminalProcessExited', { code: String(event.exitCode) }))
     })
 
-    window.setTimeout(async () => {
+    const startTimer = window.setTimeout(async () => {
       fitAndResize()
       try {
-        const result = await window.piDesktop.terminal.start({
+        await window.piDesktop.terminal.start({
           cwd: activeWorkspace?.path,
           cols: terminal.cols,
           rows: terminal.rows,
         })
+        if (!disposed) useAppStore.setState({ terminalStatus: 'running' })
       } catch (err) {
+        if (disposed) return
+        useAppStore.setState({ terminalStatus: 'error', terminalError: err instanceof Error ? err.message : String(err) })
         const lang = useAppStore.getState().settingsDraft.language
           ?? useAppStore.getState().settings?.language
           ?? DEFAULT_LANGUAGE
@@ -183,7 +240,7 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
           error: err instanceof Error ? err.message : String(err),
         }))
       }
-      terminal.focus()
+      if (!disposed) terminal.focus()
     }, 0)
 
     window.addEventListener('resize', fitAndResize)
@@ -191,6 +248,8 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
     if (containerRef.current) ro.observe(containerRef.current)
 
     return () => {
+      disposed = true
+      window.clearTimeout(startTimer)
       window.removeEventListener('resize', fitAndResize)
       ro.disconnect()
       dataDisposable.dispose()
@@ -200,18 +259,32 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
       terminal.dispose()
       terminalRef.current = null
       fitRef.current = null
+      searchRef.current = null
+      useAppStore.setState({ terminalStatus: 'stopped' })
     }
   }, [terminalOpen, activeWorkspace?.path])
 
+  // Notes, browser actions and palette entries fill the live TUI draft. They
+  // never submit it: the user still reviews the text and presses Enter.
+  useEffect(() => {
+    const terminal = terminalRef.current
+    if (!pendingInsert || !terminal || !terminalOpen || terminalStatus !== 'running' || currentView !== 'chat') return
+    if (pendingInsert.replace) window.piDesktop.terminal.input('\x01\x0b')
+    terminal.paste(pendingInsert.text)
+    terminal.focus()
+    useAppStore.getState().clearPendingInsert()
+  }, [pendingInsert, currentView, terminalOpen, terminalStatus])
+
   useEffect(() => {
     if (!terminalOpen) return
-    window.setTimeout(() => {
+    const timer = window.setTimeout(() => {
       fitRef.current?.fit()
       const terminal = terminalRef.current
       if (terminal) {
         window.piDesktop.terminal.resize(terminal.cols, terminal.rows)
       }
     }, 0)
+    return () => window.clearTimeout(timer)
   }, [terminalOpen])
 
   // Recolor the live terminal when the app theme changes, without recreating it.
@@ -221,16 +294,30 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
     }
   }, [theme])
 
-  // After a local PTY restart (model/theme), keep the shell on chat: clear the
-  // stale buffer and put the caret back in the TUI input.
+  // After a local PTY restart (model/theme/kernel), keep the shell on chat:
+  // wipe the stale buffer, restore font metrics, put the caret in the TUI.
   useEffect(() => {
+    let timer: number | undefined
     const off = window.piDesktop.terminal.onRestarted(() => {
+      useAppStore.setState({ terminalStatus: 'running', terminalError: null })
       const term = terminalRef.current
       if (!term) return
       term.clear()
-      term.focus()
+      translatorRef.current.reset()
+      window.clearTimeout(timer)
+      timer = window.setTimeout(() => {
+        if (terminalRef.current !== term) return
+        fitRef.current?.fit()
+        term.focus()
+        const cols = term.cols
+        const rows = term.rows
+        window.piDesktop.terminal.resize(cols, rows)
+      }, 50)
     })
-    return off
+    return () => {
+      off()
+      window.clearTimeout(timer)
+    }
   }, [terminalOpen])
 
   // Clear is triggered from the toolbar (icon button beside the side-panel toggle).
@@ -289,7 +376,17 @@ export function TerminalPanel({ className }: { className?: string } = {}): React
       className={clsx('flex min-h-0 flex-1 flex-col bg-transparent', className)}
       onContextMenu={onContextMenu}
     >
-      <div ref={containerRef} className="min-h-0 flex-1 overflow-hidden px-2 pt-2 pb-12" />
+      {searchOpen && <div role="search" className="flex shrink-0 items-center gap-2 border-b border-border bg-surface px-3 py-2">
+        <Search size={14} className="text-muted" />
+        <input ref={searchInputRef} value={query} aria-label={t(language, 'terminalSearch')} placeholder={t(language, 'terminalSearchPlaceholder')} onChange={(event) => { const value = event.target.value; setQuery(value); setNoMatch(Boolean(value) && !(searchRef.current?.findNext(value, { incremental: true }) ?? false)) }} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); find(event.shiftKey) } if (event.key === 'Escape') { onCloseSearch?.(); terminalRef.current?.focus() } }} className="min-w-0 flex-1 rounded border border-border-strong bg-app px-2 py-1 text-sm text-primary outline-none focus:border-accent-fg" />
+        {noMatch && <span role="status" className="text-xs text-warning">{t(language, 'terminalNoMatch')}</span>}
+        <button type="button" title={t(language, 'terminalPrevious')} aria-label={t(language, 'terminalPrevious')} onClick={() => find(true)} className="rounded p-2 text-muted hover:bg-surface-hover"><ArrowUp size={14} /></button>
+        <button type="button" title={t(language, 'terminalNext')} aria-label={t(language, 'terminalNext')} onClick={() => find()} className="rounded p-2 text-muted hover:bg-surface-hover"><ArrowDown size={14} /></button>
+        <button type="button" aria-label={t(language, 'close')} onClick={() => { onCloseSearch?.(); terminalRef.current?.focus() }} className="rounded p-2 text-muted hover:bg-surface-hover"><X size={14} /></button>
+      </div>}
+      <div className="flex min-h-0 flex-1 overflow-hidden p-3">
+        <div ref={containerRef} className="min-h-0 min-w-0 flex-1 overflow-hidden" />
+      </div>
       {ContextMenuComponent}
     </div>
   )

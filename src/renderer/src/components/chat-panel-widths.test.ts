@@ -135,3 +135,10 @@ test('the defaults sit inside their own bounds', () => {
   // The default panel must actually fit the default tree plus an editor.
   assert.ok(DEFAULT_SIDE_PANEL_WIDTH - MIN_EDITOR_PANE_WIDTH >= MIN_FILE_PANE_WIDTH)
 })
+
+test('side panes respect the space reserved for the live terminal', () => {
+  const metrics = resolveSidePanelMetrics(EDITOR_ONLY, 640, 280, 456)
+  assert.equal(metrics.contentWidth, 456)
+  assert.equal(resolveSidePanelMetrics(FILE_TREE_ONLY, 640, 900, 456).contentWidth, 456)
+  assert.equal(resolveSidePanelMetrics(EDITOR_ONLY, 640, 280, 936).contentWidth, 640)
+})

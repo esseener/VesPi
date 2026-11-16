@@ -10,7 +10,7 @@ import { CommandResults } from './command-results'
 import { SubagentProgress } from './subagent-progress'
 import { ModelSelector } from './model-selector'
 import { ThinkingLevelSelector } from './thinking-level-selector'
-import { CornerDownLeft, Paperclip, X, FileText, StickyNote, Users, Search } from 'lucide-react'
+import { CornerDownLeft, Paperclip, X, FileText, Users, Search } from 'lucide-react'
 import {
   SUPPORTED_IMAGE_EXTENSIONS,
   type PromptImage,
@@ -102,7 +102,6 @@ export function ChatInput(): React.JSX.Element {
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
   const pendingInsert = useAppStore((state) => state.pendingInsert)
   const clearPendingInsert = useAppStore((state) => state.clearPendingInsert)
-  const setNotePickerOpen = useAppStore((state) => state.setNotePickerOpen)
   const councilEnabled = useAppStore((s) => s.settings?.council?.enabled ?? false)
   const runCouncil = useAppStore((s) => s.runCouncil)
   const recordPrompt = useAppStore((s) => s.recordPrompt)
@@ -299,7 +298,7 @@ export function ChatInput(): React.JSX.Element {
               `${commandDisplayLabel(cmd.name, language)} ${commandDisplayDescription(cmd.name, cmd.description, language)}`
             )
           ),
-    [slashToken, allCommands]
+    [slashToken, allCommands, language]
   )
   const slashOpen = slashResults.flat.length > 0
 
@@ -913,15 +912,6 @@ export function ChatInput(): React.JSX.Element {
             aria-label={t(language, 'attachFile')}
           >
             <Paperclip size={15} />
-          </button>
-          <button
-            data-composer-note
-            onClick={() => setNotePickerOpen(true)}
-            className="hover:bg-highlight-strong flex items-center justify-center rounded-md p-1.5 text-dim hover:text-secondary transition-colors"
-            title={t(language, 'insertNote')}
-            aria-label={t(language, 'insertNoteAria')}
-          >
-            <StickyNote size={15} />
           </button>
           <button
             data-composer-search

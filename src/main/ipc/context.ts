@@ -4,7 +4,6 @@ import { WorkspaceManager } from '../workspace-manager'
 import { SessionTagManager } from '../session-tags'
 import { ArchivedSessionsManager } from '../archived-sessions'
 import { TerminalService } from '../terminal-service'
-import { NotesManager } from '../notes-manager'
 
 export interface IpcContext {
   workspaceManager: WorkspaceManager
@@ -13,7 +12,6 @@ export interface IpcContext {
   approvedAttachmentPaths: Set<string>
   tagManager: SessionTagManager
   archivedSessions: ArchivedSessionsManager
-  notesManager: NotesManager
   terminalService: TerminalService
 }
 
@@ -21,7 +19,6 @@ export function createIpcContext(workspaceManager: WorkspaceManager): IpcContext
   const tagManager = new SessionTagManager()
   const archivedSessions = new ArchivedSessionsManager()
   const terminalService = new TerminalService()
-  const notesManager = new NotesManager()
 
   // Absolute paths the user explicitly picked via the native open dialog. The
   // attachment reader will only read these (or files inside the workspace), so a
@@ -52,7 +49,6 @@ export function createIpcContext(workspaceManager: WorkspaceManager): IpcContext
     approvedAttachmentPaths,
     tagManager,
     archivedSessions,
-    notesManager,
     terminalService,
   }
 }

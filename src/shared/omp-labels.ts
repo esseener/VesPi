@@ -239,8 +239,8 @@ export const TERMINAL_PHRASES: Array<[string, string]> = (
 ).sort((a, b) => b[0].length - a[0].length)
 
 /**
- * Prose fragments for rotating Tip:/advice lines. Applied WITHOUT width
- * padding (tips sit outside boxes) so the sentence stays readable.
+ * Prose fragments for rotating Tip:/advice lines. Preserve the columns OMP
+ * calculated before emitting the terminal stream.
  */
 const TIP_PROSE: Array<[string, string]> = (
   [
@@ -294,25 +294,18 @@ const TIP_PROSE: Array<[string, string]> = (
   ] as Array<[string, string]>
 ).sort((a, b) => b[0].length - a[0].length)
 
-/** Word-boundary replace for prose (no width padding). */
-function replaceProse(out: string, en: string, zh: string): string {
-  if (!en || !zh || en === zh) return out
-  const re = new RegExp(`(?<![A-Za-z])${en.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z])`, 'g')
-  return out.replace(re, zh)
-}
-
-/** Translate rotating tips / advice lines without width lock. */
+/** Tips are already laid out by OMP, so they must retain their columns too. */
 export function translateTipProse(chunk: string): string {
   let out = chunk
   for (const [en, zh] of TIP_PROSE) {
-    out = replaceProse(out, en, zh)
+    out = replacePhrase(out, en, zh)
   }
   return out
 }
 
 // CSI / OSC / other ESC sequences — allowed to sit between any two characters
 // of a phrase so color-styled TUI text still matches.
-const ANSI = '(?:\\x1b\\[[0-9;:?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)|\\x1b[@-Z\\\\-_])'
+const ANSI = '(?:\\x1b\\[[0-9;:?]*[ -/]*[@-~]|\\x1b\\][^\\x07\\x1b]*(?:\\x07|\\x1b\\\\)|\\x1b[P_^][\\s\\S]*?\\x1b\\\\|\\x1b[@-OQ-Z\\\\])'
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
@@ -320,29 +313,25 @@ function escapeRe(s: string): string {
 
 /** True when `phrase` is a pure ASCII word/short token needing word edges. */
 function needsWordBoundary(phrase: string): boolean {
-  return /^[A-Za-z][A-Za-z0-9 +'/-]*$/.test(phrase) && phrase.length <= 24
+  return /[A-Za-z0-9]/.test(phrase)
 }
 
 /** Build a regex that matches `phrase` even when ANSI codes sit between chars.
  *  Spaces inside the phrase are literal — we only allow ANSI (not extra spaces)
  *  between characters, so "LSP" never matches the spaced-out "L S P".
  */
-function ansiTolerantRe(phrase: string, wordBound: boolean): RegExp {
+function ansiTolerantRe(phrase: string): RegExp {
   const chars = [...phrase].map(escapeRe)
-  const body = chars.join(`(?:${ANSI})*`)
-  const core = `(?:${ANSI})*${body}(?:${ANSI})*`
-  if (wordBound) {
-    // Don't match inside a longer word: "Update" must not hit "Updated".
-    return new RegExp(`(?<![A-Za-z])${core}(?![A-Za-z])`, 'g')
-  }
-  return new RegExp(core, 'g')
+  // Only color/style sequences may split a phrase. Cursor moves and OSC
+  // payloads are terminal protocol, never text to translate.
+  return new RegExp(chars.join('(?:\\x1b\\[[0-9;:]*m)*'), 'g')
 }
 
 const reCache = new Map<string, RegExp>()
 function phraseRe(phrase: string): RegExp {
   let re = reCache.get(phrase)
   if (!re) {
-    re = ansiTolerantRe(phrase, needsWordBoundary(phrase))
+    re = ansiTolerantRe(phrase)
     reCache.set(phrase, re)
   }
   return re
@@ -357,27 +346,31 @@ function replacePhrase(out: string, en: string, zh: string): string {
 
   const srcW = displayWidth(en)
 
-  // Fast path: contiguous substring
-  if (out.includes(en)) {
-    const fitted = fitWidth(zh, srcW)
-    if (fitted === null) return out
-    return out.split(en).join(fitted)
-  }
-
   const re = phraseRe(en)
   re.lastIndex = 0
   if (!re.test(out)) return out
   re.lastIndex = 0
 
-  out = out.replace(re, (match) => {
-    const lead = match.match(new RegExp(`^(?:${ANSI}|[ \\t])*`))?.[0] ?? ''
-    const trail = match.match(new RegExp(`(?:${ANSI}|[ \\t])*$`))?.[0] ?? ''
+  out = out.replace(re, (match: string, offset: number, source: string) => {
+    if (needsWordBoundary(en)) {
+      const before = source.slice(0, offset).replace(new RegExp(ANSI, 'g'), '')
+      const after = source.slice(offset + match.length).replace(new RegExp(ANSI, 'g'), '')
+      if ((/^[A-Za-z0-9]/.test(en) && /[A-Za-z0-9_]$/.test(before)) ||
+          (/[A-Za-z0-9]$/.test(en) && /^[A-Za-z0-9_]/.test(after))) return match
+      // A standalone dictionary word must not partially translate a label
+      // or sentence such as "Context-Reactive Line" / "Terminal Title".
+      if (/^[A-Za-z]+$/.test(en) &&
+          (/[A-Za-z][- ]$/.test(before) || /^[- ][A-Za-z]/.test(after))) return match
+    }
     // Strip ANSI when measuring the true source width of the matched text.
     const plain = match.replace(new RegExp(ANSI, 'g'), '')
     const w = displayWidth(plain) || srcW
     const fitted = fitWidth(zh, w)
     if (fitted === null) return match
-    return lead + fitted + trail
+    // Preserve final style for following text when the phrase contained SGR.
+    // eslint-disable-next-line no-control-regex
+    const styles = match.match(/\x1b\[[0-9;:]*m/g) ?? []
+    return fitted + styles.join('')
   })
   return out
 }
@@ -411,6 +404,8 @@ export function squareBoxCorners(chunk: string): string {
  * on dark chrome (tips, recap). Swap dim for a fixed readable slate gray.
  * CSI 22 m restores normal intensity and is left alone.
  */
+// Terminal protocol intentionally matches the ANSI escape control byte.
+// eslint-disable-next-line no-control-regex
 const DIM_SGR = /\x1b\[2m/g
 const READABLE_DIM = '\x1b[38;2;168;174;186m'
 
@@ -427,6 +422,7 @@ const NEVER_INLINE = new Set([
   'added', 'changed', 'fixed', 'release', 'releases', 'details', 'history',
   'across', 'skills', 'skill', 'provider', 'Provider',
   'permission', 'Permission',
+  'on', 'off', 'agent', 'Agent', 'thinking', 'Thinking',
 ])
 
 /**
@@ -435,7 +431,7 @@ const NEVER_INLINE = new Set([
  * Preserves display width so box-drawing columns stay vertical.
  * Also squares rounded corners so every frame line is axis-aligned.
  */
-export function translateTerminalChunk(chunk: string): string {
+function translateTerminalText(chunk: string): string {
   let out = softenDim(squareBoxCorners(chunk))
 
   const applyMap = (map: Record<string, string>): void => {
@@ -450,9 +446,49 @@ export function translateTerminalChunk(chunk: string): string {
 
   if (cached) applyMap(cached.map)
   applyMap(Object.fromEntries(TERMINAL_PHRASES))
-  // Rotating tips / advice prose — no width lock (outside boxes).
+  // Even prose has already been wrapped before it reaches the PTY.
   out = translateTipProse(out)
   return out
+}
+
+// Only text and SGR styling may be translated. OSC titles/links and cursor
+// protocol carry payloads that must pass through byte-for-byte.
+export function translateTerminalChunk(chunk: string): string {
+  const protocol = new RegExp(ANSI, 'g')
+  let result = ''
+  let start = 0
+  for (const match of chunk.matchAll(protocol)) {
+    if (/^\x1b\[[0-9;:]*m$/.test(match[0])) continue // eslint-disable-line no-control-regex
+    const index = match.index
+    result += translateTerminalText(chunk.slice(start, index)) + match[0]
+    start = index + match[0].length
+  }
+  return result + translateTerminalText(chunk.slice(start))
+}
+
+/** Hold an incomplete ESC frame until the next PTY callback completes it. */
+export function createTerminalTranslator(): { write(chunk: string): string; reset(): void } {
+  let pending = ''
+  return {
+    write(chunk) {
+      const input = pending + chunk
+      pending = ''
+      for (let index = input.indexOf('\x1b'); index >= 0; index = input.indexOf('\x1b', index)) {
+        const tail = input.slice(index)
+        // Scan from the opening ESC: an OSC terminator can itself be split
+        // between ESC and backslash in two different callbacks.
+        const complete = tail.match(new RegExp(`^${ANSI}`))?.[0]
+        if (complete) { index += complete.length; continue }
+        if (tail === '\x1b' || ['[', ']', 'P', '_', '^'].some((prefix) => tail.startsWith('\x1b' + prefix))) {
+          pending = tail
+          return translateTerminalChunk(input.slice(0, index))
+        }
+        index++
+      }
+      return translateTerminalChunk(input)
+    },
+    reset() { pending = '' },
+  }
 }
 
 /** Load pack from main (after IPC available). Safe no-op in tests. */

@@ -11,7 +11,7 @@ export async function runPiCli(
   cwd: string,
   timeout: number,
   engine?: AgentEngineKind,
-): Promise<{ success: boolean; output: string }> {
+): Promise<{ success: boolean; output: string; stdout?: string }> {
   try {
     const cli = engine ? getPiCliForEngine(engine) : getPiCli()
     const cliArgs = engine === 'omp' && args[0] !== '--profile'
@@ -21,10 +21,11 @@ export async function runPiCli(
     const { stdout, stderr } = await execFileAsync(invocation.file, invocation.args, {
       cwd,
       timeout,
+      maxBuffer: 16 * 1024 * 1024,
       env: { ...process.env },
       shell: cli.needsShell,
     })
-    return { success: true, output: stdout + stderr }
+    return { success: true, output: stdout + stderr, stdout }
   } catch (err) {
     const e = err as { stdout?: string; stderr?: string; message?: string }
     const output = [e.stdout, e.stderr, e.message].filter(Boolean).join('\n').trim()

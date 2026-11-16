@@ -91,6 +91,9 @@ const EXTENSION_NOTIFY: PiExtensionUiRequest = {
 }
 
 const piDesktopStub = {
+  terminal: {
+    input: (data: string) => { calls.push(`terminal.input:${data}`) },
+  },
   workspace: {
     setActive: async (id: string) => {
       if (setActiveFailure) throw new Error(setActiveFailure)
@@ -329,6 +332,7 @@ beforeEach(() => {
   sessionDeleteResult = { ok: true, method: 'trash', replacementSessionPath: null }
   switchDelayMs = 0
   useAppStore.setState({
+    terminalOpen: false,
     isStreaming: false,
     streamingContent: '',
     streamingThinking: '',
@@ -2504,45 +2508,25 @@ test('setSessionsScope toggles the sessions view scope', () => {
   assert.equal(useAppStore.getState().sessionsScope, 'all')
 })
 
-test('openWorkflowRunsForWorkspace opens a project scope and clears session scope', () => {
-  useAppStore.getState().openWorkflowRunsForWorkspace(WORKSPACE_ONE.id)
-  const state = useAppStore.getState()
-  assert.equal(state.workflowPanelOpen, true)
-  assert.equal(state.workflowPanelWorkspaceId, WORKSPACE_ONE.id)
-  assert.equal(state.workflowPanelFilter, null)
-})
-
-test('openWorkflowRunsForWorkspace(null) opens the global scope (Tools entry)', () => {
-  useAppStore.getState().openWorkflowRunsForWorkspace(null)
-  const state = useAppStore.getState()
-  assert.equal(state.workflowPanelOpen, true)
-  assert.equal(state.workflowPanelWorkspaceId, null)
-  assert.equal(state.workflowPanelFilter, null)
-})
-
-test('openWorkflowRunsForSession overrides a project scope (session wins)', () => {
-  useAppStore.getState().openWorkflowRunsForWorkspace(WORKSPACE_ONE.id)
-  useAppStore.getState().openWorkflowRunsForSession('01b2b3c4-d5e6-4f70-a8b9-0c1d2e3f4a5b')
-  const state = useAppStore.getState()
-  assert.equal(state.workflowPanelWorkspaceId, null)
-  assert.equal(state.workflowPanelFilter, '01b2b3c4-d5e6-4f70-a8b9-0c1d2e3f4a5b')
-})
-
-test('setWorkflowPanelOpen: direct open clears scope, close preserves it', () => {
-  useAppStore.getState().openWorkflowRunsForWorkspace(WORKSPACE_ONE.id)
-  useAppStore.getState().setWorkflowPanelOpen(false)
-  assert.equal(useAppStore.getState().workflowPanelOpen, false)
-  assert.equal(
-    useAppStore.getState().workflowPanelWorkspaceId,
-    WORKSPACE_ONE.id,
-    'closing must preserve the scope so a reopen stays in the same project'
-  )
-  useAppStore.getState().setWorkflowPanelOpen(true)
-  assert.equal(useAppStore.getState().workflowPanelWorkspaceId, null)
-  assert.equal(useAppStore.getState().workflowPanelFilter, null)
-})
-
 // ─── Browser panel ownership ─────────────────────────────────────────────────
+
+test('loading the initial workspace restores its remembered browser panel', async () => {
+  activeWorkspaceResult = WORKSPACE_ONE
+  workspaceListResult = [WORKSPACE_ONE]
+  useAppStore.setState({
+    browserPanelByWorkspace: {
+      [WORKSPACE_ONE.id]: { url: 'https://example.com/old', open: true, nonce: 2 },
+    },
+  })
+
+  await useAppStore.getState().loadWorkspaces()
+  assert.equal(useAppStore.getState().activeWorkspace?.id, WORKSPACE_ONE.id)
+  assert.equal(useAppStore.getState().chatSidePanel, 'browser')
+
+  await useAppStore.getState().setChatSidePanel('files')
+  await useAppStore.getState().loadWorkspaces()
+  assert.equal(useAppStore.getState().chatSidePanel, 'files', 'a same-workspace refresh preserves the current pane')
+})
 
 // The panel is one shared surface serving every workspace, so a request from a
 // project the user is not looking at must not take it over — that was the bug:
@@ -2561,12 +2545,40 @@ test('a panel request from another workspace does not take over the panel', () =
   })
 })
 
+test('terminal session switches send only the newest coalesced resume command', async () => {
+  useAppStore.setState({ terminalOpen: true })
+  await Promise.all([
+    useAppStore.getState().switchSession('/tmp/old.jsonl'),
+    useAppStore.getState().switchSession('/tmp/new.jsonl'),
+  ])
+  assert.deepEqual(calls.filter((call) => call.startsWith('terminal.input:')), ['terminal.input:/resume new\r'])
+})
+
+test('a rejected session switch never sends a resume command to the terminal', async () => {
+  useAppStore.setState({ terminalOpen: true })
+  switchResult = { success: false, error: 'missing session' }
+  await useAppStore.getState().switchSession(SESSION_PATH)
+  assert.deepEqual(calls.filter((call) => call.startsWith('terminal.input:')), [])
+})
+
 test('a panel request from the active workspace opens it', () => {
   useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null })
 
   useAppStore.getState().notePanelShow(WORKSPACE_ONE.id, 'https://example.com/one')
 
   assert.equal(useAppStore.getState().chatSidePanel, 'browser')
+})
+
+test('opening the browser panel creates an empty workspace panel', async () => {
+  useAppStore.setState({ activeWorkspace: WORKSPACE_ONE, chatSidePanel: null, browserPanelByWorkspace: {} })
+
+  assert.equal(await useAppStore.getState().setChatSidePanel('browser'), true)
+
+  assert.deepEqual(useAppStore.getState().browserPanelByWorkspace[WORKSPACE_ONE.id], {
+    url: null,
+    open: true,
+    nonce: 0,
+  })
 })
 
 test('an unattributed panel request falls back to the active workspace', () => {
@@ -2639,4 +2651,24 @@ test('switching to a workspace that had its panel open brings it back', async ()
   })
   assert.equal(await useAppStore.getState().activateWorkspace(WORKSPACE_ONE.id), true)
   assert.equal(useAppStore.getState().chatSidePanel, null)
+})
+
+test('switching back restores an open browser panel before it has a URL', async () => {
+  activeWorkspaceResult = WORKSPACE_TWO
+  switchResult = { success: true }
+  useAppStore.setState({
+    activeWorkspace: WORKSPACE_ONE,
+    workspaces: [WORKSPACE_ONE, WORKSPACE_TWO],
+    chatSidePanel: 'browser',
+    browserPanelByWorkspace: {
+      [WORKSPACE_ONE.id]: { url: null, open: true, nonce: 0 },
+    },
+  })
+
+  assert.equal(await useAppStore.getState().activateWorkspace(WORKSPACE_TWO.id), true)
+  assert.equal(useAppStore.getState().chatSidePanel, null)
+
+  activeWorkspaceResult = WORKSPACE_ONE
+  assert.equal(await useAppStore.getState().activateWorkspace(WORKSPACE_ONE.id), true)
+  assert.equal(useAppStore.getState().chatSidePanel, 'browser')
 })

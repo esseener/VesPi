@@ -7,7 +7,7 @@ import globals from 'globals'
 // shared/main/preload run in Node, renderer runs in the browser with React.
 export default tseslint.config(
   {
-    ignores: ['out/**', 'release/**', 'node_modules/**'],
+    ignores: ['out/**', 'release/**', 'node_modules/**', 'resources/**/vendor/**'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

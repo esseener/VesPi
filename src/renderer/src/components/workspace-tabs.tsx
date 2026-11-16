@@ -1,10 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, PanelLeft, Plus, Settings, X, XCircle } from 'lucide-react'
+import { AlertCircle, CheckCircle2, FolderOpen, GitBranch, Loader2, PanelLeft, Settings, X, XCircle } from 'lucide-react'
 import type { MessageKey } from '../../../shared/i18n'
 import { clsx } from 'clsx'
 import { useAppStore } from '../store'
-import { useGlobalWorkflowOpen } from '../hooks'
 import type { Workspace } from '../../../shared/ipc-contracts'
 import { DEFAULT_LANGUAGE, t } from '../../../shared/i18n'
 import { WindowControls } from './window-controls'
@@ -16,18 +15,13 @@ function tabLabel(workspace: Workspace): string {
 
 const TOOL_TAB_LABEL: Record<string, MessageKey> = {
   settings: 'settings',
-  packages: 'extensions',
-  notes: 'notes',
   about: 'about',
-  diagnostics: 'diagnostics',
   sessions: 'sessions',
   timeline: 'timeline',
   diff: 'changedFiles',
-  'mission-control': 'missionControl',
 }
 
-function toolTabLabel(view: string, workflowOpen: boolean): MessageKey {
-  if (workflowOpen) return 'allWorkflows'
+function toolTabLabel(view: string): MessageKey {
   return TOOL_TAB_LABEL[view] ?? 'tools'
 }
 
@@ -36,18 +30,12 @@ export function WorkspaceTabs(): React.JSX.Element {
   const workspaces = useAppStore((state) => state.workspaces)
   const activeWorkspace = useAppStore((state) => state.activeWorkspace)
 
-  const sessionList = useAppStore((state) => state.sessionList)
-  const sessionRuntimes = useAppStore((state) => state.sessionRuntimes)
-  const activeSessionRuntimeId = useAppStore((state) => state.activeSessionRuntimeId)
   const sidebarOpen = useAppStore((state) => state.sidebarOpen)
   const toggleSidebar = useAppStore((state) => state.toggleSidebar)
   const workspaceActivity = useAppStore((state) => state.workspaceActivity)
   const currentView = useAppStore((state) => state.currentView)
-  const globalWorkflowOpen = useGlobalWorkflowOpen()
-  const setWorkflowPanelOpen = useAppStore((state) => state.setWorkflowPanelOpen)
   const activateWorkspace = useAppStore((state) => state.activateWorkspace)
   const removeWorkspace = useAppStore((state) => state.removeWorkspace)
-  const createWorktreeTab = useAppStore((state) => state.createWorktreeTab)
   const openFolderAsWorkspace = useAppStore((state) => state.openFolderAsWorkspace)
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   const { show: showContextMenu, ContextMenuComponent } = useContextMenu()
@@ -87,10 +75,10 @@ export function WorkspaceTabs(): React.JSX.Element {
     })
   }
 
-  const toolView = ['settings', 'packages', 'notes', 'about', 'diagnostics', 'sessions', 'timeline', 'diff', 'mission-control'] as const
+   const toolView = ['settings', 'about', 'sessions', 'timeline', 'diff'] as const
   const toolsActive =
-    toolView.includes(currentView as (typeof toolView)[number]) || globalWorkflowOpen
-  const toolsTabKey = toolTabLabel(currentView, globalWorkflowOpen)
+    toolView.includes(currentView as (typeof toolView)[number])
+  const toolsTabKey = toolTabLabel(currentView)
 
   const tabs = useMemo(
     () => [...workspaces].sort((a, b) => a.createdAt - b.createdAt),
@@ -143,7 +131,6 @@ export function WorkspaceTabs(): React.JSX.Element {
             <button
               type="button"
               onClick={() => {
-                setWorkflowPanelOpen(false)
                 if (workspace.id === activeWorkspace?.id) {
                   setCurrentView('chat')
                   return
@@ -220,7 +207,6 @@ export function WorkspaceTabs(): React.JSX.Element {
           <button
             type="button"
             onClick={() => {
-              setWorkflowPanelOpen(false)
               setCurrentView('chat')
             }}
             className="mr-1 rounded-sm p-0.5 text-faint opacity-0 transition-all hover:bg-highlight hover:text-primary group-hover:opacity-100"

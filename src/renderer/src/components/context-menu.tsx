@@ -11,10 +11,8 @@ import {
   ArchiveRestore,
   Trash2,
   MessageSquare,
-  StickyNote,
   Pencil,
   FolderOpen,
-  Workflow as WorkflowIcon,
 } from 'lucide-react'
 import type { SessionListItem } from '../../../shared/ipc-contracts'
 import { useAppStore } from '../store'
@@ -403,8 +401,7 @@ export function buildCodeBlockContextMenu(code: string): ContextMenuItem[] {
 }
 
 export function buildMessageContextMenu(
-  messageContent: string,
-  onAddToNotes: (text: string) => void
+  messageContent: string
 ): ContextMenuItem[] {
   const selectedText = getSelectedText()
   const hasSelection = selectedText.length > 0
@@ -424,12 +421,6 @@ export function buildMessageContextMenu(
       action: () => {
         if (hasSelection) navigator.clipboard.writeText(selectedText)
       },
-    },
-    {
-      id: 'add-to-notes',
-      label: hasSelection ? t(menuLang(), 'addSelectionToNotes') : t(menuLang(), 'addMessageToNotes'),
-      icon: <StickyNote size={14} />,
-      action: () => onAddToNotes(hasSelection ? selectedText : messageContent),
     },
     {
       id: 'divider-1',
@@ -454,10 +445,6 @@ export interface SessionContextMenuActions {
   // Optional: when provided, a "Rename…" item is shown (above Delete). Callers
   // pass this only for the active session, since Pi's rename targets it.
   onRename?: (session: SessionListItem) => void
-  // Optional: when provided, a "Workflow Runs" item is shown (below Open). It
-  // must open scoped to Pi's header UUID — the identifier runs carry — never
-  // the session filename stem.
-  onRuns?: (session: SessionListItem) => void
 }
 
 export function buildSessionContextMenu(
@@ -472,14 +459,6 @@ export function buildSessionContextMenu(
       icon: <MessageSquare size={14} />,
       action: () => actions.onOpen(session),
     },
-    ...(actions.onRuns
-      ? [{
-          id: 'session-runs',
-          label: t(menuLang(), 'workflowRuns'),
-          icon: <WorkflowIcon size={14} />,
-          action: () => actions.onRuns!(session),
-        }]
-      : []),
     {
       id: 'divider-session-1',
       label: '',

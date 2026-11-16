@@ -75,9 +75,13 @@ export function BrowserPanel({ url, nonce }: BrowserPanelProps): React.JSX.Eleme
   // URL. The nonce is applied on its own, because re-opening the address already
   // on screen must still remount the guest.
   const appliedNonceRef = useRef(nonce)
+  const appliedUrlRef = useRef(url)
   useEffect(() => {
-    setPage(url)
-    setDraft(url ?? '')
+    if (appliedUrlRef.current !== url || appliedNonceRef.current !== nonce) {
+      appliedUrlRef.current = url
+      setPage(url)
+      setDraft(url ?? '')
+    }
     if (appliedNonceRef.current === nonce) return
     appliedNonceRef.current = nonce
     setInputError(null)
@@ -95,23 +99,38 @@ export function BrowserPanel({ url, nonce }: BrowserPanelProps): React.JSX.Eleme
     const stopped = (): void =>
       setLoad((prev) => (prev.kind === 'failed' ? prev : { kind: 'ready' }))
     const failed = (event: Event): void => {
-      const info = event as unknown as { errorCode?: number; errorDescription?: string }
+      const info = event as unknown as { errorCode?: number; errorDescription?: string; isMainFrame?: boolean }
       // -3 is ERR_ABORTED: an ordinary stop or redirect, not a real failure.
-      if (info.errorCode === -3) return
+      if (info.errorCode === -3 || info.isMainFrame === false) return
       setLoad({
         kind: 'failed',
         detail: `${info.errorDescription ?? 'unknown error'} (${info.errorCode ?? '?'})`,
       })
     }
+    const navigated = (event: Event): void => {
+      const info = event as unknown as { url?: string; isMainFrame?: boolean }
+      if (info.isMainFrame === false || !info.url) return
+      const next = normalizeUrl(info.url)
+      if (!next) return
+      // Remember guest navigation without assigning src again: that would
+      // reload the page the user just reached and discard its live state.
+      appliedUrlRef.current = next
+      setDraft(next)
+      if (activeWorkspaceId) setBrowserPanelUrl(activeWorkspaceId, next)
+    }
     el.addEventListener('did-start-loading', started)
     el.addEventListener('did-stop-loading', stopped)
     el.addEventListener('did-fail-load', failed)
+    el.addEventListener('did-navigate', navigated)
+    el.addEventListener('did-navigate-in-page', navigated)
     return () => {
       el.removeEventListener('did-start-loading', started)
       el.removeEventListener('did-stop-loading', stopped)
       el.removeEventListener('did-fail-load', failed)
+      el.removeEventListener('did-navigate', navigated)
+      el.removeEventListener('did-navigate-in-page', navigated)
     }
-  }, [page, attempt])
+  }, [page, attempt, activeWorkspaceId, setBrowserPanelUrl])
 
   const open = (): void => {
     const next = normalizeUrl(draft)
@@ -129,6 +148,7 @@ export function BrowserPanel({ url, nonce }: BrowserPanelProps): React.JSX.Eleme
   }
 
   const reload = (): void => {
+    setPage(appliedUrlRef.current)
     setLoad({ kind: 'loading' })
     setAttempt((n) => n + 1)
   }

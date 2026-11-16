@@ -30,7 +30,7 @@ function validateWorkspaceTabOptions(value: unknown): WorkspaceTabOptions {
 }
 
 export function registerWorkspaceHandlers(ctx: IpcContext): void {
-  const { workspaceManager, notesManager } = ctx
+  const { workspaceManager } = ctx
 
   // ─── Workspace Management ───────────────────────────────────────────────
 
@@ -47,8 +47,6 @@ export function registerWorkspaceHandlers(ctx: IpcContext): void {
   ipcMain.handle(IPC_CHANNELS.WORKSPACE_REMOVE, async (_event, workspaceId: unknown) => {
     if (!isString(workspaceId)) throw new Error('workspaceId must be a string')
     const result = await workspaceManager.removeWorkspace(workspaceId)
-    // Notes scoped to the removed workspace fall back to global so they survive.
-    await notesManager.reassignToGlobal(workspaceId)
     return result
   })
 

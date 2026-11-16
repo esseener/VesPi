@@ -6,7 +6,6 @@ import { workspaceTrustStore } from './workspace-trust'
 import { WorkspaceManager } from './workspace-manager'
 import { registerIpcHandlers, loadAppSettings, saveAppSettings } from './ipc-handlers'
 import { setPiExecutableOverride, cleanupPiChildTempDir } from './pi-rpc-manager'
-import { fetchAllCatalogPackages } from './package-catalog'
 import { activityStatsStore } from './activity-stats'
 import { configureGuiDataDir, getCanonicalUserDataDir, getExternalGuiDataDir, migrateLegacyGuiData } from './app-data-paths'
 import { setupTray, setTrayEnabled, isTrayEnabled, isTrayAvailable, destroyTray, notifyFirstHide } from './tray-manager'
@@ -17,7 +16,7 @@ import { appLog } from './app-log'
 import { IPC_CHANNELS } from '../shared/ipc-contracts'
 import { VESPI_APP_ID, VESPI_PRODUCT_NAME, VESPI_WORKSPACE_ENV, removeVespiOpenspaceMcp, vespiProfileAgentDir } from './vespi-runtime'
 import { VESPI_BROWSER_PARTITION, isHttpUrl } from '../shared/vespi'
-import { isWebviewAttachAllowed } from './webview-policy'
+import { isWebviewAttachAllowed, isWebviewNavigationAllowed } from './webview-policy'
 import { reconcileModelsYml } from './models-reconcile'
 import { initAgentBrowser, startAgentBrowser, chromeExecutableCandidates, pickChromeExecutable, isCdpUp, resetBrowserCdpState, browserCdpOverlayPath } from './browser-cdp'
 import { createAgentBrowserLifecycle, isBrowserToolName } from './agent-browser-lifecycle'
@@ -545,7 +544,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: MIN_WINDOW_WIDTH,
     minHeight: MIN_WINDOW_HEIGHT,
     title: VESPI_PRODUCT_NAME,
-    backgroundColor: '#121419',
+    backgroundColor: '#070809',
     icon: appIcon,
     show: false,
     autoHideMenuBar: true,
@@ -967,10 +966,6 @@ app.whenReady().then(async () => {
   })
   setTrayEnabled(settings.minimizeToTrayOnClose)
 
-  // Warm the package catalog cache in the background so the Catalog tab is
-  // instant when first opened. Non-blocking; failures are ignored (offline etc).
-  void fetchAllCatalogPackages().catch(() => {})
-
   // Baseline scan of the persisted activity stats, so the store reflects reality
   // even if the home screen is never opened this run. Non-blocking.
   void activityStatsStore.refresh()
@@ -1031,7 +1026,8 @@ app.on('web-contents-created', (_event, contents) => {
       // An untrusted preview may not navigate away from its local file (e.g. a
       // malicious page redirecting itself to a remote URL). Trusted previews of
       // your own project may navigate freely.
-      if (!url.startsWith('file://') && !isActiveWorkspaceTrusted()) event.preventDefault()
+      const isBrowserPanel = contents.session === session.fromPartition(VESPI_BROWSER_PARTITION)
+      if (!isWebviewNavigationAllowed(isBrowserPanel, url, isActiveWorkspaceTrusted())) event.preventDefault()
     })
   }
 })

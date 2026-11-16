@@ -137,18 +137,21 @@ export function registerSystemHandlers(ctx: IpcContext): void {
    * Paste source for the terminal. Screenshots / images are saved as PNG so the
    * agent can read a file path; text is handed to the PTY as usual.
    */
-  ipcMain.handle(IPC_CHANNELS.SYSTEM_PASTE, async () => {
+  ipcMain.handle(IPC_CHANNELS.SYSTEM_PASTE, async (event) => {
+    assertTrustedSender(event)
     const { clipboard } = await import('electron')
-    const image = clipboard.readImage()
-    if (!image.isEmpty()) {
+    const items = await clipboard.read()
+    const image = items.find((item) => item.types.includes('image/png'))
+    if (image) {
+      const png = await image.getType('image/png')
       const dir = join(app.getPath('userData'), 'paste')
       const { mkdirSync, writeFileSync } = await import('fs')
       mkdirSync(dir, { recursive: true })
       const filePath = join(dir, `paste-${Date.now()}.png`)
-      writeFileSync(filePath, image.toPNG())
+      writeFileSync(filePath, Buffer.from(await png.arrayBuffer()))
       return { kind: 'image' as const, path: filePath }
     }
-    const text = clipboard.readText()
+    const text = await clipboard.readText()
     return { kind: 'text' as const, text: text ?? '' }
   })
 

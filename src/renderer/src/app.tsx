@@ -1,27 +1,20 @@
 import { Sidebar } from './components/sidebar'
 import { ChatPanel } from './components/chat-panel'
-import { StatusBar } from './components/status-bar'
+import { WorkbenchNotices } from './components/workbench-notices'
 import { SettingsPanel } from './components/settings-panel'
 import { SessionPanel } from './components/session-panel'
 import { Timeline } from './components/timeline'
-import { PackageBrowser } from './components/package-browser'
 import { DiffViewer } from './components/diff-viewer'
 import { HomeScreen } from './components/home-screen'
-import { NotesPanel } from './components/notes-panel'
-import { DiagnosticsPanel } from './components/diagnostics-panel'
 import { AboutPanel } from './components/about-panel'
 import { ModelSetupScreen } from './components/model-setup-screen'
-import { MissionControl } from './components/mission-control'
-import { TaskLauncher } from './components/task-launcher'
-import { NotePicker } from './components/note-picker'
 import { CommandPalette } from './components/command-palette'
 import { ExtensionUiDialog, AppConfirmDialog } from './components/extension-ui-dialog'
 import { WorkspaceTabs } from './components/workspace-tabs'
-import { WorkflowNavigator } from './components/workflow-navigator'
 import { WindowControls } from './components/window-controls'
 import { useContextMenu, buildDefaultContextMenu } from './components/context-menu'
 import { ErrorBoundary } from './components/error-boundary'
-import { usePiEvents, useMenuActions, useInitialize, useNotePickerShortcut, useModelQuickSwitch } from './hooks'
+import { usePiEvents, useMenuActions, useInitialize, useModelQuickSwitch } from './hooks'
 import { useFolderDrop } from './hooks/use-folder-drop'
 import { useAppStore } from './store'
 import { useEffect } from 'react'
@@ -35,7 +28,6 @@ export function App(): React.JSX.Element {
   usePiEvents()
   useMenuActions()
   useInitialize()
-  useNotePickerShortcut()
   useModelQuickSwitch()
   const { isDraggingFolder } = useFolderDrop()
 
@@ -63,9 +55,6 @@ export function App(): React.JSX.Element {
     uiProgress: uiUpdateProgress,
     kernelProgress: kernelUpdateProgress,
   })
-  const workflowPanelOpen = useAppStore((state) => state.workflowPanelOpen)
-  const workflowPanelFilter = useAppStore((state) => state.workflowPanelFilter)
-  const workflowPanelWorkspaceId = useAppStore((state) => state.workflowPanelWorkspaceId)
   const language = useAppStore((state) => state.settingsDraft.language ?? state.settings?.language ?? DEFAULT_LANGUAGE)
 
   useEffect(() => {
@@ -124,8 +113,6 @@ export function App(): React.JSX.Element {
   // "installed" banner, because checkForUpdates re-arms the flag after a
   // successful kernel install.)
   const showUpdateBanner = kernelBusy || kernelDone || kernelFailed || uiBusy || uiDone || uiFailed || updateCheckFailedNotably || (!!updateInfo && (updateInfo.updateAvailable || updateInfo.kernel.updateAvailable) && !updateDismissed)
-  const globalWorkflowOpen =
-    showChrome && workflowPanelOpen && !workflowPanelFilter && workflowPanelWorkspaceId === null
 
   return (
     <div className="app-console relative flex h-screen flex-col bg-app text-primary">
@@ -275,10 +262,8 @@ export function App(): React.JSX.Element {
           {showChrome && <WorkspaceTabs />}
           <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
             <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-              <div className={globalWorkflowOpen ? 'hidden' : 'contents'}>
                 {currentView === 'home' && <HomeScreen />}
                 {currentView === 'model-setup' && <ModelSetupScreen />}
-                {currentView === 'mission-control' && <MissionControl />}
                 <div className={currentView === 'chat' ? 'flex min-w-0 flex-1 flex-col overflow-hidden' : 'hidden'}>
                   <ErrorBoundary>
                     <ChatPanel />
@@ -287,24 +272,16 @@ export function App(): React.JSX.Element {
                 {currentView === 'settings' && <SettingsPanel />}
                 {currentView === 'sessions' && <SessionPanel />}
                 {currentView === 'timeline' && <Timeline />}
-                {currentView === 'packages' && <PackageBrowser />}
                 {currentView === 'diff' && <DiffViewer />}
-                {currentView === 'notes' && <NotesPanel />}
-                {currentView === 'diagnostics' && <DiagnosticsPanel />}
                 {currentView === 'about' && <AboutPanel />}
-              </div>
-              {globalWorkflowOpen && <WorkflowNavigator embedded />}
             </main>
           </div>
         </div>
       </div>
 
-      {showChrome && <StatusBar />}
-      {showChrome && !globalWorkflowOpen && <WorkflowNavigator />}
+      {showChrome && <WorkbenchNotices />}
       <ExtensionUiDialog />
       <AppConfirmDialog />
-      <NotePicker />
-      <TaskLauncher />
       <CommandPalette />
       {ContextMenuComponent}
     </div>

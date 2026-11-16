@@ -145,34 +145,6 @@ export function useMenuActions(): void {
   }, [createNewSession, setCurrentView])
 }
 
-/**
- * The workflow navigator's scope, as the store holds it. Structural so the
- * predicate below can be exercised without building a whole store state.
- */
-interface WorkflowPanelScope {
-  workflowPanelOpen: boolean
-  workflowPanelFilter: string | null
-  workflowPanelWorkspaceId: string | null
-}
-
-/**
- * Whether the global "All Workflows" surface owns the main pane — the navigator
- * opened with neither a session nor a project scope. Session-scoped and
- * project-scoped runs render in the docked panel instead and leave the current
- * view on screen. Shared so every consumer (main pane, workspace tabs, sidebar,
- * chat scroll) agrees on what "global" means.
- */
-export function isGlobalWorkflowOpen(scope: WorkflowPanelScope): boolean {
-  return (
-    scope.workflowPanelOpen && !scope.workflowPanelFilter && scope.workflowPanelWorkspaceId === null
-  )
-}
-
-/** Component-side subscription to {@link isGlobalWorkflowOpen}. */
-export function useGlobalWorkflowOpen(): boolean {
-  return useAppStore(isGlobalWorkflowOpen)
-}
-
 // Distance (px) from the bottom within which we consider the user "at bottom"
 // and keep following new content.
 const AT_BOTTOM_THRESHOLD = 48
@@ -558,7 +530,6 @@ export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: 
   const compactContext = useAppStore((s) => s.compactContext)
   const cloneBranch = useAppStore((s) => s.cloneBranch)
   const createNewSession = useAppStore((s) => s.createNewSession)
-  const setTaskLauncherOpen = useAppStore((s) => s.setTaskLauncherOpen)
   const setCurrentView = useAppStore((s) => s.setCurrentView)
 
   const builtins = useMemo<BuiltinCommand[]>(
@@ -566,18 +537,15 @@ export function useCommandCatalog(): { builtins: BuiltinCommand[]; allCommands: 
       { name: 'compact', description: t(language, 'cmdCompact'), run: () => { void compactContext() } },
       { name: 'clone', description: t(language, 'cmdClone'), run: () => { void cloneBranch() } },
       { name: 'new', description: t(language, 'cmdNew'), run: () => { void createNewSession() } },
-      { name: 'task', description: t(language, 'cmdTask'), run: () => setTaskLauncherOpen(true) },
       { name: 'resume', description: t(language, 'cmdResume'), run: () => setCurrentView('sessions') },
       { name: 'fork', description: t(language, 'cmdFork'), run: () => setCurrentView('timeline') },
       // `fork` is the only route to the timeline, and nobody searching for
       // "timeline" or "branches" would guess to type "fork" — so the view gets
       // its own discoverable entry rather than hiding behind the verb.
       { name: 'timeline', description: t(language, 'cmdTimeline'), run: () => setCurrentView('timeline') },
-      { name: 'missions', description: t(language, 'cmdMissionControl'), run: () => setCurrentView('mission-control') },
-      { name: 'diagnostics', description: t(language, 'cmdDiagnostics'), run: () => setCurrentView('diagnostics') },
       { name: 'settings', description: t(language, 'cmdSettings'), run: () => setCurrentView('settings') },
     ],
-    [language, compactContext, cloneBranch, createNewSession, setTaskLauncherOpen, setCurrentView]
+    [language, compactContext, cloneBranch, createNewSession, setCurrentView]
   )
 
   const allCommands = useMemo<PiCommand[]>(
@@ -614,6 +582,8 @@ export function useInitialize(): void {
     initialized.current = true
 
     const initialize = async (): Promise<void> => {
+      const initialState = useAppStore.getState()
+      const initialViewRevision = initialState.viewRevision
       await loadSettings()
       const openToHome = useAppStore.getState().settings?.openToHomeOnLaunch ?? DEFAULT_SETTINGS.openToHomeOnLaunch
 
@@ -623,7 +593,9 @@ export function useInitialize(): void {
         .then((runtimes) => runtimes.forEach((runtime) => useAppStore.getState().handleSessionRuntime(runtime)))
         .catch(() => undefined)
 
-      if (openToHome) {
+      if (useAppStore.getState().viewRevision !== initialViewRevision) {
+        // A user navigation during startup takes precedence over the launch preference.
+      } else if (openToHome) {
         // Interactive ASAP — do NOT wait on the session-store walk (can be tens
         // of seconds on a large ~/.pi/agent/sessions tree and freezes main IPC).
         useAppStore.getState().setCurrentView('home')
@@ -644,19 +616,17 @@ export function useInitialize(): void {
 
       // Background: session list, tags, notes, models, updates.
       void refreshSessionList()
-      void useAppStore.getState().refreshWorkflowRuns()
       void useAppStore.getState().loadTags()
       void useAppStore.getState().loadArchivedSessions()
-      void useAppStore.getState().loadNotes()
       await useAppStore.getState().loadCustomModels()
-      if (!hasConfiguredChatModel(useAppStore.getState().customModels)) {
+      if (!hasConfiguredChatModel(useAppStore.getState().customModels) && useAppStore.getState().currentView === 'home') {
         useAppStore.getState().setCurrentView('model-setup')
       }
       void useAppStore.getState().checkForUpdates()
       const hasWorkspace = useAppStore.getState().activeWorkspace != null
         || useAppStore.getState().workspaces.length > 0
 
-      if (hasWorkspace) {
+      if (hasWorkspace && !useAppStore.getState().terminalOpen) {
         void startPi().then(() => refreshSessionStats()).catch(() => undefined)
       }
       void window.piDesktop.workspace.getActivity()
@@ -684,26 +654,6 @@ export function useInitialize(): void {
       void useAppStore.getState().checkForUpdates({ automatic: true })
     }, UPDATE_RECHECK_INTERVAL_MS)
     return () => clearInterval(timer)
-  }, [])
-}
-
-/**
- * Global shortcut (Ctrl+Shift+P) that toggles the quick note picker, letting
- * the user insert a saved prompt from anywhere in the app. (Ctrl+Shift+N is
- * reserved for the New Workspace menu accelerator.)
- */
-export function useNotePickerShortcut(): void {
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent): void => {
-      if (e.ctrlKey && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
-        e.preventDefault()
-        const { notePickerOpen, setNotePickerOpen } = useAppStore.getState()
-        setNotePickerOpen(!notePickerOpen)
-      }
-    }
-
-    window.addEventListener('keydown', handleKeyDown)
-    return () => window.removeEventListener('keydown', handleKeyDown)
   }, [])
 }
 

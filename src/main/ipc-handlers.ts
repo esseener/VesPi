@@ -14,20 +14,16 @@ import { registerSettingsHandlers } from './ipc/settings'
 import { registerPermissionRulesHandlers } from './ipc/permission-rules-handlers'
 import { registerThemeHandlers } from './ipc/theme-handlers'
 import { registerWorkspaceHandlers } from './ipc/workspace-handlers'
-import { registerPackageHandlers } from './ipc/package-handlers'
 import { registerSkillsMcpHandlers } from './ipc/skills-mcp-handlers'
 import { registerModelsConfigHandlers } from './ipc/models-config-handlers'
 import { registerOmpAppearanceHandlers } from './ipc/omp-appearance-handlers'
 import { registerOmpLabelPackHandlers } from './ipc/omp-label-pack-handlers'
 import { registerCouncilHandlers } from './ipc/council-handlers'
 import { registerTagHandlers } from './ipc/tag-handlers'
-import { registerNotesHandlers } from './ipc/notes-handlers'
 import { registerFileHandlers } from './ipc/file-handlers'
 import { registerGitConveyorHandlers } from './ipc/git-conveyor-handlers'
 import { registerSystemHandlers } from './ipc/system-handlers'
 import { registerUpdateHandlers } from './ipc/update-handlers'
-import { registerDiagnosticsHandlers } from './ipc/diagnostics-handlers'
-import { registerWorkflowHandlers } from './ipc/workflow-handlers'
 import { wireWorkspaceActivity, type WindowControls } from './ipc/workspace-activity-wiring'
 
 export { loadAppSettings, saveAppSettings } from './ipc/settings'
@@ -59,20 +55,16 @@ export function registerIpcHandlers(
   registerPermissionRulesHandlers(ctx)
   registerThemeHandlers()
   registerWorkspaceHandlers(ctx)
-  registerPackageHandlers(ctx)
   registerSkillsMcpHandlers(ctx)
   registerOmpAppearanceHandlers(ipcMain, ctx)
   registerOmpLabelPackHandlers(ipcMain)
   registerModelsConfigHandlers()
   registerCouncilHandlers(ctx)
   registerTagHandlers(ctx)
-  registerNotesHandlers(ctx)
   registerFileHandlers(ctx)
   registerGitConveyorHandlers(ctx)
   registerSystemHandlers(ctx)
   registerUpdateHandlers()
-  registerDiagnosticsHandlers(ctx)
-  registerWorkflowHandlers(ctx)
 
   // ─── Extension UI Responses and Pi Event Forwarding ─────────────────────
 

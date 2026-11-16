@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { OverlayPortal } from './overlay-portal'
 import { ChevronDown } from 'lucide-react'
 import { clsx } from 'clsx'
 
@@ -25,12 +26,14 @@ export function ThemedSelect({
 }): React.JSX.Element {
   const [open, setOpen] = useState(false)
   const rootRef = useRef<HTMLDivElement>(null)
+  const popupRef = useRef<HTMLDivElement>(null)
+  const [position, setPosition] = useState<React.CSSProperties>({})
   const current = options.find((option) => option.value === value) ?? options[0]
 
   useEffect(() => {
     if (!open) return
     const onDoc = (event: MouseEvent): void => {
-      if (rootRef.current && !rootRef.current.contains(event.target as Node)) setOpen(false)
+      if (rootRef.current && !rootRef.current.contains(event.target as Node) && !popupRef.current?.contains(event.target as Node)) setOpen(false)
     }
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setOpen(false)
@@ -41,6 +44,24 @@ export function ThemedSelect({
       document.removeEventListener('mousedown', onDoc)
       document.removeEventListener('keydown', onKey)
     }
+  }, [open])
+
+  useLayoutEffect(() => {
+    if (!open) return
+    const place = (): void => {
+      const rect = rootRef.current?.getBoundingClientRect()
+      if (!rect) return
+      const below = window.innerHeight - rect.bottom - 12
+      const above = rect.top - 12
+      const up = below < 160 && above > below
+      const width = Math.min(Math.max(160, rect.width), window.innerWidth - 16)
+      setPosition({ width, left: Math.max(8, Math.min(rect.left, window.innerWidth - width - 8)), maxHeight: Math.max(40, Math.min(240, up ? above : below)), ...(up ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }) })
+    }
+    place()
+    window.addEventListener('resize', place)
+    const scroll = (event: Event): void => { if (!popupRef.current?.contains(event.target as Node)) place() }
+    window.addEventListener('scroll', scroll, true)
+    return () => { window.removeEventListener('resize', place); window.removeEventListener('scroll', scroll, true) }
   }, [open])
 
   return (
@@ -60,14 +81,16 @@ export function ThemedSelect({
         <span className="min-w-0 truncate">{current?.label ?? ''}</span>
         <ChevronDown size={14} className={clsx('shrink-0 text-dim transition-transform', open && 'rotate-180')} />
       </button>
-      {open && (
-        <div className="absolute left-0 right-0 top-full z-[80] mt-1 max-h-60 overflow-y-auto rounded-lg border border-border-strong bg-app py-1 shadow-xl shadow-black/50">
+      {open && <OverlayPortal>
+        <div ref={popupRef} style={position} role="listbox" aria-label={ariaLabel} className="fixed z-[80] overflow-y-auto rounded-lg border border-border-strong bg-app py-1 shadow-xl shadow-black/50">
           {options.map((option) => {
             const selected = option.value === value
             return (
               <button
                 key={option.value}
                 type="button"
+                role="option"
+                aria-selected={selected}
                 disabled={option.disabled}
                 onClick={() => {
                   if (option.disabled) return
@@ -85,7 +108,7 @@ export function ThemedSelect({
             )
           })}
         </div>
-      )}
+      </OverlayPortal>}
     </div>
   )
 }

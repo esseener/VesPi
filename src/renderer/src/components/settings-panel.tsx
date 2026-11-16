@@ -1,12 +1,10 @@
 import { useAppStore } from '../store'
 import { playCompletionChime } from '../completion-chime'
-import { DEFAULT_AGENT_ENGINE_LABEL, agentEngineLabel } from '../../../shared/agent-engine-label'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { clsx } from 'clsx'
 import type {
   AppSettings,
   PermissionMode,
-  CouncilConfig,
   PermissionRule,
   PermissionRulesScope,
   PermissionRulesWorkspaceStatus,
@@ -29,11 +27,6 @@ import { ThemeEditor } from './theme-editor'
 import { ThemeGallery } from './theme-gallery'
 import type { UserThemeRecord } from '../../../shared/ipc-contracts'
 import { useEscapeToClose } from '../hooks/use-escape-close'
-import {
-  MIN_TIMEOUT_SECONDS as COUNCIL_MIN_TIMEOUT,
-  MAX_TIMEOUT_SECONDS as COUNCIL_MAX_TIMEOUT,
-  clampTimeoutSeconds as clampCouncilTimeout,
-} from '../../../shared/council-config'
 
 // Empty `match` from the input means "no pattern" and must not be persisted
 // as `""` — the main-process validator rejects unknown/empty-string quirks
@@ -55,25 +48,6 @@ interface ScopeRulesState {
 
 const EMPTY_SCOPE_RULES: ScopeRulesState = { rules: [], loaded: false, loadError: null, exists: false }
 
-async function persistOmpAppearance(patch: {
-  themeDark?: string
-  symbolPreset?: string
-  thinkingLevel?: string
-}): Promise<void> {
-  try {
-    await window.piDesktop.omp.setAppearance({
-      themeDark: patch.themeDark ?? 'anthracite',
-      themeLight: 'light',
-      symbolPreset: (patch.symbolPreset ?? 'unicode') as 'unicode' | 'nerd' | 'ascii',
-      ...(patch.thinkingLevel
-        ? { thinkingLevel: patch.thinkingLevel as 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' }
-        : {}),
-    })
-  } catch {
-    /* non-fatal */
-  }
-}
-
 export function SettingsPanel(): React.JSX.Element {
   const setCurrentView = useAppStore((state) => state.setCurrentView)
   useEscapeToClose(true, () => setCurrentView('chat'))
@@ -87,9 +61,6 @@ export function SettingsPanel(): React.JSX.Element {
   // what makes edits survive leaving/returning to Settings without saving.
   const draft0 = useAppStore.getState().settingsDraft
 
-  // The stored piEngine setting may be 'auto'; this is the engine that actually
-  // resolved, which is what any sentence naming the running agent has to say.
-  const runningEngineLabel = useAppStore((state) => agentEngineLabel(state.piEngine) ?? DEFAULT_AGENT_ENGINE_LABEL)
   const [theme, setTheme] = useState(draft0.theme ?? settings?.theme ?? DEFAULT_SETTINGS.theme)
   const [language, setLanguage] = useState<AppLanguage>(draft0.language ?? settings?.language ?? DEFAULT_LANGUAGE)
   const [themeActionError, setThemeActionError] = useState<string | null>(null)
@@ -139,32 +110,6 @@ export function SettingsPanel(): React.JSX.Element {
   })
   const [rulesActionError, setRulesActionError] = useState<string | null>(null)
   const [workspaceRulesStatus, setWorkspaceRulesStatus] = useState<PermissionRulesWorkspaceStatus | null>(null)
-
-  const [showCouncilWarning, setShowCouncilWarning] = useState(false)
-  const [detectedAgents, setDetectedAgents] = useState<Record<'pi' | 'claude' | 'codex', boolean>>({
-    pi: false,
-    claude: false,
-    codex: false,
-  })
-  // Free-text draft for the timeout field so the user can clear it and type a
-  // new value; it is clamped and persisted only on blur / Enter (not per keystroke).
-  const [timeoutDraft, setTimeoutDraft] = useState('')
-
-  // Detect available council agents on mount
-  useEffect(() => {
-    let cancelled = false
-    void window.piDesktop.council.detect().then((result) => {
-      if (cancelled) return
-      const next: Record<'pi' | 'claude' | 'codex', boolean> = { pi: false, claude: false, codex: false }
-      for (const agent of result.agents) {
-        next[agent.id] = agent.found
-      }
-      setDetectedAgents(next)
-    })
-    return () => {
-      cancelled = true
-    }
-  }, [])
 
   // Load permission rules for one scope. The store draft for that scope wins
   // over the saved file so unsaved edits survive view switches. The draft is
@@ -225,30 +170,6 @@ export function SettingsPanel(): React.JSX.Element {
     setRulesScope(scope)
     setRulesActionError(null)
     if (useAppStore.getState().permissionRulesDrafts[scope] === null) void loadRulesScope(scope)
-  }
-
-  // Keep the timeout draft in sync with the persisted value (e.g. after a save
-  // clamps it, or when settings first load).
-  const councilTimeout = settings?.council?.timeoutSeconds
-  useEffect(() => {
-    if (councilTimeout !== undefined) setTimeoutDraft(String(councilTimeout))
-  }, [councilTimeout])
-
-  // Merge a council patch into the current config and persist via the store mechanism
-  const saveCouncil = async (patch: Partial<CouncilConfig>): Promise<void> => {
-    if (!settings) return
-    const nextCouncil: CouncilConfig = { ...settings.council, ...patch }
-    try {
-      await window.piDesktop.settings.save({ council: nextCouncil })
-      await loadSettings()
-    } catch (err) {
-      // Five call sites fire this with `void`; a failed write used to leave the
-      // toggle in its new position with nothing said and nothing reloaded.
-      setSettingsActionError(
-        t(language, 'settingsSaveFailed', { detail: err instanceof Error ? err.message : String(err) }),
-      )
-      void loadSettings()
-    }
   }
 
   // Persist a setting immediately. Toggles, selects, and theme picks write
@@ -775,7 +696,6 @@ export function SettingsPanel(): React.JSX.Element {
             <ThemedSelect
               value={(settings?.ompThemeDark ?? draft0.ompThemeDark ?? 'anthracite') as string}
               onChange={(v) => {
-                void persistOmpAppearance({ themeDark: v })
                 persistSettingPatch({ ompThemeDark: v })
               }}
               options={OMP_DARK_THEMES.map((id) => ({
@@ -788,7 +708,6 @@ export function SettingsPanel(): React.JSX.Element {
             <ThemedSelect
               value={(settings?.ompSymbolPreset ?? 'unicode') as string}
               onChange={(v) => {
-                void persistOmpAppearance({ symbolPreset: v })
                 persistSettingPatch({ ompSymbolPreset: v as 'unicode' | 'nerd' | 'ascii' })
               }}
               options={[
@@ -802,8 +721,7 @@ export function SettingsPanel(): React.JSX.Element {
             <ThemedSelect
               value={(settings?.ompThinkingLevel ?? 'high') as string}
               onChange={(v) => {
-                void persistOmpAppearance({ thinkingLevel: v })
-                persistSettingPatch({ ompThinkingLevel: v as 'off' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' })
+                persistSettingPatch({ ompThinkingLevel: v as NonNullable<AppSettings['ompThinkingLevel']> })
               }}
               options={[
                 { value: 'off', label: t(language, 'thinkingOff') },
@@ -812,6 +730,8 @@ export function SettingsPanel(): React.JSX.Element {
                 { value: 'medium', label: t(language, 'thinkingMedium') },
                 { value: 'high', label: t(language, 'thinkingHigh') },
                 { value: 'xhigh', label: t(language, 'thinkingXhigh') },
+                { value: 'max', label: t(language, 'thinkingMax') },
+                { value: 'auto', label: 'Auto (OMP)' },
               ]}
             />
           </SettingsRow>
@@ -1006,103 +926,6 @@ export function SettingsPanel(): React.JSX.Element {
           </SettingsRow>
         </SettingsSection>
 
-        <SettingsSection title={t(language, 'councilPlanning')}>
-          <SettingsRow
-            label={t(language, 'enableCouncil')}
-            description={t(language, 'enableCouncilHint')}
-          >
-            <Toggle
-              checked={settings?.council.enabled ?? false}
-              onChange={(value) => {
-                if (value) {
-                  setShowCouncilWarning(true)
-                } else {
-                  void saveCouncil({ enabled: false })
-                }
-              }}
-            />
-          </SettingsRow>
-
-          {settings?.council.enabled && (
-            <>
-              <SettingsRow label={t(language, 'councilMembers')} description={t(language, 'councilMembersHint')}>
-                <div className="flex flex-col gap-2">
-                  {(['pi', 'claude', 'codex'] as const).map((id) => {
-                    const detected = detectedAgents[id]
-                    const label = id === 'pi' ? 'Pi' : id === 'claude' ? 'Claude' : 'Codex'
-                    return (
-                      <label
-                        key={id}
-                        className={`flex items-center gap-2 text-sm ${
-                          detected ? 'text-primary' : 'text-dim'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          disabled={!detected}
-                          checked={settings.council.members[id]}
-                          onChange={(e) =>
-                            void saveCouncil({
-                              members: { ...settings.council.members, [id]: e.target.checked },
-                            })
-                          }
-                          className="accent-accent disabled:opacity-50"
-                        />
-                        <span>
-                          {label}
-                          {!detected && <span className="text-faint"> {t(language, 'notDetected')}</span>}
-                        </span>
-                      </label>
-                    )
-                  })}
-                </div>
-              </SettingsRow>
-
-              <SettingsRow
-                label={t(language, 'consensusMode')}
-                description={t(language, 'consensusModeHint')}
-              >
-                <ThemedSelect
-                  value={settings.council.consensusMode}
-                  onChange={(next) =>
-                    void saveCouncil({
-                      consensusMode: next as CouncilConfig['consensusMode'],
-                    })
-                  }
-                  options={[
-                    { value: 'arbiter', label: t(language, 'consensusArbiter') },
-                    { value: 'debate', label: t(language, 'consensusDebate') },
-                  ]}
-                />
-              </SettingsRow>
-
-              <SettingsRow
-                label="Per-member timeout (seconds)"
-                description={`How long to wait for each agent (${COUNCIL_MIN_TIMEOUT}-${COUNCIL_MAX_TIMEOUT})`}
-              >
-                <input
-                  type="number"
-                  min={COUNCIL_MIN_TIMEOUT}
-                  max={COUNCIL_MAX_TIMEOUT}
-                  value={timeoutDraft}
-                  onChange={(e) => setTimeoutDraft(e.target.value)}
-                  onBlur={() => {
-                    const clamped = clampCouncilTimeout(Number(timeoutDraft))
-                    setTimeoutDraft(String(clamped))
-                    if (clamped !== settings.council.timeoutSeconds) {
-                      void saveCouncil({ timeoutSeconds: clamped })
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
-                  }}
-                  className="w-full rounded-md border border-border-strong bg-transparent px-3 py-1.5 text-sm text-primary focus:border-accent-fg focus:outline-none"
-                />
-              </SettingsRow>
-            </>
-          )}
-        </SettingsSection>
-
         <SettingsSection title={t(language, 'customModels')}>
           <CustomModelsEditor />
         </SettingsSection>
@@ -1135,36 +958,6 @@ export function SettingsPanel(): React.JSX.Element {
         />
       )}
 
-      {showCouncilWarning && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
-          <div className="w-full max-w-md surface-floating p-6 shadow-xl">
-            <h3 className="mb-3 text-base font-semibold text-primary">
-              {t(language, 'enableCouncilTitle')}
-            </h3>
-            <p className="mb-6 text-sm text-muted">
-              {t(language, 'enableCouncilBody', { engine: runningEngineLabel })}
-            </p>
-            <div className="flex justify-end gap-3">
-              <button
-                onClick={() => setShowCouncilWarning(false)}
-                className="rounded-md border border-border-strong bg-transparent px-4 py-2 text-sm text-muted transition-colors hover:border-accent-fg hover:text-primary"
-              >
-                {t(language, 'cancel')}
-              </button>
-              <button
-                onClick={() => {
-                  setShowCouncilWarning(false)
-                  void saveCouncil({ enabled: true })
-                }}
-                className="rounded-md border border-accent-fg bg-transparent px-4 py-2 text-sm text-primary transition-colors hover:border-focus"
-              >
-                {t(language, 'enable')}
-              </button>
-
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   )
 }
@@ -1214,12 +1007,12 @@ function SettingsRow({
     )
   }
   return (
-    <div className="flex items-center justify-between gap-4">
-      <div>
+    <div className="flex flex-wrap items-center justify-between gap-4">
+      <div className="min-w-0 flex-1 basis-48">
         <div className="text-sm text-primary">{label}</div>
         <div className="text-xs text-dim">{description}</div>
       </div>
-      <div className="w-64">{children}</div>
+      <div className="w-64 max-w-full shrink-0">{children}</div>
     </div>
   )
 }

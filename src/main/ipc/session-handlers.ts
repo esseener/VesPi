@@ -24,7 +24,7 @@ import { homedir } from 'os'
 import { basename, join, resolve } from 'path'
 import { existsSync } from 'fs'
 import { moveToTrash } from '../session-trash'
-import { assertTrustedSender, isObject, isString } from './validation'
+import { assertTrustedSender, isString } from './validation'
 import { applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { applyInteractionModes } from './interaction-modes'
 import { loadAppSettings } from './settings'
@@ -121,28 +121,6 @@ export function registerSessionHandlers(ctx: IpcContext): void {
     return runtime
   })
 
-  ipcMain.handle(IPC_CHANNELS.SESSION_LAUNCH_TASK, async (_event, input: unknown): Promise<SessionRuntimeInfo> => {
-    if (!isObject(input) || !isString(input.workspaceId) || !isString(input.prompt) || !input.prompt.trim()) {
-      throw new Error('workspaceId and a non-empty prompt are required')
-    }
-    const workspace = workspaceManager.getWorkspaces().find((item) => item.id === input.workspaceId)
-    if (!workspace) throw new Error('Workspace not found')
-    const runtime = await workspaceManager.createNewSessionRuntime(workspace.id)
-    // Reserve the runtime while startup and prompt delivery are asynchronous;
-    // list polling must not classify its header-only file as disposable.
-    workspaceManager.setSessionRuntimeActivity(runtime.runtimeId, 'working')
-    // Keep the prompt attached to this runtime. It must not go through the
-    // renderer's active-manager shortcut because the user can switch away
-    // before Pi finishes starting.
-    void startRuntime(runtime)
-      .then(() => workspaceManager.sendCommandToSessionRuntime(runtime.runtimeId, {
-        type: 'prompt',
-        message: input.prompt,
-      }))
-      .catch(() => workspaceManager.setSessionRuntimeActivity(runtime.runtimeId, 'failed'))
-    return runtime
-  })
-
   const activateSession = async (sessionPath: string, cwd?: string): Promise<SessionRuntimeInfo> => {
     const workspace = workspaceManager.getActiveWorkspace()
     if (!workspace) throw new Error('No active workspace')
@@ -185,8 +163,14 @@ export function registerSessionHandlers(ctx: IpcContext): void {
     return { ...result, deleted }
   })
 
-  ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (_event, sessionPath: unknown, cwd?: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SESSION_SWITCH, async (event, sessionPath: unknown, cwd?: unknown) => {
+    assertTrustedSender(event)
     if (!isString(sessionPath)) throw new Error('sessionPath must be a string')
+    if (ctx.terminalService.isRunning()) {
+      if (!isWithinSessionRoots(sessionPath) || !existsSync(sessionPath)) throw new Error('Session file is missing or outside the session store')
+      // TUI navigation must not create a second RPC writer for the same file.
+      return { success: true }
+    }
     if (cwd !== undefined && !isString(cwd)) throw new Error('cwd must be a string')
     return activateSession(sessionPath, isString(cwd) ? cwd : undefined)
   })

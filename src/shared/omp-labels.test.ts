@@ -7,6 +7,7 @@ import {
   displayWidth,
   fitWidth,
   squareBoxCorners,
+  createTerminalTranslator,
 } from './omp-labels'
 
 test('loadOmpLabelPack accepts a map and ompLabel falls back', () => {
@@ -72,10 +73,25 @@ test('Updated to is translated as a phrase, not via Update', () => {
   assert.ok(out.includes('已更新到') || out.includes('更新'), `got: ${JSON.stringify(out)}`)
 })
 
+test('translation never replaces word fragments, including across SGR boundaries', () => {
+  loadOmpLabelPack({ kernel: '', map: { Auto: '自动', on: '开', Home: '首页', Update: '更新' } })
+  for (const text of ['Automatically standalone Homebrew Updates confirm', 'Auto\x1b[32mmatically', 'standal\x1b[0mone']) {
+    assert.equal(translateTerminalChunk(text), text)
+  }
+})
+
 test('ANSI around a phrase is preserved as lead styling', () => {
   loadOmpLabelPack({ kernel: '', map: {} })
   const out = translateTerminalChunk('\x1b[33mError:\x1b[0m boom')
   assert.ok(out.includes('错误：'), `got: ${JSON.stringify(out)}`)
+})
+
+test('native settings labels are not partially translated by single-word entries', () => {
+  loadOmpLabelPack({ kernel: '', map: { Terminal: '终端', Reset: '重置' } })
+  for (const text of ['Context-Reactive Line', 'Terminal Title Run State', 'Native Terminal Progress', 'Codex Reset Fireworks', 'Terminal\x1b[0m Title Spinner']) {
+    assert.equal(translateTerminalChunk(text), text)
+  }
+  assert.equal(translateTerminalChunk('│ Settings   │'), '│ 设置       │')
 })
 
 test('box-critical replacement keeps identical display width', () => {
@@ -163,4 +179,30 @@ test('rotating tip fragments translate even without full sentence', () => {
   const out = translateTerminalChunk('Tip: something new — a teammate runs `/join x` to watch tool calls stream')
   assert.ok(out.includes('队友') || out.includes('工具调用'), `got: ${JSON.stringify(out)}`)
   assert.ok(!out.includes('teammate runs'), `got: ${JSON.stringify(out)}`)
+})
+
+test('tip translation preserves columns before the right box edge', () => {
+  loadOmpLabelPack({ kernel: '', map: {} })
+  const line = '│ Check that the server is running │'
+  const out = translateTerminalChunk(line)
+  assert.equal(displayWidth(out), displayWidth(line))
+})
+
+test('terminal titles and hyperlink payloads pass through unchanged', () => {
+  const title = '\x1b]0;Welcome back!╭\x07'
+  const link = '\x1b]8;;https://example.com/Welcome back!╭\x1b\\'
+  assert.equal(translateTerminalChunk(title + link), title + link)
+})
+
+test('split CSI and OSC protocol is preserved across PTY chunks', () => {
+  const translator = createTerminalTranslator()
+  assert.equal(translator.write('\x1b[2'), '')
+  assert.ok(translator.write('mhello').endsWith('hello'))
+  assert.equal(translator.write('\x1b]0;Welcome back!'), '')
+  assert.equal(translator.write('\x07'), '\x1b]0;Welcome back!\x07')
+  assert.equal(translator.write('\x1b]8;;https://example.com/Welcome back!\x1b'), '')
+  assert.equal(translator.write('\\'), '\x1b]8;;https://example.com/Welcome back!\x1b\\')
+  translator.write('\x1b[')
+  translator.reset()
+  assert.equal(translator.write('plain'), 'plain')
 })

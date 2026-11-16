@@ -6,10 +6,11 @@ import {
 } from '../../shared/omp-appearance'
 import { patchOmpProfileConfig, ompAgentConfigPath } from '../omp-profile-config'
 import type { IpcContext } from './context'
+import { parse } from 'yaml'
+import { assertTrustedSender, isObject } from './validation'
+import { assertTuiCanRestart, refreshTuiKeepingSession } from './model-handlers'
 
 export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext): void {
-  void ctx // used via refreshTuiKeepingSession(ctx)
-
   ipcMain.handle('omp:appearance:get', async () => {
     try {
       const text = await readFile(ompAgentConfigPath(), 'utf-8')
@@ -19,8 +20,19 @@ export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext)
     }
   })
 
-  ipcMain.handle('omp:appearance:set', async (_e, appearance: OmpAppearance) => {
+  ipcMain.handle('omp:appearance:set', async (event, appearance: Partial<OmpAppearance>) => {
+    assertTrustedSender(event)
+    if (!isObject(appearance)) throw new Error('OMP appearance must be an object')
+    for (const field of ['themeDark', 'themeLight', 'symbolPreset', 'thinkingLevel'] as const) {
+      if (appearance[field] !== undefined && (typeof appearance[field] !== 'string' || !appearance[field]?.trim())) {
+        throw new Error(`Invalid OMP ${field}`)
+      }
+    }
+    if (appearance.thinkingLevel && !['off', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max', 'auto'].includes(appearance.thinkingLevel)) {
+      throw new Error('Invalid OMP thinking level')
+    }
     // Merge — never clobber modelRoles / thinking / setupVersion.
+    assertTuiCanRestart(ctx)
     patchOmpProfileConfig({
       themeDark: appearance.themeDark,
       themeLight: appearance.themeLight,
@@ -29,21 +41,18 @@ export function registerOmpAppearanceHandlers(ipcMain: IpcMain, ctx: IpcContext)
     })
     // OMP TUI reads theme at spawn. Local TUI refresh only — keep the current
     // session (or its empty state), never jump to Home / create a new session.
-    try {
-      const { refreshTuiKeepingSession } = await import('./model-handlers')
-      await refreshTuiKeepingSession(ctx)
-    } catch {
-      /* terminal may not be running */
-    }
+    await refreshTuiKeepingSession(ctx, undefined, appearance.thinkingLevel)
     return { ok: true }
   })
 }
 
 function parseAppearance(text: string): OmpAppearance {
-  const dark = /^\s*dark:\s*(\S+)/m.exec(text)?.[1]
-  const light = /^\s*light:\s*(\S+)/m.exec(text)?.[1]
-  const sym = /^\s*symbolPreset:\s*(\S+)/m.exec(text)?.[1]
-  const think = /^\s*defaultLevel:\s*(\S+)/m.exec(text)?.[1]
+  const config = parse(text) as Record<string, unknown> | null
+  const theme = isObject(config?.theme) ? config.theme : {}
+  const dark = typeof theme.dark === 'string' ? theme.dark : undefined
+  const light = typeof theme.light === 'string' ? theme.light : undefined
+  const sym = typeof config?.symbolPreset === 'string' ? config.symbolPreset : undefined
+  const think = typeof config?.defaultThinkingLevel === 'string' ? config.defaultThinkingLevel : undefined
   return {
     themeDark: dark ?? DEFAULT_OMP_APPEARANCE.themeDark,
     themeLight: light ?? DEFAULT_OMP_APPEARANCE.themeLight,

@@ -25,6 +25,7 @@ import {
 import { assertTrustedSender } from './validation'
 import { getGlobalPermissionRulesPath, applyResumePreference, applyPermissionModeToStartOptions } from './pi-start-options'
 import { loadAppSettings, saveAppSettings } from './settings'
+import { assertTuiCanRestart, refreshTuiKeepingSession } from './model-handlers'
 import type { IpcContext } from './context'
 
 const MAX_PERMISSION_RULES_FILE_BYTES = 512 * 1024
@@ -171,11 +172,13 @@ export function registerPermissionRulesHandlers(ctx: IpcContext): void {
       if (!activeWs) throw new Error('No active workspace')
 
       if (trusted !== workspaceTrustStore.isTrusted(activeWs.path)) {
+        assertTuiCanRestart(ctx)
         if (trusted) {
           await workspaceTrustStore.trust(activeWs.path)
         } else {
           await workspaceTrustStore.revoke(activeWs.path)
         }
+        await refreshTuiKeepingSession(ctx)
 
         // Trust is read into PI_DESKTOP_WORKSPACE_TRUSTED at spawn time and
         // gates the preview guest at attach time. Restart every live session

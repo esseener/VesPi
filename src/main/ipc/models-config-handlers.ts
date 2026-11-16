@@ -7,6 +7,8 @@ import { existsSync } from 'fs'
 import { getPiCli } from '../pi-rpc-manager'
 import { getOmpSessionsRoot } from '../pi-paths'
 import { buildModelsYml } from '../../shared/models-yml'
+import { parse } from 'yaml'
+import { assertTrustedSender } from './validation'
 
 
 export function modelsConfigPaths(): { dir: string; file: string } {
@@ -161,16 +163,18 @@ export function resolvedStartModel(
 }
 
 export async function readModelsConfigFile(): Promise<ModelsReadResult> {
-  const { file } = modelsConfigPaths()
+  const paths = modelsConfigPaths()
+  const yaml = getPiCli().kind === 'omp' && existsSync(modelsYmlPath(paths.dir))
+  const file = yaml ? modelsYmlPath(paths.dir) : paths.file
   if (!existsSync(file)) return { config: { providers: {} }, path: file }
   let raw: string
   try {
     raw = await readFile(file, 'utf-8')
   } catch (err) {
-    return { error: `Could not read models.json: ${err instanceof Error ? err.message : String(err)}`, raw: '', path: file }
+    return { error: `Could not read models config: ${err instanceof Error ? err.message : String(err)}`, raw: '', path: file }
   }
   try {
-    const parsed = JSON.parse(raw) as ModelsConfig
+    const parsed = (yaml ? parse(raw) : JSON.parse(raw)) as ModelsConfig
     if (
       typeof parsed !== 'object' ||
       parsed === null ||
@@ -178,11 +182,11 @@ export async function readModelsConfigFile(): Promise<ModelsReadResult> {
       parsed.providers === null ||
       Array.isArray(parsed.providers)
     ) {
-      return { error: 'models.json is not a valid models config (missing "providers")', raw, path: file }
+      return { error: 'Invalid models config (missing "providers")', raw, path: file }
     }
     return { config: parsed, path: file }
   } catch (err) {
-    return { error: `models.json is not valid JSON: ${err instanceof Error ? err.message : String(err)}`, raw, path: file }
+    return { error: `Invalid models config: ${err instanceof Error ? err.message : String(err)}`, raw, path: file }
   }
 }
 
@@ -191,7 +195,8 @@ export function registerModelsConfigHandlers(): void {
     return readModelsConfigFile()
   })
 
-  ipcMain.handle(IPC_CHANNELS.MODELS_WRITE, async (_event, config: unknown): Promise<{ success: boolean; error?: string }> => {
+  ipcMain.handle(IPC_CHANNELS.MODELS_WRITE, async (event, config: unknown): Promise<{ success: boolean; error?: string }> => {
+    assertTrustedSender(event)
     const providers = (config as ModelsConfig | null)?.providers
     if (
       typeof config !== 'object' ||
@@ -205,7 +210,6 @@ export function registerModelsConfigHandlers(): void {
     const { dir, file } = modelsConfigPaths()
     try {
       if (!existsSync(dir)) await mkdir(dir, { recursive: true })
-      await writeFile(file, JSON.stringify(config, null, 2) + '\n', 'utf-8')
       // OMP ignores models.json whenever models.yml exists, so a stale yml
       // hides everything the user saves. Mirror the config into OMP's native
       // format; the Pi engine keeps reading models.json. tmp+rename so a
@@ -216,6 +220,8 @@ export function registerModelsConfigHandlers(): void {
         await writeFile(tmpPath, buildModelsYml(config as ModelsConfig), 'utf-8')
         await rename(tmpPath, ymlPath)
       }
+      await writeFile(`${file}.tmp`, JSON.stringify(config, null, 2) + '\n', 'utf-8')
+      await rename(`${file}.tmp`, file)
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : String(err) }
@@ -244,4 +250,3 @@ export function registerModelsConfigHandlers(): void {
     }
   })
 }
-

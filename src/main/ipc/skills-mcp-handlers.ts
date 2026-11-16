@@ -1,15 +1,10 @@
 import { ipcMain } from 'electron'
-import { IPC_CHANNELS, type InstalledSkill, type SkillMutationResult } from '../../shared/ipc-contracts'
+import { IPC_CHANNELS, type InstalledSkill } from '../../shared/ipc-contracts'
 import { readdir, readFile } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
 import type { IpcContext } from './context'
 import { VESPI_PROFILE } from '../../shared/vespi'
-
-// Skills listing reads skill folders from disk only. Creating, evolving, or
-// deleting skills lived on the OpenSpace Python runtime, which is not part of
-// the product (ARCHITECTURE.md §7); those handlers report that plainly.
-const OPENSPACE_UNAVAILABLE = 'OpenSpace 未随 VesPi 发布，技能仅支持查看'
 
 export function registerSkillsMcpHandlers(ctx: IpcContext): void {
   const { workspaceManager } = ctx
@@ -20,27 +15,6 @@ export function registerSkillsMcpHandlers(ctx: IpcContext): void {
     const ws = workspaceManager.getActiveWorkspace()
     const cwd = ws?.path ?? process.cwd()
     return listSkillsFromDisk(cwd)
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SKILLS_CREATE, async (_event, name: unknown, description: unknown): Promise<SkillMutationResult> => {
-    if (typeof name !== 'string' || typeof description !== 'string') {
-      return { ok: false, error: 'invalid arguments' }
-    }
-    return { ok: false, error: OPENSPACE_UNAVAILABLE }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SKILLS_DELETE, async (_event, path: unknown): Promise<SkillMutationResult> => {
-    if (typeof path !== 'string') {
-      return { ok: false, error: 'invalid arguments' }
-    }
-    return { ok: false, error: OPENSPACE_UNAVAILABLE }
-  })
-
-  ipcMain.handle(IPC_CHANNELS.SKILLS_EVOLVE, async (_event, path: unknown, direction: unknown): Promise<SkillMutationResult> => {
-    if (typeof path !== 'string' || typeof direction !== 'string') {
-      return { ok: false, error: 'invalid arguments' }
-    }
-    return { ok: false, error: OPENSPACE_UNAVAILABLE }
   })
 
   ipcMain.handle(IPC_CHANNELS.COMMANDS_LIST, async () => {

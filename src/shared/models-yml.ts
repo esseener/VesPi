@@ -11,14 +11,14 @@ import type { ModelsConfig } from './models-config'
 
 /** Double-quote every scalar; YAML then cannot misread keys, URLs, or keys with special chars. */
 function yq(value: string): string {
-  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+  return JSON.stringify(value)
 }
 
 /** Generic scalar for preserved unknown fields (flow-style JSON for arrays/objects). */
 function yv(value: unknown): string {
   if (typeof value === 'string') return yq(value)
   if (typeof value === 'number' || typeof value === 'boolean') return String(value)
-  return yq(JSON.stringify(value))
+  return JSON.stringify(value)
 }
 
 const MODEL_KEYS = new Set(['id', 'name', 'api', 'reasoning', 'contextWindow', 'maxTokens', 'input'])
@@ -52,24 +52,27 @@ function providerIsLoadable(provider: ModelsConfig['providers'][string]): boolea
 }
 
 export function buildModelsYml(config: ModelsConfig): string {
-  const lines: string[] = ['providers:']
-  for (const [key, provider] of Object.entries(config.providers ?? {})) {
-    if (!providerIsLoadable(provider)) continue
+  const providers = Object.entries(config.providers ?? {}).filter(([, provider]) => providerIsLoadable(provider))
+  const lines: string[] = [providers.length ? 'providers:' : 'providers: {}']
+  for (const [key, value] of Object.entries(config)) {
+    if (key !== 'providers' && value !== undefined) lines.unshift(`${yq(key)}: ${yv(value)}`)
+  }
+  for (const [key, provider] of providers) {
     lines.push(`  ${yq(key)}:`)
     if (provider.baseUrl) lines.push(`    baseUrl: ${yq(provider.baseUrl)}`)
     if (provider.api) lines.push(`    api: ${yq(provider.api)}`)
     if (provider.apiKey) lines.push(`    apiKey: ${yq(provider.apiKey)}`)
     for (const [extraKey, extraValue] of Object.entries(provider)) {
       if (PROVIDER_KEYS.has(extraKey) || extraValue === undefined) continue
-      lines.push(`    ${extraKey}: ${yv(extraValue)}`)
+      lines.push(`    ${yq(extraKey)}: ${yv(extraValue)}`)
     }
     if (provider.compat && Object.keys(provider.compat).length > 0) {
       lines.push('    compat:')
       for (const [compatKey, compatValue] of Object.entries(provider.compat)) {
-        lines.push(`      ${compatKey}: ${compatValue ? 'true' : 'false'}`)
+        lines.push(`      ${compatKey}: ${yv(compatValue)}`)
       }
     }
-    lines.push('    models:')
+    lines.push(provider.models?.length ? '    models:' : '    models: []')
     for (const model of provider.models ?? []) {
       lines.push(`      - id: ${yq(model.id)}`)
       if (model.name) lines.push(`        name: ${yq(model.name)}`)

@@ -11,15 +11,17 @@ import { DEFAULT_SETTINGS } from '../../shared/default-settings'
 import { applyRunOnStartup } from '../startup-launch'
 import { setTrayEnabled } from '../tray-manager'
 
-import { readFile, writeFile, mkdir } from 'fs/promises'
+import { readFile, writeFile, mkdir, rename } from 'fs/promises'
 import { join } from 'path'
 import { existsSync } from 'fs'
-import { isObject } from './validation'
+import { assertTrustedSender, isObject } from './validation'
 import { appLog } from '../app-log'
 import type { IpcContext } from './context'
 import { defaultOmpExecutablePath } from '../vespi-runtime'
 import { VESPI_PRIVATE_OMP_REL } from '../../shared/vespi'
 import { DEFAULT_LANGUAGE, isAppLanguage } from '../../shared/i18n'
+import { patchOmpProfileConfig, readOmpProfileSettings } from '../omp-profile-config'
+import { refreshTuiKeepingSession } from './model-handlers'
 
 function withResolvedOmpPath(settings: AppSettings): AppSettings {
   const path = settings.piExecutablePath?.trim()
@@ -43,6 +45,7 @@ export function getSettingsPath(): string {
 }
 
 export async function loadAppSettings(workspaceManager: WorkspaceManager): Promise<AppSettings> {
+  const native = readOmpProfileSettings()
   try {
     const settingsPath = getSettingsPath()
     if (existsSync(settingsPath)) {
@@ -51,7 +54,7 @@ export async function loadAppSettings(workspaceManager: WorkspaceManager): Promi
       if (merged.piEngine !== 'auto' && merged.piEngine !== 'pi' && merged.piEngine !== 'omp') {
         merged.piEngine = 'omp'
       }
-      return withResolvedOmpPath(merged)
+      return withResolvedOmpPath({ ...merged, ...native })
     }
   } catch {
     // Fall through to defaults
@@ -60,11 +63,19 @@ export async function loadAppSettings(workspaceManager: WorkspaceManager): Promi
 
   return withResolvedOmpPath({
     ...DEFAULT_SETTINGS,
+    ...native,
     defaultCwd: workspaceManager.getActiveWorkspace()?.path ?? (process.env.HOME ?? process.env.USERPROFILE ?? process.cwd()),
   })
 }
 
-export async function saveAppSettings(settings: Partial<AppSettings>): Promise<void> {
+let settingsWrite: Promise<void> = Promise.resolve()
+export function saveAppSettings(settings: Partial<AppSettings>): Promise<void> {
+  const next = settingsWrite.then(() => writeAppSettings(settings))
+  settingsWrite = next.catch(() => undefined)
+  return next
+}
+
+async function writeAppSettings(settings: Partial<AppSettings>): Promise<void> {
   const settingsPath = getSettingsPath()
   const dir = join(settingsPath, '..')
 
@@ -85,7 +96,8 @@ export async function saveAppSettings(settings: Partial<AppSettings>): Promise<v
 
   const merged = { ...existing, ...settings }
   try {
-    await writeFile(settingsPath, JSON.stringify(merged, null, 2), 'utf-8')
+    await writeFile(`${settingsPath}.tmp`, JSON.stringify(merged, null, 2), 'utf-8')
+    await rename(`${settingsPath}.tmp`, settingsPath)
   } catch (err) {
     // Still propagate to the caller (the Settings panel surfaces it); the log
     // keeps a trace for diagnostics in packaged builds.
@@ -103,8 +115,27 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
     return loadAppSettings(workspaceManager)
   })
 
-  ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (_event, settings: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.SETTINGS_SAVE, async (event, settings: unknown) => {
+    assertTrustedSender(event)
     if (!isObject(settings)) throw new Error('settings must be an object')
+    const patch = settings as Partial<AppSettings>
+    const nativeChange = ['showThinking', 'steeringMode', 'followUpMode', 'interruptMode', 'ompThinkingLevel', 'ompThemeDark', 'ompSymbolPreset', 'permissionMode'].some(key => key in patch)
+    if (nativeChange && ctx.terminalService.isRunning()) {
+      const state = ctx.terminalService.getSessionState()
+      if (!state) throw new Error('OMP session is not ready. Retry after startup completes.')
+      if (state.busy) throw new Error('OMP is working. Apply terminal settings after the current turn finishes.')
+    }
+    if (nativeChange) {
+      patchOmpProfileConfig({
+        ...(typeof patch.showThinking === 'boolean' ? { hideThinkingBlock: !patch.showThinking } : {}),
+        steeringMode: patch.steeringMode,
+        followUpMode: patch.followUpMode,
+        interruptMode: patch.interruptMode,
+        thinkingLevel: patch.ompThinkingLevel,
+        themeDark: patch.ompThemeDark,
+        symbolPreset: patch.ompSymbolPreset,
+      })
+    }
     await saveAppSettings(settings as Partial<AppSettings>)
     // Reflect a "run on startup" change to the OS immediately (login item on
     // macOS/Windows, autostart entry on Linux). Only applied when the field is
@@ -118,6 +149,7 @@ export function registerSettingsHandlers(ctx: IpcContext): void {
       setTrayEnabled(Boolean((settings as Partial<AppSettings>).minimizeToTrayOnClose))
     }
     const updated = await loadAppSettings(workspaceManager)
+    if (nativeChange) await refreshTuiKeepingSession(ctx, undefined, patch.ompThinkingLevel)
     if ('piExecutablePath' in settings || 'piEngine' in settings) {
       setPiExecutableOverride(updated.piExecutablePath, updated.piEngine)
     }
